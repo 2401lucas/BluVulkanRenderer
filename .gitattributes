@@ -1,5 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 # Visual Studio 2019 cache/options directory
-*/.vs/
-*/out/
+.vs/
+out/
