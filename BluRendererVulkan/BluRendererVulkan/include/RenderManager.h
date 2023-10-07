@@ -52,13 +52,11 @@ namespace Core {
 			}
 		};
 
-		const std::vector<Vertex> vertices = {
-		{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-		{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-		{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-		{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}} };
-
-		const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
+		struct UniformBufferObject {
+			glm::mat4 model;
+			glm::mat4 view;
+			glm::mat4 proj;
+		};
 
 		class RenderManager {
 		public:
@@ -86,6 +84,7 @@ namespace Core {
 			VkExtent2D chooseSwapExtent(GLFWwindow* window, const VkSurfaceCapabilitiesKHR&);
 			void createImageViews();
 			void createRenderPass();
+			void createDescriptorSetLayout();
 			void createGraphicsPipeline();
 			VkShaderModule createShaderModule(const std::vector<char>&);
 			void createFramebuffers();
@@ -94,10 +93,14 @@ namespace Core {
 			void createIndexBuffer();
 			void copyBuffer(VkBuffer, VkBuffer, VkDeviceSize);
 			void createBuffer(VkDeviceSize, VkBufferUsageFlags, VkMemoryPropertyFlags, VkBuffer&, VkDeviceMemory&);
+			void createUniformBuffers();
+			void createDescriptorPool();
+			void createDescriptorSets();
 			uint32_t findMemoryType(uint32_t, VkMemoryPropertyFlags);
 			void createCommandBuffers();
 			void createSyncObjects();
 			void recordCommandBuffer(VkCommandBuffer, uint32_t);
+			void updateUniformBuffer(uint32_t);
 
 			GLFWwindow* window;
 			uint32_t currentFrame = 0;
@@ -113,6 +116,7 @@ namespace Core {
 			VkExtent2D swapChainExtent;
 			std::vector<VkImageView> swapChainImageViews;
 			VkRenderPass renderPass;
+			VkDescriptorSetLayout descriptorSetLayout;
 			VkPipelineLayout pipelineLayout;
 			VkPipeline graphicsPipeline;
 			std::vector<VkFramebuffer> swapChainFramebuffers;
@@ -121,12 +125,25 @@ namespace Core {
 			VkDeviceMemory vertexBufferMemory;
 			VkBuffer indexBuffer;
 			VkDeviceMemory indexBufferMemory;
+			VkDescriptorPool descriptorPool;
+			std::vector<VkDescriptorSet> descriptorSets;
+			std::vector<VkBuffer> uniformBuffers;
+			std::vector<VkDeviceMemory> uniformBuffersMemory;
+			std::vector<void*> uniformBuffersMapped;
 			std::vector<VkCommandBuffer> commandBuffers;
 			std::vector<VkSemaphore> imageAvailableSemaphores;
 			std::vector<VkSemaphore> renderFinishedSemaphores;
 			std::vector<VkFence> inFlightFences;
 
 			bool framebufferResized = false;
+
+			const std::vector<Vertex> vertices = {
+			{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+			{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+			{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+			{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}} };
+
+			const std::vector<uint16_t> indices = { 0, 1, 2, 2, 3, 0 };
 		};
 	}
 }
