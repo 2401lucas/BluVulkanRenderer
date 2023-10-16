@@ -6,7 +6,7 @@ find_package(Vulkan)
 find_package(glfw3 CONFIG REQUIRED)
 
 # Add source to this project's executable.
-add_executable (BluRendererVulkan ${src_files} ${include_files} "src/BluRendererVulkan.cpp" "include/BluRendererVulkan.h" "src/FileManager.cpp" "include/FileManager.h" "src/RenderManager.cpp" "include/RenderManager.h" "src/WindowManager.cpp" "include/WindowManager.h")
+add_executable (BluRendererVulkan ${src_files} ${include_files} "src/BluRendererVulkan.cpp" "include/BluRendererVulkan.h" "src/FileManager.cpp" "include/FileManager.h" "src/RenderManager.cpp" "include/RenderManager.h" "src/Window/WindowManager.cpp" "src/Window/WindowManager.h" "src/VkInstance/VulkanInstance.cpp" "src/VkInstance/VulkanInstance.h" "src/Scene/Scene.h" "src/Model/Model.h" "src/Model/Model.cpp" "src/Image/Image.h" "src/Image/Image.cpp" "src/Device/Device.h" "src/Device/Device.cpp" "include/Settings/VkLayerConfig.h" "src/Swapchain/Swapchain.h" "src/Swapchain/Swapchain.cpp" "src/Renderer/RenderManager.cpp" "src/Renderer/RenderManager.h")
 
 target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
 target_include_directories(BluRendererVulkan PRIVATE ${Vulkan_INCLUDE_DIRS})

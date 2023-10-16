@@ -6,7 +6,7 @@ namespace Core {
 	namespace System {
 		class WindowManager {
 		public:
-			WindowManager();
+			WindowManager(VkInstance, const char*);
 			~WindowManager();
 
 			void HandleEvents();
@@ -17,6 +17,7 @@ namespace Core {
 			void SetFullscreen(bool fullscreen = true);
 
 			GLFWwindow* GetWindow();
+			VkSurfaceKHR GetSurface();
 
 			enum class CursorMode {
 				Normal,
@@ -25,7 +26,9 @@ namespace Core {
 			};
 
 		private:
+			void errorCallback(int, const char*);
 			GLFWwindow* window;
+			VkSurfaceKHR surface;
 		};
 	}
 }
