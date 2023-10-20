@@ -2,38 +2,62 @@
 #include <stdexcept>
 #include <map>
 #include <set>
-#include "../include/Settings/vkLayerConfig.h"
+//#include "../include/Settings/vkLayerConfig.h"
 
 const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,};
 
-Device::Device(VkInstance vkInstance, DeviceSettings deviceSettings, VkSurfaceKHR surface)
+Device::Device(GLFWwindow* window, VulkanInstance* vkInstance, DeviceSettings deviceSettings)
 {
 	settings = deviceSettings;
+	this->window = window;
+	
+
+	if (glfwCreateWindowSurface(vkInstance->get(), window, nullptr, &surface) != VK_SUCCESS)
+		throw std::runtime_error("failed to create window surface!");
 
 	// Select a supported render device
 	uint32_t deviceCount;
-	vkEnumeratePhysicalDevices(vkInstance, &deviceCount, nullptr);
+	vkEnumeratePhysicalDevices(vkInstance->get(), &deviceCount, nullptr);
 
 	if (deviceCount == 0) {
 		throw std::runtime_error("No physical devices found!");
 	}
 
 	std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
-	vkEnumeratePhysicalDevices(vkInstance, &deviceCount, physicalDevices.data());
+	vkEnumeratePhysicalDevices(vkInstance->get(), &deviceCount, physicalDevices.data());
 	physicalDevice = ChooseDevice(physicalDevices);
-	msaaSamples = getMaxUsableSampleCount();
+	createLogicalDevice();
 }
 
-Device::~Device() {
+void Device::cleanup(VulkanInstance* vkInstance) {
 	vkDestroyDevice(logicalDevice, nullptr);
+	vkDestroySurfaceKHR(vkInstance->get(), surface, nullptr);
+	delete queueFamilyIndices;
+
 }
 
-VkSampleCountFlagBits Device::getMaxUsableSampleCount()
+VkPhysicalDevice Device::getPhysicalDevice()
 {
-	VkPhysicalDeviceProperties physicalDeviceProperties;
-	vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-	VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
+	return physicalDevice;
+}
 
+VkDevice Device::getLogicalDevice()
+{
+	return logicalDevice;
+}
+
+VkSurfaceKHR& Device::getSurface()
+{
+	return surface;
+}
+
+GLFWwindow* Device::getWindow()
+{
+	return window;
+}
+
+VkSampleCountFlagBits Device::getMaxUsableSampleCount(VkSampleCountFlags counts)
+{
 	if (counts & VK_SAMPLE_COUNT_64_BIT) {
 		return VK_SAMPLE_COUNT_64_BIT;
 	}
@@ -82,7 +106,7 @@ int Device::rateDeviceSuitability(VkPhysicalDevice device)
 	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
 	// Required Features
-	if (deviceFeatures.geometryShader != settings.requiredDeviceFeatures.geometryShader) {
+	if (deviceFeatures.geometryShader != VK_TRUE) {
 		return 0;
 	}
 
@@ -97,9 +121,9 @@ int Device::rateDeviceSuitability(VkPhysicalDevice device)
 	return score;
 }
 
-void Device::CreateLogicalDevice(VkSurfaceKHR surface)
+void Device::createLogicalDevice()
 {
-	QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
+	QueueFamilyIndices indices = findQueueFamilies();
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
@@ -122,22 +146,30 @@ void Device::CreateLogicalDevice(VkSurfaceKHR surface)
 	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 	deviceCreateInfo.enabledExtensionCount = sizeof(deviceExtensions) / sizeof(deviceExtensions[0]);
 
-	if (Renderer::VkLayerConfig::ARE_VALIDATION_LAYERS_ENABLED) {
+	/*if (Renderer::VkLayerConfig::ARE_VALIDATION_LAYERS_ENABLED) {
 		deviceCreateInfo.ppEnabledLayerNames = Renderer::VkLayerConfig::VALIDATION_LAYERS;
 		deviceCreateInfo.enabledLayerCount = sizeof(Renderer::VkLayerConfig::VALIDATION_LAYERS) / sizeof(Renderer::VkLayerConfig::VALIDATION_LAYERS[0]);
 	}
-	else {
+	else {*/
 		deviceCreateInfo.enabledLayerCount = 0;
-	}
+	//}
 
 	if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &logicalDevice) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create logical device!");
 	}
+
+	vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
+	vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-QueueFamilyIndices Device::findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface)
+const QueueFamilyIndices Device::findQueueFamilies()
 {
-	QueueFamilyIndices indices;
+	if (queueFamilyIndices != nullptr)
+	{
+		return *queueFamilyIndices;
+	}
+
+	queueFamilyIndices = new QueueFamilyIndices();
 	uint32_t queueFamilyCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
 	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
@@ -147,19 +179,63 @@ QueueFamilyIndices Device::findQueueFamilies(VkPhysicalDevice device, VkSurfaceK
 		const VkQueueFamilyProperties& queueFamily = queueFamilies[i];
 
 		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-			indices.graphicsFamily = i;
+			queueFamilyIndices->graphicsFamily = i;
 		}
 
 		VkBool32 presentSupport = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
 		if (presentSupport) {
-			indices.presentFamily = i;
+			queueFamilyIndices->presentFamily = i;
 		}
 
-		if (indices.isComplete()) {
+		if (queueFamilyIndices->isComplete()) {
 			break;
 		}
 	}
 
-	return indices;
+	return *queueFamilyIndices;
+}
+
+VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+{
+	for (VkFormat format : candidates) {
+		VkFormatProperties props;
+		vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+
+		if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features)
+			return format;
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features)
+			return format;
+	}
+
+	throw std::runtime_error("failed to find supported format!");
+}
+
+uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+			return i;
+		}
+	}
+
+	throw std::runtime_error("failed to find suitable memory type!");
+}
+
+VkSampleCountFlagBits Device::getMipSampleCount()
+{
+	return settings.msaaSamples;
+}
+
+VkQueue& Device::getGraphicsQueue()
+{
+	return graphicsQueue;
+}
+
+VkQueue& Device::getPresentQueue()
+{
+	return presentQueue;
 }

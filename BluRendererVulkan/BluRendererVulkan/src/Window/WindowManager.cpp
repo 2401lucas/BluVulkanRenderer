@@ -2,39 +2,31 @@
 #include <stdexcept>
 
 
-Core::System::WindowManager::WindowManager(VkInstance instance, const char* name) {
+WindowManager::WindowManager(const char* name) {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	window = glfwCreateWindow(640, 480, name, nullptr, nullptr);
 	
-	//TODO : CALLBACK FOR WINDOW RESIZE & MINIMIZING
+	//TODO: 6 CALLBACK FOR WINDOW RESIZE & MINIMIZING
 	//glfwSetWindowUserPointer()
 	//glfwSetFramebufferSizeCallback();
-	
-	if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
-		throw std::runtime_error("failed to create window surface!");
 }
 
-Core::System::WindowManager::~WindowManager() {
+WindowManager::~WindowManager() {
 	glfwDestroyWindow(window);
 	glfwTerminate();
 }
 
-void Core::System::WindowManager::HandleEvents() {
+void WindowManager::HandleEvents() {
 	glfwPollEvents();
 }
 
-GLFWwindow* Core::System::WindowManager::GetWindow()
+GLFWwindow* WindowManager::GetWindow()
 {
 	return window;
 }
 
-VkSurfaceKHR Core::System::WindowManager::GetSurface()
-{
-	return surface;
-}
-
-void Core::System::WindowManager::errorCallback(int error, const char* description)
+void errorCallback(int error, const char* description)
 {
 	throw std::runtime_error(description);
 }

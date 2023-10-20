@@ -4,7 +4,7 @@
 class VulkanInstance {
 public:
 	VulkanInstance(VkApplicationInfo);
-	~VulkanInstance();
+	void cleanup();
 
 	const VkInstance& get() const;
 

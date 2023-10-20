@@ -5,10 +5,32 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-Model::Model(char* modelPath, char* texturePath)
+Model::Model(Device* deviceInfo, CommandPool* commandPool, const char* modelPath, const char* texturePath)
+	: modelPath(modelPath), texturePath(texturePath)
 {
-	this->modelPath = modelPath;
-	this->texturePath = texturePath;
+	loadModel();
+	loadTexture(deviceInfo, commandPool);
+}
+
+void Model::cleanup(Device* deviceInfo)
+{
+	texture->cleanup(deviceInfo);
+	delete texture;
+}
+
+std::vector<Vertex> Model::getVertices()
+{
+	return vertices;
+}
+
+std::vector<uint32_t> Model::getIndices()
+{
+	return indices;
+}
+
+Image* Model::getTexture()
+{
+	return texture;
 }
 
 void Model::loadModel()
@@ -39,4 +61,33 @@ void Model::loadModel()
 			indices.push_back((uniqueVertices[vertex]));
 		}
 	}
+}
+
+void Model::loadTexture(Device* deviceInfo, CommandPool* commandPool)
+{
+	int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load(texturePath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	VkDeviceSize imageSize = texWidth * texHeight * 4;
+	mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
+	if (!pixels) {
+		throw std::runtime_error("failed to load texture image!");
+	}
+
+	Buffer* buffer = new Buffer(deviceInfo, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	
+	buffer->copyData(deviceInfo, pixels, 0, imageSize, 0);
+
+	stbi_image_free(pixels);
+
+	texture = new Image(deviceInfo, texWidth, texHeight, mipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	texture->transitionImageLayout(deviceInfo, commandPool, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	texture->copyImageFromBuffer(deviceInfo, commandPool, buffer);
+	//transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL while generating mipmaps
+
+	buffer->freeBuffer(deviceInfo);
+
+	texture->generateMipmaps(deviceInfo, commandPool);
+	texture->createImageView(deviceInfo, VK_IMAGE_ASPECT_COLOR_BIT);
+	texture->createTextureSampler(deviceInfo);
 }
