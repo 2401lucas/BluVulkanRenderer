@@ -1,6 +1,7 @@
 #include <memory>
-#include "Window/WindowManager.h"
-#include "Renderer/RenderManager.h"
+#include "Render/Window/WindowManager.h"
+#include "Render/Renderer/RenderManager.h"
+#include "Engine/EngineCore/EngineCore.h"
 
 class BluRendererVulkan {
 public:
@@ -9,4 +10,5 @@ public:
 private:
 	std::unique_ptr<WindowManager> windowManager;
 	std::unique_ptr<RenderManager> renderManager;
+	std::unique_ptr<EngineCore> engineCore;
 };
