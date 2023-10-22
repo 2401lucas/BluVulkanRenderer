@@ -23,6 +23,6 @@ glm::mat4 MathUtils::ApplyTransformAndRotation(const glm::fvec3& transform, cons
     newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
     newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
 
-    newMat = glm::translate(newMat, transform);
+    //newMat = glm::translate(newMat, transform);
     return newMat;
 }

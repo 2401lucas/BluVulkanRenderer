@@ -35,12 +35,16 @@ class Input {
 public:
 	Input();
 
+	void clear();
 	void onKeyPressed(int key, int scancode, int action, int mods);
 	void onCursorPos(double x, double y);
 	void onButtonPressed(int button, int action, int mods);
+	void onFramebufferResized();
+	bool isFramebufferResized();
 
 	InputData getInput();
 private:
+	bool framebufferResized;
 	std::set<int> pressedKeys;
 	std::set<int> pressedButtons;
 	double curX;

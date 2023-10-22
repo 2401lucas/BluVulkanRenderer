@@ -20,7 +20,7 @@ class RenderManager {
 public:
 	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/);
 	void cleanup();
-	void drawFrame();
+	void drawFrame(const bool& framebufferResized);
 
 private:
 	void createSyncObjects();

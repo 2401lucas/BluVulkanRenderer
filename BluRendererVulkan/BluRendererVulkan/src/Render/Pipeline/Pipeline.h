@@ -27,7 +27,7 @@ public:
 	virtual void cleanup(Device* deviceInfo);
 
 	VkPipeline& getPipeline();
-	VkPipelineLayout getPipelineLayout();
+	VkPipelineLayout& getPipelineLayout();
 protected:
 	VkShaderModule createShaderModule(Device* deviceInfo, const ShaderInfo& shaderInfo);
 	std::vector<char> getBinaryData(const ShaderInfo& shaderInfo);

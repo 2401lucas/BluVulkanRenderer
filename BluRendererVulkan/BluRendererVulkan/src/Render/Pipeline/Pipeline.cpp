@@ -17,7 +17,7 @@ VkPipeline& Pipeline::getPipeline()
 	return pipeline;
 }
 
-VkPipelineLayout Pipeline::getPipelineLayout()
+VkPipelineLayout& Pipeline::getPipelineLayout()
 {
 	return pipelineLayout;
 }

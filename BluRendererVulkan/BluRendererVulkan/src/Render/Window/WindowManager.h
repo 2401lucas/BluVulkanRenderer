@@ -10,9 +10,8 @@ public:
 
 	void handleEvents();
 	InputData getInput();
-	void setFullscreen(bool fullscreen);
-
 	GLFWwindow* getWindow();
+	bool isFramebufferResized();
 
 	enum class CursorMode {
 		Normal,

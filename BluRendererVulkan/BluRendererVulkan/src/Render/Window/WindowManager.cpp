@@ -23,14 +23,16 @@ WindowManager::WindowManager(const char* name) {
 		Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
 		input->onButtonPressed(button, action, mods);
 	});
+	
+	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		Input* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
+		input->onFramebufferResized();
+		});
 
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(1);
 
 	//TODO: 6 CALLBACK FOR WINDOW RESIZE & MINIMIZING
-	
-	
-
 	//glfwSetFramebufferSizeCallback();
 }
 
@@ -40,6 +42,7 @@ WindowManager::~WindowManager() {
 }
 
 void WindowManager::handleEvents() {
+	input.clear();
 	glfwPollEvents();
 }
 
@@ -53,21 +56,8 @@ GLFWwindow* WindowManager::getWindow()
 	return window;
 }
 
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+bool WindowManager::isFramebufferResized()
 {
-	if (action == GLFW_PRESS) {
-		// Key is pressed
-		if (key == GLFW_KEY_ESCAPE) {
-			// Handle the ESC key
-			glfwSetWindowShouldClose(window, GLFW_TRUE);
-		}
-	}
+	return input.isFramebufferResized();
 }
 
-void cursorPositionCallback(GLFWwindow* window, double xpos, double ypos) {
-	// Handle mouse cursor movement
-}
-
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-	// Handle mouse button clicks
-}

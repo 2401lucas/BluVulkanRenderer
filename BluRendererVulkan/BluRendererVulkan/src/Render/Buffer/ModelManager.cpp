@@ -4,7 +4,6 @@
 #include "../Descriptors/Types/UBO/UBO.h"
 #include "../Math/MathUtils.h"
 
-// TODO: Implement multiple models
 ModelManager::ModelManager(Device* deviceInfo, CommandPool* commandPool, const std::vector<ModelCreateInfo> modelCreateInfos)
 {
     for (const ModelCreateInfo& modelCreateInfo : modelCreateInfos) {
@@ -83,11 +82,11 @@ void ModelManager::createUniformBuffer(Device* deviceInfo)
     }
 }
 
-void ModelManager::updatePushConstants(const VkCommandBuffer& commandBuffer, const VkPipelineLayout& layout)
+void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout)
 {
-    uint32_t modelCount = static_cast<uint32_t>(models.size());
+    uint32_t modelCount = static_cast<uint32_t>(modelData.size());
     for (uint32_t i = 0; i < modelCount; i++) {
-        vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &models[i]);
+        vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[i]);
     }
 }
 

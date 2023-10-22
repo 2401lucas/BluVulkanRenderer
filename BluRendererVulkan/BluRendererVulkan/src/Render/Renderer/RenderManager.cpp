@@ -100,14 +100,14 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     //TODO: LOAD MODELS FROM SCENE
     std::vector<ModelCreateInfo> models;
     models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.0f, 0.0f, 0.0f), glm::fvec3(0.0f, 0.0f, 0.0f)));
-    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(-5,0,0), glm::fvec3(0, 0, 0)));
+    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(5,0,0), glm::fvec3(0, 0, 0)));
 
     modelManager = new ModelManager(device, graphicsCommandPool, models);
     descriptorManager = new DescriptorSetManager(device, graphicsDescriptorSetLayout, modelManager);
     graphicsCommandPool->createCommandBuffers(device);
     
     //Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
-    camera = new Camera(glm::fvec3(2.0f, 2.0f, 2.0f), glm::fvec3(0.0f, 0.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
+    camera = new Camera(glm::fvec3(2.0f, 0.0f, 2.0f), glm::fvec3(0.0f, 45.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
 
     createSyncObjects();
 
@@ -168,7 +168,7 @@ void RenderManager::createSyncObjects() {
     }
 }
 
-void RenderManager::drawFrame()
+void RenderManager::drawFrame(const bool& framebufferResized)
 {
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -189,7 +189,7 @@ void RenderManager::drawFrame()
     VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(currentFrame);
 
     vkResetCommandBuffer(currentCommandBuffer, 0);
-    
+
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -246,7 +246,7 @@ void RenderManager::drawFrame()
     if (vkEndCommandBuffer(currentCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
     }
-    
+
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -255,7 +255,7 @@ void RenderManager::drawFrame()
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
     submitInfo.pWaitDstStageMask = waitStages;
-    
+
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &currentCommandBuffer;
 
@@ -273,7 +273,7 @@ void RenderManager::drawFrame()
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
 
-    VkSwapchainKHR swapChains[] = { swapchain->getSwapchain()};
+    VkSwapchainKHR swapChains[] = { swapchain->getSwapchain() };
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
 
@@ -281,13 +281,12 @@ void RenderManager::drawFrame()
 
     result = vkQueuePresentKHR(device->getPresentQueue(), &presentInfo);
 
-    /*if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
-        framebufferResized = false;
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         swapchain->reCreateSwapchain(device, renderPass);
     }
     else if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to present swap chain image!");
-    }*/
+    }
 
     currentFrame = (currentFrame + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
 }

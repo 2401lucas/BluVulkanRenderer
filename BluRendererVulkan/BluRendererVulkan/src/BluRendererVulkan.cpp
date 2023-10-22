@@ -1,5 +1,8 @@
 ﻿#include "BluRendererVulkan.h"
 #include <chrono>
+#include <thread>
+
+const float MINFRAMETIME = 0.01666f;
 
 int main(int argc, char** argv) {
 	std::unique_ptr<BluRendererVulkan> blu = std::make_unique<BluRendererVulkan>();
@@ -31,16 +34,20 @@ int BluRendererVulkan::run(int argc, char** argv)
 	//Gameloop
 	while (isRunning)
 	{
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+		float frameTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 		startTime = std::chrono::high_resolution_clock::now();
+		if (frameTime < MINFRAMETIME) {
+			std::this_thread::sleep_for(std::chrono::milliseconds((long)(MINFRAMETIME - frameTime)));
+			frameTime = MINFRAMETIME;
+		}
 		//Handles Events & Input
 		windowManager->handleEvents();
 		// Process Game entities & objects (Send input)
-		engineCore->update(time, windowManager->getInput());
+		engineCore->update(frameTime, windowManager->getInput());
 		//Potentially reduce rate of update for physics
-		engineCore->updatePhysics(time);
+		engineCore->updatePhysics(frameTime);
 
-		renderManager->drawFrame();
+		renderManager->drawFrame(windowManager->isFramebufferResized());
 		currentTime = std::chrono::high_resolution_clock::now();
 	}
 

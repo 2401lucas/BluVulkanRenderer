@@ -34,6 +34,7 @@ void Image::cleanup(Device* deviceInfo)
 	}
 	vkDestroyImageView(deviceInfo->getLogicalDevice(), imageView, nullptr);
 	vkDestroyImage(deviceInfo->getLogicalDevice(), image, nullptr);
+	vkFreeMemory(deviceInfo->getLogicalDevice(), imageMemory, nullptr);
 }
 
 VkImage Image::getImage()
@@ -280,7 +281,6 @@ VkImageView Image::createImageView(Device* deviceInfo, VkImage image, VkFormat i
 	}
 
 	return imageView;
-
 }
 
 bool Image::hasStencilComponent(VkFormat format)

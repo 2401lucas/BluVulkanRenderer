@@ -12,6 +12,7 @@ Swapchain::Swapchain(Device* deviceInfo)
 	createDepthResources(deviceInfo);
 }
 
+//Fix memleak on framebufferreesize
 void Swapchain::cleanup(Device* deviceInfo)
 {
 	depthImage->cleanup(deviceInfo);
@@ -25,6 +26,7 @@ void Swapchain::cleanup(Device* deviceInfo)
 	for (auto imageView : swapchainImageViews) {
 		vkDestroyImageView(deviceInfo->getLogicalDevice(), imageView, nullptr);
 	}
+
 	vkDestroySwapchainKHR(deviceInfo->getLogicalDevice(), swapchain, nullptr);
 }
 
