@@ -7,6 +7,8 @@ public:
 	void cleaup(Device* deviceInfo);
 
 	VkRenderPass& getRenderPass();
+	void startRenderPass(const VkCommandBuffer& commandBuffer, const VkFramebuffer& frameBuffer, const VkExtent2D& extent, const std::vector<VkClearValue>& clearValues, const VkSubpassContents& commandSubpassContentsLayout);
+	void endRenderPass(VkCommandBuffer& commandBuffer);
 private:
 	VkRenderPass renderPass;
 };

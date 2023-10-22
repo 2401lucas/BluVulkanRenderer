@@ -21,6 +21,8 @@ public:
 
 	void createFramebuffers(Device* deviceInfo, RenderPass* renderPass);
 	void reCreateSwapchain(Device* deviceInfo, RenderPass* renderPass);
+	void setViewport(const VkCommandBuffer& commandBuffer);
+	void setScissor(const VkCommandBuffer& commandBuffer);
 	VkFormat getSwapchainFormat();
 	VkSwapchainKHR getSwapchain();
 	VkExtent2D getSwapchainExtent();

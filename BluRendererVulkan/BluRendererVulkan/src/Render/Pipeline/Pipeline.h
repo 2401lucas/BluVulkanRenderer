@@ -26,6 +26,9 @@ public:
 	Pipeline();
 	virtual void cleanup(Device* deviceInfo);
 
+	void bindPipeline(const VkCommandBuffer& commandBuffer, const VkPipelineBindPoint& pipelineBindpoint);
+	void bindDescriptorSets(const VkCommandBuffer& commandBuffer, const VkPipelineBindPoint& pipelineBindpoint, const uint32_t& firstSet, const uint32_t& descriptorSetCount, const VkDescriptorSet* descriptorSets, const uint32_t& dynamicOffsetCount, const uint32_t* dynamicOffsets);
+
 	VkPipeline& getPipeline();
 	VkPipelineLayout& getPipelineLayout();
 protected:

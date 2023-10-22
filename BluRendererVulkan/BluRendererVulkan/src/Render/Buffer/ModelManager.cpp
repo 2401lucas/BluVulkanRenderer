@@ -82,12 +82,28 @@ void ModelManager::createUniformBuffer(Device* deviceInfo)
     }
 }
 
+void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer)
+{
+    //TODO, DIFFERENTIATE STATIC & DYNAMIC BUFFERS
+    VkBuffer vertexBuffers[] = { vertexBuffer->getBuffer() };
+    VkDeviceSize offsets[] = { 0 };
+
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
+}
+
 void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout)
 {
     uint32_t modelCount = static_cast<uint32_t>(modelData.size());
     for (uint32_t i = 0; i < modelCount; i++) {
         vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[i]);
     }
+}
+
+void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
+{
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 }
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, uint32_t index)

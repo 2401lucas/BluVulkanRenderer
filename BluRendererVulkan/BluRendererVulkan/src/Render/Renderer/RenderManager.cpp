@@ -84,9 +84,8 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     samplerLayoutBinding.pImmutableSamplers = nullptr;
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding, samplerLayoutBinding };
 
-    //currentScene = new Scene(sceneInfo);
+    std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding, samplerLayoutBinding };
 
     //TODO: LOAD SHADERS FROM SCENE
     std::vector<ShaderInfo> shaders;
@@ -197,51 +196,23 @@ void RenderManager::drawFrame(const bool& framebufferResized)
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass->getRenderPass();
-    renderPassInfo.framebuffer = swapchain->getFramebuffer(imageIndex);
-    renderPassInfo.renderArea.offset = { 0, 0 };
-    renderPassInfo.renderArea.extent = swapchain->getSwapchainExtent();
-
-    std::array<VkClearValue, 2> clearValues{};
+    std::vector<VkClearValue> clearValues({VkClearValue(), VkClearValue()});
     clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
     clearValues[1].depthStencil = { 1.0f, 0 };
 
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
+    renderPass->startRenderPass(currentCommandBuffer, swapchain->getFramebuffer(imageIndex), swapchain->getSwapchainExtent(), clearValues, VK_SUBPASS_CONTENTS_INLINE);
+    graphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
-    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    swapchain->setViewport(currentCommandBuffer);
+    swapchain->setScissor(currentCommandBuffer);
 
-    vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipeline());
-
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float)swapchain->getSwapchainExtent().width;
-    viewport.height = (float)swapchain->getSwapchainExtent().height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.offset = { 0, 0 };
-    scissor.extent = swapchain->getSwapchainExtent();
-    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
-
-    VkBuffer vertexBuffers[] = { modelManager->getVertexBuffer() };
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, vertexBuffers, offsets);
-
-    vkCmdBindIndexBuffer(currentCommandBuffer, modelManager->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-    vkCmdBindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getPipelineLayout(), 0, 1, descriptorManager->getDescriptorSet(currentFrame), 0, nullptr);
-
+    modelManager->bindBuffers(currentCommandBuffer);
     modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
 
-    vkCmdDrawIndexed(currentCommandBuffer, modelManager->getIndexSize(), 1, 0, 0, 0);
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(currentFrame), 0, nullptr);
 
-    vkCmdEndRenderPass(currentCommandBuffer);
+    modelManager->drawIndexed(currentCommandBuffer);
+    renderPass->endRenderPass(currentCommandBuffer);
 
     if (vkEndCommandBuffer(currentCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");

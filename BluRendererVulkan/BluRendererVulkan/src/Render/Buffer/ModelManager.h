@@ -11,7 +11,11 @@ public:
 	ModelManager(Device* deviceInfo, CommandPool* commandPool, const std::vector<ModelCreateInfo> modelCreateInfos);
 	void cleanup(Device* deviceInfo);
 
+	void bindBuffers(const VkCommandBuffer& commandBuffer);
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout);
+	void drawIndexed(const VkCommandBuffer& commandBuffer);
+
+
 	void updateUniformBuffer(Device* deviceInfo, Camera* swapchainExtent, uint32_t index);
 	std::vector<Buffer*> getUniformBuffers();
 	Buffer* getUniformBuffer(uint32_t index);

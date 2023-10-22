@@ -26,3 +26,22 @@ VkRenderPass& RenderPass::getRenderPass()
 {
     return renderPass;
 }
+
+void RenderPass::startRenderPass(const VkCommandBuffer& commandBuffer, const VkFramebuffer& frameBuffer, const VkExtent2D& extent, const std::vector<VkClearValue>& clearValues, const VkSubpassContents& commandSubpassContentsLayout)
+{
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = frameBuffer;
+    renderPassInfo.renderArea.offset = { 0, 0 };
+    renderPassInfo.renderArea.extent = extent;
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, commandSubpassContentsLayout);
+}
+
+void RenderPass::endRenderPass(VkCommandBuffer& commandBuffer)
+{
+    vkCmdEndRenderPass(commandBuffer);
+}
