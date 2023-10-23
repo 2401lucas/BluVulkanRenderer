@@ -24,12 +24,12 @@ VkAttachmentReference RenderPassUtils::createAttachmentRef(const uint32_t& attac
     return attachmentRef;
 }
 
-VkSubpassDescription RenderPassUtils::createSubpassDescription(const VkPipelineBindPoint& pipelineBindPoint, const std::vector<VkAttachmentReference>* colorRefs, const VkAttachmentReference* depthRef, const VkAttachmentReference* resolveRefs)
+VkSubpassDescription RenderPassUtils::createSubpassDescription(const VkPipelineBindPoint& pipelineBindPoint, const std::vector<VkAttachmentReference>& colorRefs, const VkAttachmentReference* depthRef, const VkAttachmentReference* resolveRefs)
 {
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = (uint32_t)colorRefs->size();
-    subpass.pColorAttachments = colorRefs->data();
+    subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
+    subpass.pColorAttachments = colorRefs.data();
     subpass.pDepthStencilAttachment = depthRef;
     subpass.pResolveAttachments = resolveRefs;
 

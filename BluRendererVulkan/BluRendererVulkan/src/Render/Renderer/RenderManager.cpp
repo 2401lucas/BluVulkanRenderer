@@ -1,5 +1,7 @@
 #include "../Renderer/RenderManager.h"
 #include "../RenderPass/RenderPassUtils.h"
+#include "../Descriptors/DescriptorUtils.h"
+
 
 RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/)
 {
@@ -26,21 +28,8 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     swapchain->createFramebuffers(device, renderPass);
 
-    // TODO: 1 createDescriptorSets();
-    VkDescriptorSetLayoutBinding uboLayoutBinding{};
-    uboLayoutBinding.binding = 0;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-    samplerLayoutBinding.binding = 1;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
+    VkDescriptorSetLayoutBinding uboLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1,1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding, samplerLayoutBinding };
 
     //TODO: LOAD SHADERS FROM SCENE
@@ -61,7 +50,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     descriptorManager = new DescriptorSetManager(device, graphicsDescriptorSetLayout, modelManager);
     graphicsCommandPool->createCommandBuffers(device);
     
-    //Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
+    //TODO Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
     camera = new Camera(glm::fvec3(2.0f, 0.0f, 2.0f), glm::fvec3(0.0f, 45.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
 
     createSyncObjects();
@@ -101,7 +90,6 @@ void RenderManager::cleanup()
     delete vkInstance;
 }
 
-//TODO: MAKE OWN CLASS
 void RenderManager::createSyncObjects() {
     imageAvailableSemaphores.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);

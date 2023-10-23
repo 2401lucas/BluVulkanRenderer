@@ -176,7 +176,7 @@ VkSurfaceFormatKHR Swapchain::chooseSwapSurfaceFormat(const std::vector<VkSurfac
 VkPresentModeKHR Swapchain::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
 	// Prefer VK_PRESENT_MODE_MAILBOX_KHR on pc
-	// TODO: NA Prefer VK_PRESENT_MODE_FIFO_KHR on mobile due to higher energy usage
+	// Prefer VK_PRESENT_MODE_FIFO_KHR on mobile due to higher energy usage
 
 	for (const auto& availablePresentMode : availablePresentModes) {
 		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
