@@ -6,5 +6,5 @@ class DescriptorUtils {
 public:
 	DescriptorUtils() = delete;
 
-	static VkDescriptorSetLayoutBinding createDescriptorSetBinding(const uint32_t& binding, const uint32_t& descriptorCount, const VkDescriptorType& descriptorType, const VkSampler& immutableSamplers, const VkShaderStageFlags& shaderStageFlags);
+	static VkDescriptorSetLayoutBinding createDescriptorSetBinding(const uint32_t& binding, const uint32_t& descriptorCount, const VkDescriptorType& descriptorType, const VkSampler* immutableSamplers, const VkShaderStageFlags& shaderStageFlags);
 };
