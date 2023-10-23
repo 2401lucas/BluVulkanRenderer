@@ -2,7 +2,6 @@
 #include "../RenderPass/RenderPassUtils.h"
 #include "../Descriptors/DescriptorUtils.h"
 
-
 RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/)
 {
 	vkInstance = new VulkanInstance(appInfo);
@@ -19,11 +18,10 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     VkAttachmentReference colorAttachmentResolveRef = RenderPassUtils::createAttachmentRef(2, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     std::vector<VkAttachmentReference> colorAttachmentsRefs { colorAttachmentRef };
-    VkSubpassDescription subpass = RenderPassUtils::createSubpassDescription(VK_PIPELINE_BIND_POINT_GRAPHICS, &colorAttachmentsRefs, &depthAttachmentRef, &colorAttachmentResolveRef);
+    VkSubpassDescription subpass = RenderPassUtils::createSubpassDescription(VK_PIPELINE_BIND_POINT_GRAPHICS, colorAttachmentsRefs, &depthAttachmentRef, &colorAttachmentResolveRef);
     VkSubpassDependency dependency = RenderPassUtils::createSubpassDependency(VK_SUBPASS_EXTERNAL, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
     std::vector<VkAttachmentDescription> attachments = { colorAttachment, depthAttachment, colorAttachmentResolve };
-
     renderPass = new RenderPass(device, attachments, subpass, dependency);
 
     swapchain->createFramebuffers(device, renderPass);
@@ -184,14 +182,11 @@ void RenderManager::drawFrame(const bool& framebufferResized)
 
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = signalSemaphores;
-
-    VkSwapchainKHR swapChains[] = { swapchain->getSwapchain() };
     presentInfo.swapchainCount = 1;
+    VkSwapchainKHR swapChains[] = { swapchain->getSwapchain() };
     presentInfo.pSwapchains = swapChains;
-
     presentInfo.pImageIndices = &imageIndex;
 
     result = vkQueuePresentKHR(device->getPresentQueue(), &presentInfo);
@@ -202,6 +197,6 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     else if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to present swap chain image!");
     }
-
+    
     currentFrame = (currentFrame + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
 }
