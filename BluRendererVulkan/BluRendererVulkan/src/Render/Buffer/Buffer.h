@@ -4,15 +4,14 @@
 
 class Buffer {
 public: 
-	Buffer(Device* deviceInfo, VkDeviceSize bufferSize, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+	Buffer(Device* deviceInfo, const VkDeviceSize& bufferSize, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties);
 
-	void copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, VkDeviceSize size);
-	void copyData(Device* deviceInfo, void* src, VkDeviceSize offset, VkDeviceSize deviceSize, VkMemoryMapFlags flags);
+	void copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, const VkDeviceSize& size);
+	void copyData(Device* deviceInfo, const void* src, const VkDeviceSize& offset, const VkDeviceSize& deviceSize, const VkMemoryMapFlags& flags);
 	void freeBuffer(Device* deviceInfo);
 	VkBuffer& getBuffer();
 	VkDeviceMemory getBufferMemory();
-	//Copy buffer
-	//free buffer
+
 private:
 	VkBuffer buffer;
 	VkDeviceMemory bufferMemory;

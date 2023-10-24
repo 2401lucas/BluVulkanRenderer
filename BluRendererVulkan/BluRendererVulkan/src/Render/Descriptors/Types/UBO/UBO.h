@@ -2,11 +2,19 @@
 #include "../src/Render/Buffer/Buffer.h"
 #include <glm/matrix.hpp>
 
-struct UniformBufferObject {
-	//alignas(16) glm::mat4 model;
+struct GPUCameraData {
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
 };
+
+struct GPUSceneData {
+	glm::vec4 fogColor; // w is for exponent
+	glm::vec4 fogDistances; //x for min, y for max, zw unused.
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection; //w for sun power
+	glm::vec4 sunlightColor;
+};
+
 
 class UBO {
 public:

@@ -100,8 +100,6 @@ VkPhysicalDevice Device::ChooseDevice(std::vector<VkPhysicalDevice> deviceList)
 
 int Device::rateDeviceSuitability(VkPhysicalDevice device)
 {
-	VkPhysicalDeviceProperties deviceProperties;
-	VkPhysicalDeviceFeatures deviceFeatures;
 	vkGetPhysicalDeviceProperties(device, &deviceProperties);
 	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
@@ -238,4 +236,9 @@ VkQueue& Device::getGraphicsQueue()
 VkQueue& Device::getPresentQueue()
 {
 	return presentQueue;
+}
+
+const VkPhysicalDeviceProperties Device::getGPUProperties()
+{
+	return deviceProperties;
 }

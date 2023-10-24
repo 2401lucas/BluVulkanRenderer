@@ -11,7 +11,9 @@ public:
 
 	void createDescriptorSets(Device* deviceInfo, Descriptor* descriptorSetLayout, ModelManager* modelManager);
 	VkDescriptorSet* getDescriptorSet(uint32_t index);
+	VkDescriptorSet* getGlobalDescriptorSet();
 private:
 	DescriptorPool* descriptorPool;
+	VkDescriptorSet globalDescriptorSet;
 	std::vector<VkDescriptorSet> descriptorSets;
 };

@@ -2,6 +2,7 @@
 #include "ModelManager.h"
 #include "../include/RenderConst.h"
 #include "../Descriptors/Types/UBO/UBO.h"
+#include "../Descriptors/DescriptorUtils.h"
 #include "../Math/MathUtils.h"
 
 ModelManager::ModelManager(Device* deviceInfo, CommandPool* commandPool, const std::vector<ModelCreateInfo> modelCreateInfos)
@@ -20,7 +21,11 @@ ModelManager::ModelManager(Device* deviceInfo, CommandPool* commandPool, const s
 
     createVertexBuffer(deviceInfo, commandPool, vertices);
     createIndexBuffer(deviceInfo, commandPool, indices);
-    createUniformBuffer(deviceInfo);
+
+    globalMappedBufferManager = new MappedBufferManager(deviceInfo, 2 * RenderConst::MAX_FRAMES_IN_FLIGHT, (RenderConst::MAX_FRAMES_IN_FLIGHT * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment)) + sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    perPassMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    materialMappedBufferManager = new MappedBufferManager(deviceInfo, 1, 256 * 3, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    perObjectMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void ModelManager::cleanup(Device* deviceInfo)
@@ -35,10 +40,14 @@ void ModelManager::cleanup(Device* deviceInfo)
         delete model;
     }
 
-    for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
-        uniformBuffers[i]->freeBuffer(deviceInfo);
-        delete uniformBuffers[i];
-    }
+    globalMappedBufferManager->cleanup(deviceInfo);
+    delete globalMappedBufferManager;
+    perPassMappedBufferManager->cleanup(deviceInfo);
+    delete perPassMappedBufferManager;
+    materialMappedBufferManager->cleanup(deviceInfo);
+    delete materialMappedBufferManager;
+    perObjectMappedBufferManager->cleanup(deviceInfo);
+    delete perObjectMappedBufferManager;
 }
 
 //TODO: createVertexBuffer & createIndexBuffer shares a lot of code
@@ -68,20 +77,6 @@ void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPoo
     indexStagingBuffer->freeBuffer(deviceInfo);
 }
 
-void ModelManager::createUniformBuffer(Device* deviceInfo)
-{
-    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-    
-    uniformBuffers.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMapped.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
-
-    for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
-        uniformBuffers[i] = new Buffer(deviceInfo, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        
-        vkMapMemory(deviceInfo->getLogicalDevice(), uniformBuffers[i]->getBufferMemory(), 0, bufferSize, 0, &uniformBuffersMapped[i]);
-    }
-}
-
 void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer)
 {
     //TODO, DIFFERENTIATE STATIC & DYNAMIC BUFFERS
@@ -106,9 +101,9 @@ void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 }
 
-void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, uint32_t index)
+void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
 {
-    UniformBufferObject ubo{};
+    GPUCameraData ubo{};
     //
     //ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
@@ -117,17 +112,22 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, uint3
     // Camera Proj
     ubo.proj = camera->getProjMat();
 
-    memcpy(uniformBuffersMapped[index], &ubo, sizeof(ubo));
+    GPUSceneData scn{};
+    scn.ambientColor = glm::vec4(1.0f);
+
+    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffers(bufferIndex, &ubo);
+    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffers(bufferIndex + RenderConst::MAX_FRAMES_IN_FLIGHT, &scn);
 }
 
-std::vector<Buffer*> ModelManager::getUniformBuffers()
+MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
 {
-    return uniformBuffers;
-}
-
-Buffer* ModelManager::getUniformBuffer(uint32_t index)
-{
-    return uniformBuffers[index];
+    switch (index) {
+    case 0: return globalMappedBufferManager;
+    case 1: return perPassMappedBufferManager;
+    case 2: return materialMappedBufferManager;
+    case 3: return perObjectMappedBufferManager;
+    default: return nullptr;
+    }
 }
 
 Model* ModelManager::getModel(uint32_t index)

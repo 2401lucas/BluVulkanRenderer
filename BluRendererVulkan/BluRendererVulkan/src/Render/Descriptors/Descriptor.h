@@ -9,7 +9,7 @@ public:
 	Descriptor(Device* deviceInfo, std::vector<VkDescriptorSetLayoutBinding> bindings);
 	void cleanup(Device* deviceInfo);
 
-	const VkDescriptorSetLayout* getLayout();
+	const VkDescriptorSetLayout getLayout();
 
 private:
 	VkDescriptorSetLayout descriptorSetLayout;

@@ -17,7 +17,7 @@ void Descriptor::cleanup(Device* deviceInfo)
     vkDestroyDescriptorSetLayout(deviceInfo->getLogicalDevice(), descriptorSetLayout, nullptr);
 }
 
-const VkDescriptorSetLayout* Descriptor::getLayout()
+const VkDescriptorSetLayout Descriptor::getLayout()
 {
-    return &descriptorSetLayout;
+    return descriptorSetLayout;
 }

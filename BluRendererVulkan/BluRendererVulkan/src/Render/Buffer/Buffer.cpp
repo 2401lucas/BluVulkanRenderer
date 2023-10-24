@@ -1,7 +1,7 @@
 #include "Buffer.h"
 #include <stdexcept>
 
-Buffer::Buffer(Device* deviceInfo, VkDeviceSize bufferSize, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties)
+Buffer::Buffer(Device* deviceInfo, const VkDeviceSize& bufferSize, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -28,7 +28,7 @@ Buffer::Buffer(Device* deviceInfo, VkDeviceSize bufferSize, VkBufferUsageFlags u
     vkBindBufferMemory(deviceInfo->getLogicalDevice(), buffer, bufferMemory, 0);
 }
 
-void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, VkDeviceSize size)
+void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, const VkDeviceSize& size)
 {
     VkCommandBuffer commandBuffer;
     commandPool->allocCommandBuffer(deviceInfo, commandBuffer);
@@ -43,7 +43,7 @@ void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* sr
     commandPool->freeCommandBuffer(deviceInfo, commandBuffer);
 }
 
-void Buffer::copyData(Device* deviceInfo, void* src, VkDeviceSize offset, VkDeviceSize deviceSize, VkMemoryMapFlags flags)
+void Buffer::copyData(Device* deviceInfo, const void* src, const VkDeviceSize& offset, const VkDeviceSize& deviceSize, const VkMemoryMapFlags& flags)
 {
     void* data;
     vkMapMemory(deviceInfo->getLogicalDevice(), bufferMemory, offset, deviceSize, flags, &data);

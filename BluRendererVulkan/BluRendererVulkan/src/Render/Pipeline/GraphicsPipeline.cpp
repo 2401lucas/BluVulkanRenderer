@@ -3,7 +3,8 @@
 #include "../Model/Model.h"
 #include "../Descriptors/Types/PushConsts/PushConst.h"
 
-GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderInfo> shaders, Descriptor* descriptor, RenderPass* renderPass)
+//TODO: MODULARIZE
+GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderInfo> shaders, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass* renderPass)
 {
 	for (auto shader : shaders) {
 		createShaderModule(deviceInfo, shader);
@@ -85,8 +86,8 @@ GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderI
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = descriptor->getLayout();
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorLayouts.size());
+    pipelineLayoutInfo.pSetLayouts = descriptorLayouts.data();
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
@@ -96,7 +97,7 @@ GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderI
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
+    pipelineInfo.stageCount = static_cast<uint32_t>(shaderStageInfo.size());
     pipelineInfo.pStages = shaderStageInfo.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &inputAssembly;

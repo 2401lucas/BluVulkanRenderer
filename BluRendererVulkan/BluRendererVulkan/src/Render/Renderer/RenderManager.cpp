@@ -1,6 +1,7 @@
 #include "../Renderer/RenderManager.h"
 #include "../RenderPass/RenderPassUtils.h"
 #include "../Descriptors/DescriptorUtils.h"
+#include "../Descriptors/Types/UBO/UBO.h"
 
 RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/)
 {
@@ -26,9 +27,10 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     swapchain->createFramebuffers(device, renderPass);
 
-    VkDescriptorSetLayoutBinding uboLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
-    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1,1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
-    std::vector<VkDescriptorSetLayoutBinding> bindings = { uboLayoutBinding, samplerLayoutBinding };
+    VkDescriptorSetLayoutBinding cameraLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
+    VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, nullptr, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(2,1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding, samplerLayoutBinding };
 
     //TODO: LOAD SHADERS FROM SCENE
     std::vector<ShaderInfo> shaders;
@@ -36,13 +38,14 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "frag.spv"));
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
-    graphicsPipeline = new GraphicsPipeline(device, shaders, graphicsDescriptorSetLayout, renderPass);
+    std::vector<VkDescriptorSetLayout> layouts { graphicsDescriptorSetLayout->getLayout() };
+    graphicsPipeline = new GraphicsPipeline(device, shaders, layouts, renderPass);
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     //TODO: LOAD MODELS FROM SCENE
     std::vector<ModelCreateInfo> models;
     models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.0f, 0.0f, 0.0f), glm::fvec3(0.0f, 0.0f, 0.0f)));
-    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(5,0,0), glm::fvec3(0, 0, 0)));
+    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.1f,0,0), glm::fvec3(0, 0, 0)));
 
     modelManager = new ModelManager(device, graphicsCommandPool, models);
     descriptorManager = new DescriptorSetManager(device, graphicsDescriptorSetLayout, modelManager);
@@ -124,7 +127,7 @@ void RenderManager::drawFrame(const bool& framebufferResized)
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
-    modelManager->updateUniformBuffer(device, camera, currentFrame);
+    modelManager->updateUniformBuffer(device, camera, 0, currentFrame);
 
     vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[currentFrame]);
     VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(currentFrame);
@@ -150,8 +153,10 @@ void RenderManager::drawFrame(const bool& framebufferResized)
 
     modelManager->bindBuffers(currentCommandBuffer);
     modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
-
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(currentFrame), 0, nullptr);
+    
+    std::vector<uint32_t> uniform_offset(DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), device->getGPUProperties().limits.minUniformBufferOffsetAlignment * currentFrame));
+    //TODO: BIND MORE DESCRIPTOR SETS 
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(currentFrame), 1, uniform_offset.data());
 
     modelManager->drawIndexed(currentCommandBuffer);
     renderPass->endRenderPass(currentCommandBuffer);

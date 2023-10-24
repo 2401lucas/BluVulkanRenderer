@@ -5,6 +5,7 @@
 #include "../Buffer/Buffer.h"
 #include "../Camera/Camera.h"
 #include "../Descriptors/Types/PushConsts/PushConst.h"
+#include "../Buffer/MappedBufferManager.h"
 
 class ModelManager {
 public:
@@ -16,9 +17,12 @@ public:
 	void drawIndexed(const VkCommandBuffer& commandBuffer);
 
 
-	void updateUniformBuffer(Device* deviceInfo, Camera* swapchainExtent, uint32_t index);
-	std::vector<Buffer*> getUniformBuffers();
-	Buffer* getUniformBuffer(uint32_t index);
+	void updateUniformBuffer(Device* deviceInfo, Camera* camera, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex);
+	//Index 0 Global Resources and bound once per frame.
+	//Index 1 Per-pass Resources, and bound once per pass
+	//Index 2 Material Resources
+	//Index 3 Per-Object Resources
+	MappedBufferManager* getMappedBufferManager(uint32_t index);
 	Model* getModel(uint32_t index);
 	VkBuffer& getVertexBuffer();
 	VkBuffer& getIndexBuffer();
@@ -27,8 +31,7 @@ public:
 private:
 	void createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices);
 	void createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices);
-	void createUniformBuffer(Device* deviceInfo);
-
+	
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 
@@ -37,6 +40,9 @@ private:
 
 	std::vector<Model*> models;
 	std::vector<PushConstantData> modelData;
-	std::vector<Buffer*> uniformBuffers;
-	std::vector<void*> uniformBuffersMapped;
+	
+	MappedBufferManager* globalMappedBufferManager;
+	MappedBufferManager* perPassMappedBufferManager;
+	MappedBufferManager* materialMappedBufferManager;
+	MappedBufferManager* perObjectMappedBufferManager;
 };

@@ -1,11 +1,20 @@
 #include "DescriptorSetManager.h"
 #include <stdexcept>
 #include "../Descriptors/Types/UBO/UBO.h"
+#include "DescriptorUtils.h"
 
 
 DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, Descriptor* descriptorSetLayout, ModelManager* modelManager)
 {
-	descriptorPool = new DescriptorPool(deviceInfo);
+    std::vector<VkDescriptorPoolSize> poolSizes{3, VkDescriptorPoolSize()};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+    poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[2].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+
+    descriptorPool = new DescriptorPool(deviceInfo, poolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
     createDescriptorSets(deviceInfo, descriptorSetLayout, modelManager);
 }
 
@@ -16,9 +25,13 @@ void DescriptorSetManager::cleanup(Device* deviceInfo)
 }
 
 //TODO: 10 MAKE COMPATIBLE WITH STD::VECTOR<MODEL>
+//Descriptor Set 0 Global Resources and bound once per frame.
+//Descriptor Set 1 Per-pass Resources, and bound once per pass
+//Descriptor Set 2 Material Resources
+//Descriptor Set 3 Per-Object Resources
 void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, Descriptor* descriptorSetLayout, ModelManager* modelManager)
 {
-    std::vector<VkDescriptorSetLayout> layouts(RenderConst::MAX_FRAMES_IN_FLIGHT, *descriptorSetLayout->getLayout());
+    std::vector<VkDescriptorSetLayout> layouts(RenderConst::MAX_FRAMES_IN_FLIGHT, descriptorSetLayout->getLayout());
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool->getDescriptorPool();
@@ -31,33 +44,32 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, Descriptor* 
     }
 
     for (uint32_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = modelManager->getUniformBuffer(i)->getBuffer();
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(UniformBufferObject);
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
+        
+        //Global Descriptor Set
+        VkDescriptorBufferInfo gpuCameraBufferInfo{};
+        gpuCameraBufferInfo.buffer = modelManager->getMappedBufferManager(0)->getUniformBuffer(i)->getBuffer();
+        gpuCameraBufferInfo.offset = 0;
+        gpuCameraBufferInfo.range = sizeof(GPUCameraData);
 
+        VkDescriptorBufferInfo gpuSceneBufferInfo{};
+        gpuSceneBufferInfo.buffer = modelManager->getMappedBufferManager(0)->getUniformBuffer(i + RenderConst::MAX_FRAMES_IN_FLIGHT)->getBuffer();
+        gpuSceneBufferInfo.offset = DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * i;
+        gpuSceneBufferInfo.range = sizeof(GPUSceneData);
+
+        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(descriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuCameraBufferInfo));
+        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(descriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, &gpuSceneBufferInfo));
+        //PerPass Descriptor Set
+
+        //Material Descriptor Set
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         imageInfo.imageView = modelManager->getModel(0)->getTexture()->getImageView();
         imageInfo.sampler = modelManager->getModel(0)->getTexture()->getImageSampler();
 
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+        descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(descriptorSets[i], 2, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &imageInfo));
 
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = descriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &bufferInfo;
-
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = descriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pImageInfo = &imageInfo;
+        //Per-Object Descriptor Set (Transform Data)
 
         vkUpdateDescriptorSets(deviceInfo->getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
@@ -66,4 +78,9 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, Descriptor* 
 VkDescriptorSet* DescriptorSetManager::getDescriptorSet(uint32_t index)
 {
     return &descriptorSets[index];
+}
+
+VkDescriptorSet* DescriptorSetManager::getGlobalDescriptorSet()
+{
+    return &globalDescriptorSet;
 }

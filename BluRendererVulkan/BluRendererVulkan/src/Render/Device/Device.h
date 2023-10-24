@@ -38,6 +38,7 @@ public:
 	VkSampleCountFlagBits getMipSampleCount();
 	VkQueue& getGraphicsQueue();
 	VkQueue& getPresentQueue();
+	const VkPhysicalDeviceProperties getGPUProperties();
 
 private:
 	VkSampleCountFlagBits getMaxUsableSampleCount(VkSampleCountFlags);
@@ -53,4 +54,6 @@ private:
 	GLFWwindow* window;
 	DeviceSettings settings;
 	QueueFamilyIndices* queueFamilyIndices = nullptr;
+	VkPhysicalDeviceProperties deviceProperties;
+	VkPhysicalDeviceFeatures deviceFeatures;
 };
