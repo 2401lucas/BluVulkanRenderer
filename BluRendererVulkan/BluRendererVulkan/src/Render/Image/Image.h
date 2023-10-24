@@ -21,9 +21,6 @@ public:
 	void copyImageFromBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer);
 	void generateMipmaps(Device* deviceInfo, CommandPool *commandPool);
 
-	static Image* createImageFromPath(Device* deviceInfo, CommandPool* commandPool, const char* path);
-	static VkImageView createImageView(Device* deviceInfo , VkImage image, VkFormat imageFormat, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
-
 private:
 	void createImage(Device*, uint32_t, uint32_t, VkSampleCountFlagBits, VkFormat, VkImageTiling, VkImageUsageFlags, VkMemoryPropertyFlags);
 	uint32_t findMemoryType(Device*, uint32_t, VkMemoryPropertyFlags);

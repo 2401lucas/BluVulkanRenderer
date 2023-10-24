@@ -45,7 +45,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     //TODO: LOAD MODELS FROM SCENE
     std::vector<ModelCreateInfo> models;
     models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.0f, 0.0f, 0.0f), glm::fvec3(0.0f, 0.0f, 0.0f)));
-    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.1f,0,0), glm::fvec3(0, 0, 0)));
+    //models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.1f,0,0), glm::fvec3(0, 0, 0)));
 
     modelManager = new ModelManager(device, graphicsCommandPool, models);
     descriptorManager = new DescriptorSetManager(device, graphicsDescriptorSetLayout, modelManager);
@@ -56,7 +56,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     createSyncObjects();
 
-    currentFrame = 0;
+    frameIndex = 0;
 }
 
 void RenderManager::cleanup()
@@ -114,10 +114,10 @@ void RenderManager::createSyncObjects() {
 
 void RenderManager::drawFrame(const bool& framebufferResized)
 {
-    vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(device->getLogicalDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result = vkAcquireNextImageKHR(device->getLogicalDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         swapchain->reCreateSwapchain(device, renderPass);
@@ -127,10 +127,10 @@ void RenderManager::drawFrame(const bool& framebufferResized)
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
-    modelManager->updateUniformBuffer(device, camera, 0, currentFrame);
+    modelManager->updateUniformBuffer(device, camera, 0, frameIndex);
 
-    vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[currentFrame]);
-    VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(currentFrame);
+    vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
+    VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(frameIndex);
 
     vkResetCommandBuffer(currentCommandBuffer, 0);
 
@@ -154,9 +154,9 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     modelManager->bindBuffers(currentCommandBuffer);
     modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
     
-    std::vector<uint32_t> uniform_offset(DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), device->getGPUProperties().limits.minUniformBufferOffsetAlignment * currentFrame));
+    std::vector<uint32_t> uniform_offset(DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), device->getGPUProperties().limits.minUniformBufferOffsetAlignment * frameIndex));
     //TODO: BIND MORE DESCRIPTOR SETS 
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(currentFrame), 1, uniform_offset.data());
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(frameIndex), 1, uniform_offset.data());
 
     modelManager->drawIndexed(currentCommandBuffer);
     renderPass->endRenderPass(currentCommandBuffer);
@@ -168,7 +168,7 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+    VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[frameIndex] };
     VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = waitSemaphores;
@@ -177,11 +177,11 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &currentCommandBuffer;
 
-    VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+    VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[frameIndex] };
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+    if (vkQueueSubmit(device->getGraphicsQueue(), 1, &submitInfo, inFlightFences[frameIndex]) != VK_SUCCESS) {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
 
@@ -203,5 +203,5 @@ void RenderManager::drawFrame(const bool& framebufferResized)
         throw std::runtime_error("failed to present swap chain image!");
     }
     
-    currentFrame = (currentFrame + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
+    frameIndex = (frameIndex + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
 }

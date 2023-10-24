@@ -39,7 +39,7 @@ VkWriteDescriptorSet DescriptorUtils::createImageDescriptorWriteSet(const VkDesc
     return descriptorWrite;
 }
 
-// Curtosy of Sascha Willems
+// Courtesy of Sascha Willems
 // https://github.com/SaschaWillems/Vulkan/tree/master/examples/dynamicuniformbuffer
 size_t DescriptorUtils::padUniformBufferSize(const size_t& originalSize, size_t minUniformBufferOffsetAlignment)
 {

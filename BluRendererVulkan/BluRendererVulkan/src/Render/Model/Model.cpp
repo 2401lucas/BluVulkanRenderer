@@ -1,9 +1,10 @@
 #include "Model.h"
+#include "../Image/ImageUtils.h"
 
 Model::Model(Device* deviceInfo, CommandPool* commandPool, ModelCreateInfo createInfo)
 {
 	mesh = new Mesh(createInfo.modelPath);
-	texture = Image::createImageFromPath(deviceInfo, commandPool, createInfo.texturePath);
+	texture = ImageUtils::createImageFromPath(deviceInfo, commandPool, createInfo.texturePath);
 }
 
 void Model::cleanup(Device* deviceInfo)

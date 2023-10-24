@@ -115,8 +115,8 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     GPUSceneData scn{};
     scn.ambientColor = glm::vec4(1.0f);
 
-    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffers(bufferIndex, &ubo);
-    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffers(bufferIndex + RenderConst::MAX_FRAMES_IN_FLIGHT, &scn);
+    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffer(bufferIndex, &ubo);
+    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBufferWithOffset(bufferIndex + RenderConst::MAX_FRAMES_IN_FLIGHT, &scn, DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * bufferIndex);
 }
 
 MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)

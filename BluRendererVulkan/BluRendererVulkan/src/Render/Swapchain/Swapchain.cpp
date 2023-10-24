@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include "../Image/ImageUtils.h"
 
 Swapchain::Swapchain(Device* deviceInfo)
 {
@@ -206,7 +207,7 @@ void Swapchain::createImageViews(Device* deviceInfo)
 	swapchainImageViews.resize(swapchainImages.size());
 
 	for (uint32_t i = 0; i < swapchainImages.size(); i++) {
-		swapchainImageViews[i] = Image::createImageView(deviceInfo, swapchainImages[i], swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)1);
+		swapchainImageViews[i] = ImageUtils::createImageView(deviceInfo, swapchainImages[i], swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, (uint32_t)1);
 	}
 }
 

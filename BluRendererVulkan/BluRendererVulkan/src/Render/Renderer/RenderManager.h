@@ -40,5 +40,5 @@ private:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;
 	std::vector<VkFence> inFlightFences;
-	uint32_t currentFrame;
+	uint32_t frameIndex;
 };

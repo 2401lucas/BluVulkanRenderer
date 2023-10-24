@@ -1,5 +1,4 @@
 #include "MappedBufferManager.h"
-#include "../../../include/RenderConst.h"
 
 MappedBufferManager::MappedBufferManager(Device* deviceInfo, const uint32_t& numOfBuffers, const VkDeviceSize& size, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties)
 	: BufferManager(deviceInfo, numOfBuffers, size, usage, properties)
@@ -11,7 +10,12 @@ MappedBufferManager::MappedBufferManager(Device* deviceInfo, const uint32_t& num
     }
 }
 
-void MappedBufferManager::updateMappedBuffers(const uint32_t& index, const void* src)
+void MappedBufferManager::updateMappedBuffer(const uint32_t& index, const void* src)
 {
     memcpy(mappedBuffers[index], &src, sizeof(src));
+}
+
+void MappedBufferManager::updateMappedBufferWithOffset(const uint32_t& index, const void* src, const uint32_t& offset)
+{
+    memcpy(&mappedBuffers[index] + offset, &src, sizeof(src));
 }
