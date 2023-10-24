@@ -28,7 +28,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     swapchain->createFramebuffers(device, renderPass);
 
     VkDescriptorSetLayoutBinding cameraLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
-    VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, nullptr, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(2,1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding, samplerLayoutBinding };
 
@@ -52,7 +52,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     graphicsCommandPool->createCommandBuffers(device);
     
     //TODO Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
-    camera = new Camera(glm::fvec3(2.0f, 0.0f, 2.0f), glm::fvec3(0.0f, 45.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
+    camera = new Camera(glm::fvec3(2.0f, 2.0f, 2.0f), glm::fvec3(0.0f, 0.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
 
     createSyncObjects();
 
@@ -154,9 +154,7 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     modelManager->bindBuffers(currentCommandBuffer);
     modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
     
-    std::vector<uint32_t> uniform_offset(DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), device->getGPUProperties().limits.minUniformBufferOffsetAlignment * frameIndex));
-    //TODO: BIND MORE DESCRIPTOR SETS 
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(frameIndex), 1, uniform_offset.data());
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(frameIndex), 0, nullptr);
 
     modelManager->drawIndexed(currentCommandBuffer);
     renderPass->endRenderPass(currentCommandBuffer);

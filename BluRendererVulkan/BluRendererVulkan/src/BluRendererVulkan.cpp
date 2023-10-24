@@ -36,10 +36,6 @@ int BluRendererVulkan::run(int argc, char** argv)
 	{
 		float frameTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 		startTime = std::chrono::high_resolution_clock::now();
-		if (frameTime < MINFRAMETIME) {
-			std::this_thread::sleep_for(std::chrono::milliseconds((long)(MINFRAMETIME - frameTime)));
-			frameTime = MINFRAMETIME;
-		}
 		//Handles Events & Input
 		windowManager->handleEvents();
 		// Process Game entities & objects (Send input)

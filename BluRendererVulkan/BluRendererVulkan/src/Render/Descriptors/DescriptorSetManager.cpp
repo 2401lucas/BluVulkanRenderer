@@ -9,7 +9,7 @@ DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, Descriptor* descr
     std::vector<VkDescriptorPoolSize> poolSizes{3, VkDescriptorPoolSize()};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
     poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     poolSizes[2].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
@@ -53,12 +53,12 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, Descriptor* 
         gpuCameraBufferInfo.range = sizeof(GPUCameraData);
 
         VkDescriptorBufferInfo gpuSceneBufferInfo{};
-        gpuSceneBufferInfo.buffer = modelManager->getMappedBufferManager(0)->getUniformBuffer(i + RenderConst::MAX_FRAMES_IN_FLIGHT)->getBuffer();
+        gpuSceneBufferInfo.buffer = modelManager->getMappedBufferManager(1)->getUniformBuffer(i)->getBuffer();
         gpuSceneBufferInfo.offset = DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * i;
         gpuSceneBufferInfo.range = sizeof(GPUSceneData);
 
         descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(descriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuCameraBufferInfo));
-        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(descriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1, &gpuSceneBufferInfo));
+        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(descriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuSceneBufferInfo));
         //PerPass Descriptor Set
 
         //Material Descriptor Set

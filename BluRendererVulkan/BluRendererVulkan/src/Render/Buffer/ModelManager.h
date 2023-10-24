@@ -41,8 +41,6 @@ private:
 	std::vector<Model*> models;
 	std::vector<PushConstantData> modelData;
 	
-	MappedBufferManager* globalMappedBufferManager;
-	MappedBufferManager* perPassMappedBufferManager;
-	MappedBufferManager* materialMappedBufferManager;
-	MappedBufferManager* perObjectMappedBufferManager;
+	MappedBufferManager* cameraMappedBufferManager;
+	MappedBufferManager* sceneMappedBufferManager;
 };

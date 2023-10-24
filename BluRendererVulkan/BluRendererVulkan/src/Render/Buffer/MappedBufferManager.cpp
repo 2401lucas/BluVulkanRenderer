@@ -5,17 +5,12 @@ MappedBufferManager::MappedBufferManager(Device* deviceInfo, const uint32_t& num
 {
     mappedBuffers.resize(numOfBuffers);
 
-    for (size_t i = 0; i < numOfBuffers; i++) {
+    for (uint32_t i = 0; i < numOfBuffers; i++) {
         vkMapMemory(deviceInfo->getLogicalDevice(), buffers[i]->getBufferMemory(), 0, size, 0, &mappedBuffers[i]);
     }
 }
 
-void MappedBufferManager::updateMappedBuffer(const uint32_t& index, const void* src)
+void* MappedBufferManager::getMappedBuffer(const uint32_t& index)
 {
-    memcpy(mappedBuffers[index], &src, sizeof(src));
-}
-
-void MappedBufferManager::updateMappedBufferWithOffset(const uint32_t& index, const void* src, const uint32_t& offset)
-{
-    memcpy(&mappedBuffers[index] + offset, &src, sizeof(src));
+    return mappedBuffers[index];
 }

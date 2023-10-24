@@ -5,7 +5,6 @@
 
 class BufferManager {
 public:
-	BufferManager();
 	BufferManager(Device* deviceInfo, const uint32_t& numOfBuffers, const VkDeviceSize& size, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties);
 	void cleanup(Device* deviceInfo);
 	std::vector<Buffer*> getBuffers();

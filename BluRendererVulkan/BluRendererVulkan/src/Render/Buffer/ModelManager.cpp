@@ -22,10 +22,8 @@ ModelManager::ModelManager(Device* deviceInfo, CommandPool* commandPool, const s
     createVertexBuffer(deviceInfo, commandPool, vertices);
     createIndexBuffer(deviceInfo, commandPool, indices);
 
-    globalMappedBufferManager = new MappedBufferManager(deviceInfo, 2 * RenderConst::MAX_FRAMES_IN_FLIGHT, (RenderConst::MAX_FRAMES_IN_FLIGHT * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment)) + sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    perPassMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    materialMappedBufferManager = new MappedBufferManager(deviceInfo, 1, 256 * 3, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    perObjectMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    cameraMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, (RenderConst::MAX_FRAMES_IN_FLIGHT * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * RenderConst::MAX_FRAMES_IN_FLIGHT), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void ModelManager::cleanup(Device* deviceInfo)
@@ -40,14 +38,8 @@ void ModelManager::cleanup(Device* deviceInfo)
         delete model;
     }
 
-    globalMappedBufferManager->cleanup(deviceInfo);
-    delete globalMappedBufferManager;
-    perPassMappedBufferManager->cleanup(deviceInfo);
-    delete perPassMappedBufferManager;
-    materialMappedBufferManager->cleanup(deviceInfo);
-    delete materialMappedBufferManager;
-    perObjectMappedBufferManager->cleanup(deviceInfo);
-    delete perObjectMappedBufferManager;
+    cameraMappedBufferManager->cleanup(deviceInfo);
+    delete cameraMappedBufferManager;
 }
 
 //TODO: createVertexBuffer & createIndexBuffer shares a lot of code
@@ -79,7 +71,6 @@ void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPoo
 
 void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer)
 {
-    //TODO, DIFFERENTIATE STATIC & DYNAMIC BUFFERS
     VkBuffer vertexBuffers[] = { vertexBuffer->getBuffer() };
     VkDeviceSize offsets[] = { 0 };
 
@@ -103,29 +94,25 @@ void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
 {
-    GPUCameraData ubo{};
-    //
-    //ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
-    // Camera View
+    GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
-    // Camera Proj
     ubo.proj = camera->getProjMat();
 
     GPUSceneData scn{};
-    scn.ambientColor = glm::vec4(1.0f);
+    scn.ambientColor = glm::vec4(1, 1, 0.8, 1);
 
-    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBuffer(bufferIndex, &ubo);
-    getMappedBufferManager(mappedBufferManagerIndex)->updateMappedBufferWithOffset(bufferIndex + RenderConst::MAX_FRAMES_IN_FLIGHT, &scn, DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * bufferIndex);
+    memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
+    // char pointer allows for easily applying an offset
+    char* cp = reinterpret_cast<char*>(sceneMappedBufferManager->getMappedBuffer(bufferIndex));
+    memcpy(cp + bufferIndex * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment), &scn, sizeof(scn));
 }
 
 MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
 {
     switch (index) {
-    case 0: return globalMappedBufferManager;
-    case 1: return perPassMappedBufferManager;
-    case 2: return materialMappedBufferManager;
-    case 3: return perObjectMappedBufferManager;
+    case 0: return cameraMappedBufferManager;
+    case 1: return sceneMappedBufferManager;
     default: return nullptr;
     }
 }

@@ -1,14 +1,12 @@
 #include "BufferManager.h"
 
-BufferManager::BufferManager()
-{
-}
-
 BufferManager::BufferManager(Device* deviceInfo, const uint32_t& numOfBuffers, const VkDeviceSize& size, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties)
 {
+	buffers.resize(numOfBuffers);
+
 	for (uint32_t i = 0; i < numOfBuffers; i++)
 	{
-		buffers.push_back(new Buffer(deviceInfo, size, usage, properties));
+		buffers[i] = new Buffer(deviceInfo, size, usage, properties);
 	}
 }
 
