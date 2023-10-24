@@ -94,13 +94,14 @@ void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
 {
-
     GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
     ubo.proj = camera->getProjMat();
 
     GPUSceneData scn{};
-    scn.ambientColor = glm::vec4(1, 1, 0.8, 1);
+    scn.ambientColor = glm::vec4(0.6, 0.5, 0.0, 0.2);
+    scn.sunlightDirection = glm::vec4(0.0, 0.5, 0.5, 1);
+    scn.sunlightColor = glm::vec4(1.0, 1.0, 1.0, 1);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
     // char pointer allows for easily applying an offset

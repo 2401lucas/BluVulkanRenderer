@@ -5,7 +5,7 @@
 WindowManager::WindowManager(const char* name) {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	window = glfwCreateWindow(640, 480, name, nullptr, nullptr);
+	window = glfwCreateWindow(1920, 1080, name, nullptr, nullptr);
 	
 	glfwSetWindowUserPointer(window, &input);
 
