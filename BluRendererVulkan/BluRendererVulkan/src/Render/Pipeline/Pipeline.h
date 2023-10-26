@@ -3,23 +3,7 @@
 #include <string>
 #include "../src/Engine/FileManagement/FileManager.h"
 #include "../Device/Device.h"
-
-enum shaderType
-{
-	NONE = 0,
-	VERTEX = 1,
-	FRAGMENT = 2,
-	COMPUTE = 3
-};
-
-struct ShaderInfo
-{
-	shaderType type;
-	std::string fileName;
-
-	ShaderInfo(const shaderType& sType, const std::string& fName)
-		: type(sType), fileName(fName) {}
-};
+#include "../../Engine/Scene/Scene.h"
 
 class Pipeline {
 public: 

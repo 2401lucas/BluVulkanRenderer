@@ -19,7 +19,7 @@ void Pipeline::bindPipeline(const VkCommandBuffer& commandBuffer, const VkPipeli
 
 void Pipeline::bindDescriptorSets(const VkCommandBuffer& commandBuffer, const VkPipelineBindPoint& pipelineBindpoint, const uint32_t& firstSet, const uint32_t& descriptorSetCount, const VkDescriptorSet* descriptorSets, const uint32_t& dynamicOffsetCount, const uint32_t* dynamicOffsets)
 {
-	vkCmdBindDescriptorSets(commandBuffer, pipelineBindpoint, pipelineLayout, firstSet,descriptorSetCount, descriptorSets, dynamicOffsetCount, dynamicOffsets);
+	vkCmdBindDescriptorSets(commandBuffer, pipelineBindpoint, pipelineLayout, firstSet, descriptorSetCount, descriptorSets, dynamicOffsetCount, dynamicOffsets);
 }
 
 VkPipeline& Pipeline::getPipeline()

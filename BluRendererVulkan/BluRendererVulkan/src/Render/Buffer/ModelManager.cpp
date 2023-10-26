@@ -4,24 +4,10 @@
 #include "../Descriptors/Types/UBO/UBO.h"
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Math/MathUtils.h"
+#include "../Image/ImageUtils.h"
 
-ModelManager::ModelManager(Device* deviceInfo, CommandPool* commandPool, const std::vector<ModelCreateInfo> modelCreateInfos)
+ModelManager::ModelManager(Device* deviceInfo)
 {
-    for (const ModelCreateInfo& modelCreateInfo : modelCreateInfos) {
-        models.push_back(new Model(deviceInfo, commandPool, modelCreateInfo));
-        modelData.push_back(PushConstantData(MathUtils::ApplyTransformAndRotation(modelCreateInfo.pos, modelCreateInfo.rot, glm::mat4(1.0f))));
-    }
-    
-    for (auto model : models) {
-        auto verts = model->getMesh()->getVertices();
-        auto inds = model->getMesh()->getIndices();
-        vertices.insert(vertices.end(), verts.begin(), verts.end());
-        indices.insert(indices.end(), inds.begin(), inds.end());
-    }
-
-    createVertexBuffer(deviceInfo, commandPool, vertices);
-    createIndexBuffer(deviceInfo, commandPool, indices);
-
     cameraMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, (RenderConst::MAX_FRAMES_IN_FLIGHT * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * RenderConst::MAX_FRAMES_IN_FLIGHT), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
@@ -34,7 +20,7 @@ void ModelManager::cleanup(Device* deviceInfo)
     delete indexBuffer;
 
     for (auto model : models) {
-        model->cleanup(deviceInfo);
+        model->cleanup();
         delete model;
     }
 
@@ -92,16 +78,18 @@ void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 }
 
-void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
+void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
 {
     GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
     ubo.proj = camera->getProjMat();
 
     GPUSceneData scn{};
-    scn.ambientColor = glm::vec4(0.6, 0.5, 0.0, 0.2);
-    scn.sunlightDirection = glm::vec4(0.0, 0.5, 0.5, 1);
-    scn.sunlightColor = glm::vec4(1.0, 1.0, 1.0, 1);
+    scn.ambientColor = sceneInfo->ambientColor;
+    //TODO: Support Multiple Lights
+    scn.sunlightDirection = sceneInfo->directionalLights[0].lightDirection;
+    scn.sunlightColor = sceneInfo->directionalLights[0].lightColor;
+    scn.cameraPosition = sceneInfo->cameras[0].position;
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
     // char pointer allows for easily applying an offset
@@ -136,4 +124,43 @@ VkBuffer& ModelManager::getIndexBuffer()
 uint32_t ModelManager::getIndexSize()
 {
     return static_cast<uint32_t>(indices.size());
+}
+
+//TODO: Support Destroying Models
+void ModelManager::loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos) {
+    for (uint32_t i = 0; i < modelCreateInfos.size(); i++) {
+        models.push_back(new Model(modelCreateInfos[i].modelPath, getTextureIndex(modelCreateInfos[i].texturePath)));
+        modelData.push_back(PushConstantData(glm::vec4(models[i]->getTextureIndex(), i, 0, 0)));
+    }
+
+    for (auto model : models) {
+        auto verts = model->getMesh()->getVertices();
+        auto inds = model->getMesh()->getIndices();
+        vertices.insert(vertices.end(), verts.begin(), verts.end());
+        indices.insert(indices.end(), inds.begin(), inds.end());
+    }
+
+    createVertexBuffer(deviceInfo, commandPool, vertices);
+    createIndexBuffer(deviceInfo, commandPool, indices);
+}
+
+void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials)
+{
+    matInfos = materials;
+    textures = ImageUtils::createTexturesFromCreateInfo(deviceInfo, commandPool, materials);
+}
+
+std::vector<Image*>& ModelManager::getTextures()
+{
+    return textures;
+}
+
+//TODO: Implement more optimized search like std::unordered_map with custom hash
+uint32_t ModelManager::getTextureIndex(const char* path)
+{
+    for (uint32_t i = 0; i < matInfos.size(); i++) {
+        if (matInfos[i].fileName == path)
+            return i;
+    }
+    return 0;
 }

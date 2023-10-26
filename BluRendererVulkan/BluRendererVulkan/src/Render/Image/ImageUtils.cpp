@@ -3,6 +3,17 @@
 #include <stb_image.h>
 #include <stdexcept>
 
+std::vector<Image*> ImageUtils::createTexturesFromCreateInfo(Device* deviceInfo, CommandPool* commandPool, std::vector<MaterialInfo> materialInfo)
+{
+	std::vector<Image*> newTextures;
+
+	for (auto& newT : materialInfo) {
+		newTextures.push_back(createImageFromPath(deviceInfo, commandPool, newT.fileName.c_str()));
+	}
+
+	return newTextures;
+}
+
 Image* ImageUtils::createImageFromPath(Device* deviceInfo, CommandPool* commandPool, const char* path)
 {
 	int texWidth, texHeight, texChannels;

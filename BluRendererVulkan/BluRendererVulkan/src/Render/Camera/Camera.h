@@ -3,16 +3,18 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
+#include "../../Engine/Scene/Scene.h"
 
 class Camera{
 public:
     Camera(const glm::vec3& pos, const glm::vec3& rotation, const float FOV,  const float ratio, const float zNear, const float zFar);
 
+    void updateCamera(const SceneCamera& cameraInfo);
     glm::mat4& getProjMat();
     glm::mat4& getViewMat();
-    //TODO: MODIFY POS & ROT
 private:
+    void updateViewMatrix();
+
     glm::vec3 position;
     glm::vec3 rotation;
 

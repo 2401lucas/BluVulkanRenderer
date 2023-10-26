@@ -2,9 +2,11 @@
 #include "../RenderPass/RenderPassUtils.h"
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Descriptors/Types/UBO/UBO.h"
+#include "../src/Engine/Scene/SceneUtils.h"
 
-RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/)
+RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings)
 {
+    auto buildDependencies = SceneUtils::getBuildDependencies();
 	vkInstance = new VulkanInstance(appInfo);
 	device = new Device(window, vkInstance, deviceSettings);
     swapchain = new Swapchain(device);
@@ -29,26 +31,20 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     VkDescriptorSetLayoutBinding cameraLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
     VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(2,1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
-    std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding, samplerLayoutBinding };
+    std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding};
 
-    //TODO: LOAD SHADERS FROM SCENE
-    std::vector<ShaderInfo> shaders;
-    shaders.push_back(ShaderInfo(shaderType::VERTEX, "vert.spv"));
-    shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "frag.spv"));
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    std::vector<VkDescriptorSetLayoutBinding> materialBindings = { samplerLayoutBinding };
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
-    std::vector<VkDescriptorSetLayout> layouts { graphicsDescriptorSetLayout->getLayout() };
-    graphicsPipeline = new GraphicsPipeline(device, shaders, layouts, renderPass);
+    graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
+    graphicsPipeline = new GraphicsPipeline(device, buildDependencies.shaders, descriptorSetLayouts, renderPass);
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
-    //TODO: LOAD MODELS FROM SCENE
-    std::vector<ModelCreateInfo> models;
-    models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.0f, 0.0f, 0.0f), glm::fvec3(0.0f, 0.0f, 0.0f)));
-    //models.push_back(ModelCreateInfo("models/viking_room.obj", "textures/viking_room.png", glm::fvec3(0.1f,0,0), glm::fvec3(0, 0, 0)));
-
-    modelManager = new ModelManager(device, graphicsCommandPool, models);
-    descriptorManager = new DescriptorSetManager(device, graphicsDescriptorSetLayout, modelManager);
+    modelManager = new ModelManager(device);
+    modelManager->loadTextures(device, graphicsCommandPool, buildDependencies.materials);
+    descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelManager);
     graphicsCommandPool->createCommandBuffers(device);
     
     //TODO Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
@@ -79,6 +75,8 @@ void RenderManager::cleanup()
     delete graphicsCommandPool;
     graphicsPipeline->cleanup(device);
     delete graphicsPipeline;
+    graphicsMaterialDescriptorSetLayout->cleanup(device);
+    delete graphicsMaterialDescriptorSetLayout;
     graphicsDescriptorSetLayout->cleanup(device);
     delete graphicsDescriptorSetLayout;
     swapchain->cleanup(device);
@@ -112,7 +110,9 @@ void RenderManager::createSyncObjects() {
     }
 }
 
-void RenderManager::drawFrame(const bool& framebufferResized)
+bool temp = false;
+//TODO: Load static models once
+void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo)
 {
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
@@ -127,7 +127,16 @@ void RenderManager::drawFrame(const bool& framebufferResized)
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
-    modelManager->updateUniformBuffer(device, camera, 0, frameIndex);
+    //TODO: Support multiple cameras
+    camera->updateCamera(sceneInfo->cameras[0]);
+    //TODO: Load models only when the model list is updated
+    if (!temp)
+    {
+        modelManager->loadModels(device, graphicsCommandPool, sceneInfo->dynamicModels);
+        temp = true;
+    }
+    
+    modelManager->updateUniformBuffer(device, camera, sceneInfo, 0, frameIndex);
 
     vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
     VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(frameIndex);
@@ -154,7 +163,8 @@ void RenderManager::drawFrame(const bool& framebufferResized)
     modelManager->bindBuffers(currentCommandBuffer);
     modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
     
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getDescriptorSet(frameIndex), 0, nullptr);
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
 
     modelManager->drawIndexed(currentCommandBuffer);
     renderPass->endRenderPass(currentCommandBuffer);

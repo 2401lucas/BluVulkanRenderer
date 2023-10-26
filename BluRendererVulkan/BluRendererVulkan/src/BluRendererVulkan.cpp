@@ -9,7 +9,10 @@ int main(int argc, char** argv) {
 	blu->run(argc, argv);
 	return 0;
 }
-
+//Load build Dependancies
+//Create Managers
+//Load Scene
+//Begin Updates
 int BluRendererVulkan::run(int argc, char** argv)
 {
 	VkApplicationInfo appInfo{};
@@ -24,7 +27,11 @@ int BluRendererVulkan::run(int argc, char** argv)
 	deviceSettings.enabledDeviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 
+	
+
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);
+	//TODO: Generate Build settings with all possible Shaders, Materials and Such
+	Scene scene = Scene("temp");
 	renderManager = std::make_unique<RenderManager>(windowManager->getWindow(), appInfo, deviceSettings);
 	engineCore = std::make_unique<EngineCore>();
 
@@ -43,7 +50,7 @@ int BluRendererVulkan::run(int argc, char** argv)
 		//Potentially reduce rate of update for physics
 		engineCore->updatePhysics(frameTime);
 
-		renderManager->drawFrame(windowManager->isFramebufferResized());
+		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo());
 		currentTime = std::chrono::high_resolution_clock::now();
 	}
 

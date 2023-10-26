@@ -8,5 +8,10 @@ Scene::Scene(const char* scenePath)
 
 void Scene::cleanup()
 {
-	
+	delete info;
+}
+
+SceneInfo* Scene::getSceneInfo()
+{
+	return info;
 }

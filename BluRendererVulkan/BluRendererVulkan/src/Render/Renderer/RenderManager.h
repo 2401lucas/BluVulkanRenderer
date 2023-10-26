@@ -18,9 +18,9 @@
 
 class RenderManager {
 public:
-	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings/*, SceneInfo sceneInfo*/);
+	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings);
 	void cleanup();
-	void drawFrame(const bool& framebufferResized);
+	void drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo);
 
 private:
 	void createSyncObjects();
@@ -30,6 +30,7 @@ private:
 	RenderPass* renderPass;
 	Swapchain* swapchain;
 	Descriptor* graphicsDescriptorSetLayout;
+	Descriptor* graphicsMaterialDescriptorSetLayout;
 	GraphicsPipeline* graphicsPipeline;
 	CommandPool* graphicsCommandPool;
 	ModelManager* modelManager;

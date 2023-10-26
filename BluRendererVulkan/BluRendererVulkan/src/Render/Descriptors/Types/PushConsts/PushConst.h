@@ -1,12 +1,10 @@
 #include <glm/matrix.hpp>
 
-
-// Position and rotation data
 struct PushConstantData {
-	glm::mat4 position;
+	glm::vec4 index; // X: Texture Index Y: Object Index
 
-	PushConstantData(glm::mat4 pos)
-		: position(pos) {
+	PushConstantData(glm::vec4 index)
+		: index(index) {
 
 	}
 };

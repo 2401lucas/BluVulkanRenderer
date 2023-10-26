@@ -1,16 +1,13 @@
 #include "Model.h"
-#include "../Image/ImageUtils.h"
 
-Model::Model(Device* deviceInfo, CommandPool* commandPool, ModelCreateInfo createInfo)
+Model::Model(const char* modelPath, uint32_t textureIndex)
 {
-	mesh = new Mesh(createInfo.modelPath);
-	texture = ImageUtils::createImageFromPath(deviceInfo, commandPool, createInfo.texturePath);
+	mesh = new Mesh(modelPath);
+	this->textureIndex = textureIndex;
 }
 
-void Model::cleanup(Device* deviceInfo)
+void Model::cleanup()
 {
-	texture->cleanup(deviceInfo);
-	delete texture;
 	mesh->cleanup();
 	delete mesh;
 }
@@ -20,7 +17,7 @@ Mesh* Model::getMesh()
 	return mesh;
 }
 
-Image* Model::getTexture()
+uint32_t Model::getTextureIndex()
 {
-	return texture;
+	return textureIndex;
 }
