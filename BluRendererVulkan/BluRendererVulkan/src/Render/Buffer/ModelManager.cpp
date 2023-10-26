@@ -14,8 +14,11 @@ ModelManager::ModelManager(Device* deviceInfo)
 
 void ModelManager::cleanup(Device* deviceInfo)
 {
-    vertexBuffer->freeBuffer(deviceInfo);
-    delete vertexBuffer;
+    for (auto vertexBuffer : vertexBuffers) {
+        vertexBuffer->freeBuffer(deviceInfo);
+        delete vertexBuffer;
+    }
+
     indexBuffer->freeBuffer(deviceInfo);
     delete indexBuffer;
 
@@ -36,10 +39,13 @@ void ModelManager::createVertexBuffer(Device* deviceInfo, CommandPool* commandPo
     Buffer* vertexStagingBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     vertexStagingBuffer->copyData(deviceInfo, vertices.data(), 0, vertexBufferSize, 0);
 
-    vertexBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vertexBuffer->copyBuffer(deviceInfo, commandPool, vertexStagingBuffer, vertexBufferSize);
+    Buffer* vertBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vertBuffer->copyBuffer(deviceInfo, commandPool, vertexStagingBuffer, vertexBufferSize);
+    
+    vertexBuffers.push_back(vertBuffer);
 
     vertexStagingBuffer->freeBuffer(deviceInfo);
+    delete vertexStagingBuffer;
 }
 
 void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices)
@@ -53,37 +59,41 @@ void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPoo
     indexBuffer->copyBuffer(deviceInfo, commandPool, indexStagingBuffer, indicesBufferSize);
 
     indexStagingBuffer->freeBuffer(deviceInfo);
+    delete indexStagingBuffer;
 }
 
-void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer)
+void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index)
 {
-    VkBuffer vertexBuffers[] = { vertexBuffer->getBuffer() };
     VkDeviceSize offsets[] = { 0 };
-
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
+    
+    auto buff = vertexBuffers[index]->getBuffer();
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &buff, offsets);
     vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
 }
 
-void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout)
+void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index)
 {
-    uint32_t modelCount = static_cast<uint32_t>(modelData.size());
-    for (uint32_t i = 0; i < modelCount; i++) {
-        vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[i]);
-    }
+    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[index]);
 }
 
 void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
 {
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, models[0]->getMesh()->getIndices().size(), 1, 0, 0, 0);
 }
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
 {
+    // Vertex
     GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
     ubo.proj = camera->getProjMat();
+    
+    for (size_t i = 0; i < 2; i++)
+    {
+        ubo.model[i] = MathUtils::ApplyTransformAndRotation(models[i]->getPosition(), glm::vec3(0));
+    }
 
+    // Frag
     GPUSceneData scn{};
     scn.ambientColor = sceneInfo->ambientColor;
     //TODO: Support Multiple Lights
@@ -91,10 +101,14 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     scn.sunlightColor = sceneInfo->directionalLights[0].lightColor;
     scn.cameraPosition = sceneInfo->cameras[0].position;
 
+    //
+
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
+    //TODO: Investigate X buffers at index or 1 buffer with offset
     // char pointer allows for easily applying an offset
-    char* cp = reinterpret_cast<char*>(sceneMappedBufferManager->getMappedBuffer(bufferIndex));
-    memcpy(cp + bufferIndex * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment), &scn, sizeof(scn));
+    //char* cp = reinterpret_cast<char*>(sceneMappedBufferManager->getMappedBuffer(bufferIndex));
+    //memcpy(cp + bufferIndex * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment), &scn, sizeof(scn));
+    memcpy(sceneMappedBufferManager->getMappedBuffer(bufferIndex), &scn, sizeof(scn));
 }
 
 MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
@@ -106,42 +120,19 @@ MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
     }
 }
 
-Model* ModelManager::getModel(uint32_t index)
-{
-    return models[index];
-}
-
-VkBuffer& ModelManager::getVertexBuffer()
-{
-    return vertexBuffer->getBuffer();
-}
-
-VkBuffer& ModelManager::getIndexBuffer()
-{
-    return indexBuffer->getBuffer();
-}
-
-uint32_t ModelManager::getIndexSize()
-{
-    return static_cast<uint32_t>(indices.size());
-}
-
 //TODO: Support Destroying Models
 void ModelManager::loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos) {
     for (uint32_t i = 0; i < modelCreateInfos.size(); i++) {
-        models.push_back(new Model(modelCreateInfos[i].modelPath, getTextureIndex(modelCreateInfos[i].texturePath)));
+        models.push_back(new Model(modelCreateInfos[i], getTextureIndex(modelCreateInfos[i].texturePath)));
         modelData.push_back(PushConstantData(glm::vec4(models[i]->getTextureIndex(), i, 0, 0)));
     }
 
     for (auto model : models) {
         auto verts = model->getMesh()->getVertices();
         auto inds = model->getMesh()->getIndices();
-        vertices.insert(vertices.end(), verts.begin(), verts.end());
-        indices.insert(indices.end(), inds.begin(), inds.end());
+        createVertexBuffer(deviceInfo, commandPool, verts);
+        createIndexBuffer(deviceInfo, commandPool, inds);
     }
-
-    createVertexBuffer(deviceInfo, commandPool, vertices);
-    createIndexBuffer(deviceInfo, commandPool, indices);
 }
 
 void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials)

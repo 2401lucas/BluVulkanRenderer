@@ -30,10 +30,10 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     swapchain->createFramebuffers(device, renderPass);
 
     VkDescriptorSetLayoutBinding cameraLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT);
-    VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding};
 
-    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> materialBindings = { samplerLayoutBinding };
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
@@ -160,14 +160,17 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     swapchain->setViewport(currentCommandBuffer);
     swapchain->setScissor(currentCommandBuffer);
 
-    modelManager->bindBuffers(currentCommandBuffer);
-    modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout());
-    
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+    for (size_t i = 0; i < 2; i++)
+    {
+        modelManager->bindBuffers(currentCommandBuffer, i);
+        modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout(), i);
 
-    modelManager->drawIndexed(currentCommandBuffer);
-    renderPass->endRenderPass(currentCommandBuffer);
+        graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+        graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+
+        modelManager->drawIndexed(currentCommandBuffer);
+    }
+        renderPass->endRenderPass(currentCommandBuffer);
 
     if (vkEndCommandBuffer(currentCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");

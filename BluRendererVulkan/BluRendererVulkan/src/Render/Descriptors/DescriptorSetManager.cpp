@@ -71,22 +71,27 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
 
         VkDescriptorBufferInfo gpuSceneBufferInfo{};
         gpuSceneBufferInfo.buffer = modelManager->getMappedBufferManager(1)->getUniformBuffer(i)->getBuffer();
-        gpuSceneBufferInfo.offset = DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * i;
+        gpuSceneBufferInfo.offset = 0;
+        //gpuSceneBufferInfo.offset = DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * i;
         gpuSceneBufferInfo.range = sizeof(GPUSceneData);
 
         descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(globalDescriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuCameraBufferInfo));
         descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(globalDescriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuSceneBufferInfo));
         //PerPass Descriptor Set
 
+
         //Material Descriptor Set
+        std::vector<VkDescriptorImageInfo> descriptorImageInfos;
         auto materials = modelManager->getTextures();
         for (uint32_t matIndex = 0; matIndex < materials.size(); matIndex++) {
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfo.imageView = materials[matIndex]->getImageView();
             imageInfo.sampler = materials[matIndex]->getImageSampler();
-            descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(materialDescriptorSets[i], matIndex, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, &imageInfo));
+            descriptorImageInfos.push_back(imageInfo);
         }
+
+        descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(materialDescriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorImageInfos.size(), descriptorImageInfos.data()));
         
         //Per-Object Descriptor Set (Transform Data)
 

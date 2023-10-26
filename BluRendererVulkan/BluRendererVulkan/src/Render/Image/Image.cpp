@@ -281,12 +281,12 @@ uint32_t Image::findMemoryType(Device* deviceInfo, uint32_t typeFilter, VkMemory
 	throw std::runtime_error("failed to find suitable memory type!");
 }
 
-void Image::createImageView(Device* deviceInfo, VkImageAspectFlags flags)
+void Image::createImageView(Device* deviceInfo, VkImageAspectFlags flags, VkImageViewType viewType)
 {
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	viewInfo.image = image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.viewType = viewType;
 	viewInfo.format = format;
 	viewInfo.subresourceRange.aspectMask = flags;
 	viewInfo.subresourceRange.baseMipLevel = 0;

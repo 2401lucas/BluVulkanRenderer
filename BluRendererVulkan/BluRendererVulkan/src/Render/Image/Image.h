@@ -15,7 +15,7 @@ public:
 	VkDeviceMemory getImageMemory();
 	VkImageView getImageView();
 	VkSampler getImageSampler();
-	void createImageView(Device* deviceInfo, VkImageAspectFlags flags);
+	void createImageView(Device* deviceInfo, VkImageAspectFlags flags, VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D);
 	void createTextureSampler(Device* deviceInfo);
 	void transitionImageLayout(Device* deviceInfo, CommandPool* commandPool, VkImageLayout newLayout);
 	void copyImageFromBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer);

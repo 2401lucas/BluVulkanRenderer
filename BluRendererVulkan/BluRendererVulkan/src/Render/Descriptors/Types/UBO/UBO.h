@@ -5,6 +5,7 @@
 struct GPUCameraData {
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
+	alignas(16) glm::mat4 model[2];
 };
 
 struct GPUSceneData {
