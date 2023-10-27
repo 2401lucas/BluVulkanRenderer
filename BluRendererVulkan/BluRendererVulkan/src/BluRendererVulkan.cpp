@@ -27,6 +27,7 @@ int BluRendererVulkan::run(int argc, char** argv)
 	deviceSettings.enabledDeviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceSettings.enabledDeviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 	deviceSettings.enabledDeviceFeatures12.runtimeDescriptorArray = VK_TRUE;
+	deviceSettings.enabledDeviceFeatures12.descriptorIndexing = VK_TRUE;
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);

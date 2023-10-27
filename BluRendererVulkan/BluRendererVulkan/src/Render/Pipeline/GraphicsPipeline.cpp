@@ -6,11 +6,11 @@
 //TODO: MODULARIZE
 GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderInfo> shaders, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass* renderPass)
 {
-	for (auto shader : shaders) {
-		createShaderModule(deviceInfo, shader);
-	}
+    for (auto shader : shaders) {
+        createShaderModule(deviceInfo, shader);
+    }
 
-	auto shaderStageInfo = getShaderStageInfo();
+    auto shaderStageInfo = getShaderStageInfo();
 
     auto bindingDescription = Vertex::getBindingDescription();
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
@@ -80,7 +80,7 @@ GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderI
     dynamicState.pDynamicStates = dynamicStates.data();
 
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(PushConstantData);
 

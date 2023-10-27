@@ -7,17 +7,17 @@
 
 DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelManager* modelManager)
 {
-    std::vector<VkDescriptorPoolSize> poolSizes{2, VkDescriptorPoolSize()};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+    std::vector<VkDescriptorPoolSize> globalPoolSizes{2, VkDescriptorPoolSize()};
+    globalPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    globalPoolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+    globalPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    globalPoolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
 
     std::vector<VkDescriptorPoolSize> matPoolSizes{ 1, VkDescriptorPoolSize() };
     matPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     matPoolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
 
-    globalDescriptorPool = new DescriptorPool(deviceInfo, poolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
+    globalDescriptorPool = new DescriptorPool(deviceInfo, globalPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
     matDescriptorPool = new DescriptorPool(deviceInfo, matPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
     createDescriptorSets(deviceInfo, descriptorLayouts, modelManager);
 }
@@ -58,6 +58,7 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
     materialAllocInfo.descriptorPool = matDescriptorPool->getDescriptorPool();
     materialAllocInfo.descriptorSetCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
     materialAllocInfo.pSetLayouts = materialLayouts.data(); 
+   
 
     materialDescriptorSets.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
     if (vkAllocateDescriptorSets(deviceInfo->getLogicalDevice(), &materialAllocInfo, materialDescriptorSets.data()) != VK_SUCCESS) {

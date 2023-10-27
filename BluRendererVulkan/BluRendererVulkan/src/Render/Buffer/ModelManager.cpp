@@ -73,7 +73,7 @@ void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer, const int32
 
 void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index)
 {
-    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[index]);
+    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &modelData[index]);
 }
 
 void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index)
