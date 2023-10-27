@@ -15,7 +15,7 @@ public:
 
 	void bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index);
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index);
-	void drawIndexed(const VkCommandBuffer& commandBuffer);
+	void drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index);
 	void loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos);
 	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials);
 
@@ -28,6 +28,7 @@ public:
 	//Index 2 Material Resources
 	//Index 3 Per-Object Resources
 	MappedBufferManager* getMappedBufferManager(uint32_t index);
+	int getModelCount();
 
 private:
 	void createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices);

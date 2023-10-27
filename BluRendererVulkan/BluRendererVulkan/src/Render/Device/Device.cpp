@@ -10,7 +10,6 @@ Device::Device(GLFWwindow* window, VulkanInstance* vkInstance, DeviceSettings de
 {
 	settings = deviceSettings;
 	this->window = window;
-	
 
 	if (glfwCreateWindowSurface(vkInstance->get(), window, nullptr, &surface) != VK_SUCCESS)
 		throw std::runtime_error("failed to create window surface!");
@@ -141,6 +140,7 @@ void Device::createLogicalDevice()
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
 	deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 	deviceCreateInfo.pEnabledFeatures = &settings.enabledDeviceFeatures;
+	deviceCreateInfo.pNext = &settings.enabledDeviceFeatures12;
 	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 	deviceCreateInfo.enabledExtensionCount = sizeof(deviceExtensions) / sizeof(deviceExtensions[0]);
 

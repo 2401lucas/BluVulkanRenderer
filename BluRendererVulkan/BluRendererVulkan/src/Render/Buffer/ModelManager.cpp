@@ -76,9 +76,9 @@ void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelin
     vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstantData), &modelData[index]);
 }
 
-void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer)
+void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index)
 {
-    vkCmdDrawIndexed(commandBuffer, models[0]->getMesh()->getIndices().size(), 1, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, models[index]->getMesh()->getIndices().size(), 1, 0, 0, 0);
 }
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
@@ -87,8 +87,10 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
     ubo.proj = camera->getProjMat();
-    
-    for (size_t i = 0; i < 2; i++)
+
+    auto modelCount = getModelCount();
+
+    for (int i = 0; i < modelCount; i++)
     {
         ubo.model[i] = MathUtils::ApplyTransformAndRotation(models[i]->getPosition(), glm::vec3(0));
     }
@@ -118,6 +120,11 @@ MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
     case 1: return sceneMappedBufferManager;
     default: return nullptr;
     }
+}
+
+int ModelManager::getModelCount()
+{
+    return models.size();
 }
 
 //TODO: Support Destroying Models

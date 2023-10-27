@@ -39,7 +39,7 @@ Image* ImageUtils::createImageFromPath(Device* deviceInfo, CommandPool* commandP
 	buffer->freeBuffer(deviceInfo);
 	delete buffer;
 	newImage->generateMipmaps(deviceInfo, commandPool);
-	newImage->createImageView(deviceInfo, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D_ARRAY);
+	newImage->createImageView(deviceInfo, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D);
 	newImage->createTextureSampler(deviceInfo);
 
 	return newImage;

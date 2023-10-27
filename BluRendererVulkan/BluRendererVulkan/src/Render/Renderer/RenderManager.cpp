@@ -63,10 +63,7 @@ void RenderManager::cleanup()
         vkDestroyFence(device->getLogicalDevice(), inFlightFences[i], nullptr);
     }
 
-    //camera->cleaup();
     delete camera;
-    //currentScene->cleanup();
-    //delete currentScene;
     descriptorManager->cleanup(device);
     delete descriptorManager;
     modelManager->cleanup(device);
@@ -160,7 +157,9 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     swapchain->setViewport(currentCommandBuffer);
     swapchain->setScissor(currentCommandBuffer);
 
-    for (size_t i = 0; i < 2; i++)
+    auto modelCount = modelManager->getModelCount();
+
+    for (int i = 0; i < modelCount; i++)
     {
         modelManager->bindBuffers(currentCommandBuffer, i);
         modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout(), i);
@@ -168,7 +167,7 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
         graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
         graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
 
-        modelManager->drawIndexed(currentCommandBuffer);
+        modelManager->drawIndexed(currentCommandBuffer, i);
     }
         renderPass->endRenderPass(currentCommandBuffer);
 

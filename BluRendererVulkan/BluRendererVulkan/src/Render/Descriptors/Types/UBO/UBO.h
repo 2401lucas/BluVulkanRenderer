@@ -1,11 +1,12 @@
 #include "../src/Render/Device/Device.h"
 #include "../src/Render/Buffer/Buffer.h"
+#include "../include/RenderConst.h"
 #include <glm/matrix.hpp>
 
 struct GPUCameraData {
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::mat4 proj;
-	alignas(16) glm::mat4 model[2];
+	alignas(16) glm::mat4 model[RenderConst::MAX_MODELS];
 };
 
 struct GPUSceneData {
