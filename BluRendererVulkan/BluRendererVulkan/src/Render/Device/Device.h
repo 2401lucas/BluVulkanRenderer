@@ -17,6 +17,7 @@ public:
 
 struct DeviceSettings {
 	VkPhysicalDeviceFeatures enabledDeviceFeatures;
+	VkPhysicalDeviceVulkan12Features enabledDeviceFeatures12;
 	VkSampleCountFlagBits msaaSamples;
 	//VkPhysicalDeviceFeatures deviceFeatures = { };
 	//deviceFeatures.samplerAnisotropy = VK_TRUE;

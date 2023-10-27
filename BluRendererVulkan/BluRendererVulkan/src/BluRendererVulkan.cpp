@@ -18,16 +18,16 @@ int BluRendererVulkan::run(int argc, char** argv)
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "Renderer Example";
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 2);
 	appInfo.pEngineName = "Blu Engine";
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_0;
+	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 2);
+	appInfo.apiVersion = VK_API_VERSION_1_2;
 
 	DeviceSettings deviceSettings{};
 	deviceSettings.enabledDeviceFeatures.samplerAnisotropy = VK_TRUE;
+	deviceSettings.enabledDeviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+	deviceSettings.enabledDeviceFeatures12.runtimeDescriptorArray = VK_TRUE;
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
-
-	
 
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);
 	//TODO: Generate Build settings with all possible Shaders, Materials and Such

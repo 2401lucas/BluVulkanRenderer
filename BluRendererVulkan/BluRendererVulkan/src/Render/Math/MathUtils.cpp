@@ -15,14 +15,14 @@ glm::fvec3 MathUtils::CalculateForwardFromEulerAngles(const glm::fvec3& eulerAng
     return forward;
 }
 
-glm::mat4 MathUtils::ApplyTransformAndRotation(const glm::fvec3& transform, const glm::fvec3& eulerAngles, const glm::mat4& mat)
+glm::mat4 MathUtils::ApplyTransformAndRotation(const glm::fvec3& transform, const glm::fvec3& eulerAngles)
 {
-    glm::mat4 newMat = mat;
+    glm::mat4 newMat = glm::mat4(1.0f);
 
-    newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
-    newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
-    newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
 
-    //newMat = glm::translate(newMat, transform);
+    newMat = glm::translate(newMat, transform);
     return newMat;
 }

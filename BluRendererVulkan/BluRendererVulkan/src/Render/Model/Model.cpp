@@ -1,9 +1,12 @@
 #include "Model.h"
 
-Model::Model(const char* modelPath, uint32_t textureIndex)
+Model::Model(const SceneModel& modelInfo, uint32_t textureIndex)
 {
-	mesh = new Mesh(modelPath);
+	mesh = new Mesh(modelInfo.modelPath);
 	this->textureIndex = textureIndex;
+	position = modelInfo.position;
+	rotation = modelInfo.rotation;
+	scale = modelInfo.scale;
 }
 
 void Model::cleanup()
@@ -21,3 +24,9 @@ uint32_t Model::getTextureIndex()
 {
 	return textureIndex;
 }
+
+glm::vec3& Model::getPosition()
+{
+	return position;
+}
+
