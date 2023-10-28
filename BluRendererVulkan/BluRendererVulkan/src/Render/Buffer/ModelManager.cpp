@@ -19,8 +19,10 @@ void ModelManager::cleanup(Device* deviceInfo)
         delete vertexBuffer;
     }
 
-    indexBuffer->freeBuffer(deviceInfo);
-    delete indexBuffer;
+    for (auto indexBuffer : indexBuffers) {
+        indexBuffer->freeBuffer(deviceInfo);
+        delete indexBuffer;
+    }
 
     for (auto model : models) {
         model->cleanup();
@@ -55,8 +57,10 @@ void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPoo
     Buffer* indexStagingBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     indexStagingBuffer->copyData(deviceInfo, indices.data(), 0, indicesBufferSize, 0);
 
-    indexBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    Buffer* indexBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     indexBuffer->copyBuffer(deviceInfo, commandPool, indexStagingBuffer, indicesBufferSize);
+
+    indexBuffers.push_back(indexBuffer);
 
     indexStagingBuffer->freeBuffer(deviceInfo);
     delete indexStagingBuffer;
@@ -66,9 +70,10 @@ void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer, const int32
 {
     VkDeviceSize offsets[] = { 0 };
     
-    auto buff = vertexBuffers[index]->getBuffer();
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &buff, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
+    auto vertBuff = vertexBuffers[index]->getBuffer();
+    auto indBuff = indexBuffers[index]->getBuffer();
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertBuff, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indBuff, 0, VK_INDEX_TYPE_UINT32);
 }
 
 void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index)

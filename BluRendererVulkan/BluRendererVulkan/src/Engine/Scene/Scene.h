@@ -85,7 +85,7 @@ struct SceneInfo {
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/temp.png", glm::vec3(-1.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
+		dynamicModels.push_back(SceneModel("models/stanford-bunny.obj", "textures/simpleColour.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
 	}
 };

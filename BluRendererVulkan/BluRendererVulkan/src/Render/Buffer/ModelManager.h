@@ -35,7 +35,7 @@ private:
 	void createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices);
 	
 	std::vector<Buffer*> vertexBuffers;
-	Buffer* indexBuffer;
+	std::vector<Buffer*> indexBuffers;
 
 	std::vector<Model*> models;
 	std::vector<PushConstantData> modelData;
