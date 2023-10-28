@@ -5,20 +5,19 @@
 #include <string>
 
 struct SceneLight {
-	glm::vec4 lightPosition; // X,Y,Z Position	| W 
-	glm::vec4 lightDirection; // X,Y,Z Rotation	| W LightIntensity
+	int lightType;
+	glm::vec3 lightPosition; // X,Y,Z Position
+	glm::vec3 lightRotation; // X,Y,Z Rotation
 	glm::vec4 lightColor;
 
-	SceneLight(glm::vec3 pos, glm::vec3 dir, glm::vec4 color, float intensity)
-		: lightColor(color) {
-		lightPosition = glm::vec4(pos, 0);
-		lightDirection = glm::vec4(dir, intensity);
+	SceneLight(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 color)
+		: lightType(lightType), lightPosition(pos), lightRotation(rot), lightColor(color) {
 	}
 };
 
 struct SceneCamera {
-	glm::vec4 position; // X,Y,Z Position	| W 
-	glm::vec4 rotation; // X,Y,Z Rotation	| W 
+	glm::vec3 position; // X,Y,Z Position
+	glm::vec3 rotation; // X,Y,Z Rotation 
 
 	SceneCamera(glm::vec3 pos, glm::vec3 rot) {
 		position = glm::vec4(pos, 0);
@@ -69,9 +68,7 @@ struct SceneInfo {
 	std::vector<SceneModel> staticModels;
 	std::vector<SceneModel> dynamicModels;
 	//Ligting--------------------------
-	std::vector<SceneLight> directionalLights;
-	std::vector<SceneLight> spotLights;
-	std::vector<SceneLight> pointLights;
+	std::vector<SceneLight> lights;
 
 	//Fog------------------------------
 	glm::vec4 fogColor; // w is for exponent
@@ -82,10 +79,13 @@ struct SceneInfo {
 		ambientColor = glm::vec4(0.6, 0.5, 0.0, 0.2);
 		fogColor = glm::vec4(0.048f, 0.048f, 0.048f, 1.0f); // Light Gray
 		fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
-		directionalLights.push_back(SceneLight(glm::vec3(0.0f), glm::vec3(0.0, 0.5, 0.5), glm::vec4(1.0, 1.0, 1.0, 1), 1.0f));
+		lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.0, 0.5, 0.5), glm::vec4(1.0, 1.0, 1.0, 1)));
+		lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.5, 0.5, 0), glm::vec4(1.0, 1.0, 1.0, 1)));
+		lights.push_back(SceneLight(2, glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0, 0, -1), glm::vec4(1.0, .0, .0, 1)));
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/temp.png", glm::vec3(-1.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
+		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
 	}
 };

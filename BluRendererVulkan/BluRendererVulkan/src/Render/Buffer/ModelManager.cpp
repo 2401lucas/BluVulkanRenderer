@@ -98,12 +98,13 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     // Frag
     GPUSceneData scn{};
     scn.ambientColor = sceneInfo->ambientColor;
-    //TODO: Support Multiple Lights
-    scn.sunlightDirection = sceneInfo->directionalLights[0].lightDirection;
-    scn.sunlightColor = sceneInfo->directionalLights[0].lightColor;
-    scn.cameraPosition = sceneInfo->cameras[0].position;
+    int numOfLights = sceneInfo->lights.size();
+    for (uint32_t i = 0; i < numOfLights; i++)
+    {
+        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor);
+    }
 
-    //
+    scn.cameraPosition = glm::vec4(sceneInfo->cameras[0].position, numOfLights);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
     //TODO: Investigate X buffers at index or 1 buffer with offset
