@@ -3,7 +3,7 @@
 #include <stb_image.h>
 #include <stdexcept>
 
-std::vector<Image*> ImageUtils::createTexturesFromCreateInfo(Device* deviceInfo, CommandPool* commandPool, std::vector<MaterialInfo> materialInfo)
+std::vector<Image*> ImageUtils::createTexturesFromCreateInfo(Device* deviceInfo, CommandPool* commandPool, std::vector<TextureInfo> materialInfo)
 {
 	std::vector<Image*> newTextures;
 

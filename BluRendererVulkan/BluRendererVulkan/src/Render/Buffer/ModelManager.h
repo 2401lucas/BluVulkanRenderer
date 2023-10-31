@@ -7,6 +7,7 @@
 #include "../Camera/Camera.h"
 #include "../Descriptors/Types/PushConsts/PushConst.h"
 #include "../Buffer/MappedBufferManager.h"
+#include "../Descriptors/Types/UBO/UBO.h"
 
 class ModelManager {
 public:
@@ -17,16 +18,19 @@ public:
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index);
 	void drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index);
 	void loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos);
-	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials);
+	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
+	void loadMaterials(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials);
 
 	std::vector<Image*>& getTextures();
 	uint32_t getTextureIndex(const char* path);
 
+	GPUMaterialData& getMaterials();
+	uint32_t getMaterialIndex();
+
 	void updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex);
-	//Index 0 Global Resources and bound once per frame.
-	//Index 1 Per-pass Resources, and bound once per pass
-	//Index 2 Material Resources
-	//Index 3 Per-Object Resources
+	//Index 0 Camera.
+	//Index 1 Scene
+	//Index 2 Material
 	MappedBufferManager* getMappedBufferManager(uint32_t index);
 	int getModelCount();
 
@@ -39,10 +43,14 @@ private:
 
 	std::vector<Model*> models;
 	std::vector<PushConstantData> modelData;
-	
-	std::vector<MaterialInfo> matInfos;
+
+	std::vector<TextureInfo> textureInfos;
 	std::vector<Image*> textures;
+
+	std::vector<MaterialInfo> materialInfos;
+	GPUMaterialData mat;
 
 	MappedBufferManager* cameraMappedBufferManager;
 	MappedBufferManager* sceneMappedBufferManager;
+	MappedBufferManager* materialMappedBufferManager;
 };

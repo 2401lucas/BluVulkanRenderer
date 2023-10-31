@@ -33,8 +33,9 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding};
 
-    VkDescriptorSetLayoutBinding samplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, buildDependencies.materials.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
-    std::vector<VkDescriptorSetLayoutBinding> materialBindings = { samplerLayoutBinding };
+    VkDescriptorSetLayoutBinding textureSamplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, buildDependencies.textures.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding materialLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    std::vector<VkDescriptorSetLayoutBinding> materialBindings = { textureSamplerLayoutBinding, materialLayoutBinding };
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
@@ -43,7 +44,8 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     modelManager = new ModelManager(device);
-    modelManager->loadTextures(device, graphicsCommandPool, buildDependencies.materials);
+    modelManager->loadTextures(device, graphicsCommandPool, buildDependencies.textures);
+    modelManager->loadMaterials(device, graphicsCommandPool, buildDependencies.materials);
     descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelManager);
     graphicsCommandPool->createCommandBuffers(device);
     
@@ -152,24 +154,25 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     clearValues[1].depthStencil = { 1.0f, 0 };
 
     renderPass->startRenderPass(currentCommandBuffer, swapchain->getFramebuffer(imageIndex), swapchain->getSwapchainExtent(), clearValues, VK_SUBPASS_CONTENTS_INLINE);
-    graphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
     swapchain->setViewport(currentCommandBuffer);
     swapchain->setScissor(currentCommandBuffer);
 
     auto modelCount = modelManager->getModelCount();
 
+    graphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+
     for (int i = 0; i < modelCount; i++)
     {
         modelManager->bindBuffers(currentCommandBuffer, i);
         modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout(), i);
 
-        graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-        graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
-
         modelManager->drawIndexed(currentCommandBuffer, i);
     }
-        renderPass->endRenderPass(currentCommandBuffer);
+
+    renderPass->endRenderPass(currentCommandBuffer);
 
     if (vkEndCommandBuffer(currentCommandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");

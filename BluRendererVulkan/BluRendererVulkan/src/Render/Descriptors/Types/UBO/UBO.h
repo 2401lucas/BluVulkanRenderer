@@ -1,3 +1,5 @@
+#pragma once
+
 #include "../src/Render/Device/Device.h"
 #include "../src/Render/Buffer/Buffer.h"
 #include "../include/RenderConst.h"
@@ -33,6 +35,22 @@ struct GPUSceneData {
 	glm::vec4 cameraPosition;	//XYZ for position, W for number of Lights
 	glm::vec4 ambientColor;		//XYZ for RGB, W for Intensity
 	LightInfo lightInfo[RenderConst::MAX_LIGHTS];
+};
+
+struct Material {
+	glm::vec4 ambient;
+	glm::vec4 diffuse;
+	glm::vec4 specular; //W is Shininess
+
+	Material() {
+		ambient = glm::vec4(0);
+		diffuse = glm::vec4(0);
+		specular = glm::vec4(0);
+	}
+};
+
+struct GPUMaterialData {
+	Material materials[RenderConst::MAX_MATERIALS];
 };
 
 class UBO {

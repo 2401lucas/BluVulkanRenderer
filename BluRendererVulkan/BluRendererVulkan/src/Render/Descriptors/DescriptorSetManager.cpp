@@ -13,9 +13,11 @@ DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector
     globalPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     globalPoolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
 
-    std::vector<VkDescriptorPoolSize> matPoolSizes{ 1, VkDescriptorPoolSize() };
+    std::vector<VkDescriptorPoolSize> matPoolSizes{ 2, VkDescriptorPoolSize() };
     matPoolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     matPoolSizes[0].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
+    matPoolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matPoolSizes[1].descriptorCount = static_cast<uint32_t>(RenderConst::MAX_FRAMES_IN_FLIGHT);
 
     globalDescriptorPool = new DescriptorPool(deviceInfo, globalPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
     matDescriptorPool = new DescriptorPool(deviceInfo, matPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
@@ -82,17 +84,24 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
         descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(globalDescriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &gpuSceneBufferInfo));
 
         //Material Descriptor Set
-        std::vector<VkDescriptorImageInfo> descriptorImageInfos;
-        auto& materials = modelManager->getTextures();
-        for (uint32_t matIndex = 0; matIndex < materials.size(); matIndex++) {
+        std::vector<VkDescriptorImageInfo> textureImageDescriptorInfo;
+        auto& textures = modelManager->getTextures();
+        for (uint32_t matIndex = 0; matIndex < textures.size(); matIndex++) {
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = materials[matIndex]->getImageView();
-            imageInfo.sampler = materials[matIndex]->getImageSampler();
-            descriptorImageInfos.push_back(imageInfo);
+            imageInfo.imageView = textures[matIndex]->getImageView();
+            imageInfo.sampler = textures[matIndex]->getImageSampler();
+            textureImageDescriptorInfo.push_back(imageInfo);
         }
 
-        descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(materialDescriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorImageInfos.size(), descriptorImageInfos.data()));
+        descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(materialDescriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureImageDescriptorInfo.size(), textureImageDescriptorInfo.data()));
+        
+        VkDescriptorBufferInfo materialBufferInfo{};
+        materialBufferInfo.buffer = modelManager->getMappedBufferManager(2)->getUniformBuffer(i)->getBuffer();
+        materialBufferInfo.offset = 0;
+        materialBufferInfo.range = sizeof(GPUMaterialData);
+
+        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(materialDescriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &materialBufferInfo));
 
         vkUpdateDescriptorSets(deviceInfo->getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }

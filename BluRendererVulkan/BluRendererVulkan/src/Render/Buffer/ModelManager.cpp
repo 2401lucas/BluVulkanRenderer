@@ -1,7 +1,6 @@
 #pragma once
 #include "ModelManager.h"
 #include "../include/RenderConst.h"
-#include "../Descriptors/Types/UBO/UBO.h"
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Math/MathUtils.h"
 #include "../Image/ImageUtils.h"
@@ -9,7 +8,8 @@
 ModelManager::ModelManager(Device* deviceInfo)
 {
     cameraMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, (RenderConst::MAX_FRAMES_IN_FLIGHT * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment) * RenderConst::MAX_FRAMES_IN_FLIGHT), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    materialMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUMaterialData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void ModelManager::cleanup(Device* deviceInfo)
@@ -27,6 +27,11 @@ void ModelManager::cleanup(Device* deviceInfo)
     for (auto model : models) {
         model->cleanup();
         delete model;
+    }
+
+    for (auto texture : textures) {
+        texture->cleanup(deviceInfo);
+        delete texture;
     }
 
     cameraMappedBufferManager->cleanup(deviceInfo);
@@ -102,28 +107,28 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
 
     // Frag
     GPUSceneData scn{};
-    scn.ambientColor = sceneInfo->ambientColor;
     int numOfLights = sceneInfo->lights.size();
     for (uint32_t i = 0; i < numOfLights; i++)
     {
         scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor);
     }
-
+    scn.ambientColor = sceneInfo->ambientColor;
     scn.cameraPosition = glm::vec4(sceneInfo->cameras[0].position, numOfLights);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
-    //TODO: Investigate X buffers at index or 1 buffer with offset
-    // char pointer allows for easily applying an offset
-    //char* cp = reinterpret_cast<char*>(sceneMappedBufferManager->getMappedBuffer(bufferIndex));
-    //memcpy(cp + bufferIndex * DescriptorUtils::padUniformBufferSize(sizeof(GPUSceneData), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment), &scn, sizeof(scn));
+    
     memcpy(sceneMappedBufferManager->getMappedBuffer(bufferIndex), &scn, sizeof(scn));
 }
 
+//Index 0 Camera.
+//Index 1 Scene
+//Index 2 Material
 MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
 {
     switch (index) {
     case 0: return cameraMappedBufferManager;
     case 1: return sceneMappedBufferManager;
+    case 2: return materialMappedBufferManager;
     default: return nullptr;
     }
 }
@@ -136,8 +141,8 @@ int ModelManager::getModelCount()
 //TODO: Support Destroying Models
 void ModelManager::loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos) {
     for (uint32_t i = 0; i < modelCreateInfos.size(); i++) {
-        models.push_back(new Model(modelCreateInfos[i], getTextureIndex(modelCreateInfos[i].texturePath)));
-        modelData.push_back(PushConstantData(glm::vec4(models[i]->getTextureIndex(), i, 0, 0)));
+        models.push_back(new Model(modelCreateInfos[i], getTextureIndex(modelCreateInfos[i].texturePath), modelCreateInfos[i].materialIndex));
+        modelData.push_back(PushConstantData(glm::vec4(models[i]->getTextureIndex(), i, models[i]->getMaterialIndex(), 0)));
     }
 
     for (auto model : models) {
@@ -148,10 +153,26 @@ void ModelManager::loadModels(Device* deviceInfo, CommandPool* commandPool, cons
     }
 }
 
-void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials)
+void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures)
 {
-    matInfos = materials;
-    textures = ImageUtils::createTexturesFromCreateInfo(deviceInfo, commandPool, materials);
+    textureInfos = textures;
+    this->textures = ImageUtils::createTexturesFromCreateInfo(deviceInfo, commandPool, textures);
+}
+
+void ModelManager::loadMaterials(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials)
+{
+    auto matOffset = DescriptorUtils::padUniformBufferSize(sizeof(Material), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment);
+    materialInfos = materials;
+
+    for (uint32_t i = 0; i < materials.size(); i++) {
+        mat.materials[i].ambient = glm::vec4(materials[i].ambient, 0);
+        mat.materials[i].diffuse = glm::vec4(materials[i].diffuse, 0);
+        mat.materials[i].specular = glm::vec4(materials[i].specular, materials[i].shininess);
+    }
+    for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        memcpy(materialMappedBufferManager->getMappedBuffer(i), &mat, sizeof(mat));
+    }
 }
 
 std::vector<Image*>& ModelManager::getTextures()
@@ -162,9 +183,19 @@ std::vector<Image*>& ModelManager::getTextures()
 //TODO: Implement more optimized search like std::unordered_map with custom hash
 uint32_t ModelManager::getTextureIndex(const char* path)
 {
-    for (uint32_t i = 0; i < matInfos.size(); i++) {
-        if (matInfos[i].fileName == path)
+    for (uint32_t i = 0; i < textureInfos.size(); i++) {
+        if (textureInfos[i].fileName == path)
             return i;
     }
+    return 0;
+}
+
+GPUMaterialData& ModelManager::getMaterials()
+{
+    return mat;
+}
+
+uint32_t ModelManager::getMaterialIndex()
+{
     return 0;
 }

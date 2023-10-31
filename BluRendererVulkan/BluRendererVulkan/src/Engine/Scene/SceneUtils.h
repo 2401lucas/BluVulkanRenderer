@@ -4,6 +4,7 @@
 
 struct BuildDependancies {
 	std::vector<ShaderInfo> shaders;
+	std::vector<TextureInfo> textures;
 	std::vector<MaterialInfo> materials;
 };
 
