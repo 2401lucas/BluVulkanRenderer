@@ -87,21 +87,31 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
         std::vector<VkDescriptorImageInfo> textureImageDescriptorInfo;
         auto& textures = modelManager->getTextures();
         for (uint32_t matIndex = 0; matIndex < textures.size(); matIndex++) {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textures[matIndex]->getImageView();
-            imageInfo.sampler = textures[matIndex]->getImageSampler();
-            textureImageDescriptorInfo.push_back(imageInfo);
+            VkDescriptorImageInfo texImageInfo{};
+            texImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            texImageInfo.imageView = textures[matIndex].texture->getImageView();
+            texImageInfo.sampler = textures[matIndex].texture->getImageSampler();
+            textureImageDescriptorInfo.push_back(texImageInfo);
+            VkDescriptorImageInfo diffImageInfo{};
+            diffImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            diffImageInfo.imageView = textures[matIndex].diffuse->getImageView();
+            diffImageInfo.sampler = textures[matIndex].diffuse->getImageSampler();
+            textureImageDescriptorInfo.push_back(diffImageInfo);
+            VkDescriptorImageInfo specImageInfo{};
+            specImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            specImageInfo.imageView = textures[matIndex].specular->getImageView();
+            specImageInfo.sampler = textures[matIndex].specular->getImageSampler();
+            textureImageDescriptorInfo.push_back(specImageInfo);
         }
 
         descriptorWrites.push_back(DescriptorUtils::createImageDescriptorWriteSet(materialDescriptorSets[i], 0, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureImageDescriptorInfo.size(), textureImageDescriptorInfo.data()));
         
-        VkDescriptorBufferInfo materialBufferInfo{};
+        /*VkDescriptorBufferInfo materialBufferInfo{};
         materialBufferInfo.buffer = modelManager->getMappedBufferManager(2)->getUniformBuffer(i)->getBuffer();
         materialBufferInfo.offset = 0;
         materialBufferInfo.range = sizeof(GPUMaterialData);
 
-        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(materialDescriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &materialBufferInfo));
+        descriptorWrites.push_back(DescriptorUtils::createBufferDescriptorWriteSet(materialDescriptorSets[i], 1, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, &materialBufferInfo));*/
 
         vkUpdateDescriptorSets(deviceInfo->getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }

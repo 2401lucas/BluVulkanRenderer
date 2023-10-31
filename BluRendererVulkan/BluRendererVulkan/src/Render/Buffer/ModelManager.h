@@ -9,6 +9,21 @@
 #include "../Buffer/MappedBufferManager.h"
 #include "../Descriptors/Types/UBO/UBO.h"
 
+struct TextureData {
+	Image* texture;
+	Image* specular;
+	Image* diffuse;
+
+	TextureData(Image* texture, Image* specular, Image* diffuse) 
+		: texture(texture), specular(specular), diffuse(diffuse) {}
+
+	void cleanup(Device* deviceInfo) {
+		texture->cleanup(deviceInfo);
+		specular->cleanup(deviceInfo);
+		diffuse->cleanup(deviceInfo);
+	}
+};
+
 class ModelManager {
 public:
 	ModelManager(Device* deviceInfo);
@@ -19,13 +34,9 @@ public:
 	void drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index);
 	void loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos);
 	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
-	void loadMaterials(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials);
 
-	std::vector<Image*>& getTextures();
+	std::vector<TextureData>& getTextures();
 	uint32_t getTextureIndex(const char* path);
-
-	GPUMaterialData& getMaterials();
-	uint32_t getMaterialIndex();
 
 	void updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex);
 	//Index 0 Camera.
@@ -45,10 +56,7 @@ private:
 	std::vector<PushConstantData> modelData;
 
 	std::vector<TextureInfo> textureInfos;
-	std::vector<Image*> textures;
-
-	std::vector<MaterialInfo> materialInfos;
-	GPUMaterialData mat;
+	std::vector<TextureData> textures;
 
 	MappedBufferManager* cameraMappedBufferManager;
 	MappedBufferManager* sceneMappedBufferManager;

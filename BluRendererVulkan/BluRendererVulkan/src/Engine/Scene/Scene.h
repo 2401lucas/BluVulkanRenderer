@@ -6,13 +6,15 @@
 
 struct SceneLight {
 	int lightType;
-	glm::vec3 lightPosition; // X,Y,Z Position
-	glm::vec3 lightRotation; // X,Y,Z Rotation
+	glm::vec3 lightPosition;	// XYZ Position
+	glm::vec3 lightRotation;	// XYZ Rotation
 	glm::vec4 lightColor;
+	float constant;
+	float linear;
+	float quad;
 
-	SceneLight(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 color)
-		: lightType(lightType), lightPosition(pos), lightRotation(rot), lightColor(color) {
-	}
+	SceneLight(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 color, float constant, float linear, float quad)
+		: lightType(lightType), lightPosition(pos), lightRotation(rot), lightColor(color), constant(constant), linear(linear), quad(quad) {}
 };
 
 struct SceneCamera {
@@ -82,10 +84,10 @@ struct SceneInfo {
 		fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
 		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.0, 0.5, 0.5), glm::vec4(1.0, 1.0, 1.0, 1)));
 		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.5, 0.5, 0), glm::vec4(1.0, 1.0, 1.0, 1)));
-		lights.push_back(SceneLight(2, glm::vec3(-5.0f, -5.0f, 2.0f), glm::vec3(0.0), glm::vec4(1.0, 1.0, 1.0, 1)));
-		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.jpg", 0, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
+		lights.push_back(SceneLight(2, glm::vec3(-5.0f, -5.0f, 3.0f), glm::vec3(0.0), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
+		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/container.png", 1, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", 1, glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
+		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", 1, glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/stanford-bunny.obj", "textures/simpleColour.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
 	}
@@ -110,9 +112,11 @@ struct ShaderInfo
 
 struct TextureInfo {
 	std::string fileName;
+	std::string fileType;
+	bool hasMaps;
 
-	TextureInfo(const std::string& fName)
-		: fileName(fName) {}
+	TextureInfo(const std::string& fName, const std::string& fType, bool hasMaps)
+		: fileName(fName), fileType(fType), hasMaps(hasMaps) {}
 };
 
 struct MaterialInfo {

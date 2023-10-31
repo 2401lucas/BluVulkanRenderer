@@ -31,7 +31,6 @@ int BluRendererVulkan::run(int argc, char** argv)
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);
-	//TODO: Generate Build settings with all possible Shaders, Materials and Such
 	Scene scene = Scene("temp");
 	renderManager = std::make_unique<RenderManager>(windowManager->getWindow(), appInfo, deviceSettings);
 	engineCore = std::make_unique<EngineCore>();

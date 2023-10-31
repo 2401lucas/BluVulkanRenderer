@@ -33,9 +33,9 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding};
 
-    VkDescriptorSetLayoutBinding textureSamplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, buildDependencies.textures.size(), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
-    VkDescriptorSetLayoutBinding materialLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
-    std::vector<VkDescriptorSetLayoutBinding> materialBindings = { textureSamplerLayoutBinding, materialLayoutBinding };
+    VkDescriptorSetLayoutBinding textureSamplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, buildDependencies.textures.size() * 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    //VkDescriptorSetLayoutBinding materialLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    std::vector<VkDescriptorSetLayoutBinding> materialBindings = { textureSamplerLayoutBinding};
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
@@ -45,7 +45,6 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     modelManager = new ModelManager(device);
     modelManager->loadTextures(device, graphicsCommandPool, buildDependencies.textures);
-    modelManager->loadMaterials(device, graphicsCommandPool, buildDependencies.materials);
     descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelManager);
     graphicsCommandPool->createCommandBuffers(device);
     

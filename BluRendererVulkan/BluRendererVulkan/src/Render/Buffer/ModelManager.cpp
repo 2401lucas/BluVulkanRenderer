@@ -30,8 +30,7 @@ void ModelManager::cleanup(Device* deviceInfo)
     }
 
     for (auto texture : textures) {
-        texture->cleanup(deviceInfo);
-        delete texture;
+        texture.cleanup(deviceInfo);
     }
 
     cameraMappedBufferManager->cleanup(deviceInfo);
@@ -91,8 +90,7 @@ void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer, const uint3
     vkCmdDrawIndexed(commandBuffer, models[index]->getMesh()->getIndices().size(), 1, 0, 0, 0);
 }
 
-void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex)
-{
+void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex) {
     // Vertex
     GPUCameraData ubo{};
     ubo.view = camera->getViewMat();
@@ -110,7 +108,7 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     int numOfLights = sceneInfo->lights.size();
     for (uint32_t i = 0; i < numOfLights; i++)
     {
-        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor);
+        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor, sceneInfo->lights[i].constant, sceneInfo->lights[i].linear, sceneInfo->lights[i].quad);
     }
     scn.ambientColor = sceneInfo->ambientColor;
     scn.cameraPosition = glm::vec4(sceneInfo->cameras[0].position, numOfLights);
@@ -123,8 +121,7 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
 //Index 0 Camera.
 //Index 1 Scene
 //Index 2 Material
-MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index)
-{
+MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index) {
     switch (index) {
     case 0: return cameraMappedBufferManager;
     case 1: return sceneMappedBufferManager;
@@ -153,49 +150,24 @@ void ModelManager::loadModels(Device* deviceInfo, CommandPool* commandPool, cons
     }
 }
 
-void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures)
-{
+void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures) {
     textureInfos = textures;
-    this->textures = ImageUtils::createTexturesFromCreateInfo(deviceInfo, commandPool, textures);
-}
 
-void ModelManager::loadMaterials(Device* deviceInfo, CommandPool* commandPool, const std::vector<MaterialInfo>& materials)
-{
-    auto matOffset = DescriptorUtils::padUniformBufferSize(sizeof(Material), deviceInfo->getGPUProperties().limits.minUniformBufferOffsetAlignment);
-    materialInfos = materials;
-
-    for (uint32_t i = 0; i < materials.size(); i++) {
-        mat.materials[i].ambient = glm::vec4(materials[i].ambient, 0);
-        mat.materials[i].diffuse = glm::vec4(materials[i].diffuse, 0);
-        mat.materials[i].specular = glm::vec4(materials[i].specular, materials[i].shininess);
-    }
-    for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++)
+    for(auto& tex : textures)
     {
-        memcpy(materialMappedBufferManager->getMappedBuffer(i), &mat, sizeof(mat));
+        this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_specular" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_diffuse" + tex.fileType).c_str())));
     }
 }
 
-std::vector<Image*>& ModelManager::getTextures()
-{
+std::vector<TextureData>& ModelManager::getTextures() {
     return textures;
 }
 
 //TODO: Implement more optimized search like std::unordered_map with custom hash
-uint32_t ModelManager::getTextureIndex(const char* path)
-{
+uint32_t ModelManager::getTextureIndex(const char* path) {
     for (uint32_t i = 0; i < textureInfos.size(); i++) {
         if (textureInfos[i].fileName == path)
-            return i;
+            return i * 3;
     }
-    return 0;
-}
-
-GPUMaterialData& ModelManager::getMaterials()
-{
-    return mat;
-}
-
-uint32_t ModelManager::getMaterialIndex()
-{
     return 0;
 }
