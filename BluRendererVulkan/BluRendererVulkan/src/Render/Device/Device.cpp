@@ -2,9 +2,8 @@
 #include <stdexcept>
 #include <map>
 #include <set>
-//#include "../include/Settings/vkLayerConfig.h"
 
-const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME,};
+const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME };
 
 Device::Device(GLFWwindow* window, VulkanInstance* vkInstance, DeviceSettings deviceSettings)
 {
