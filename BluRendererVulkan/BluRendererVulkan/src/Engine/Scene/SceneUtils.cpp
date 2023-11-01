@@ -6,6 +6,8 @@ BuildDependancies SceneUtils::getBuildDependencies()
 	BuildDependancies sceneUtils{};
     sceneUtils.shaders.push_back(ShaderInfo(shaderType::VERTEX, "vert.spv"));
     sceneUtils.shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "frag.spv"));
+    sceneUtils.shaders.push_back(ShaderInfo(shaderType::VERTEX, "wireframeVert.spv"));
+    sceneUtils.shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "wireframeFrag.spv"));
     sceneUtils.textures.push_back(TextureInfo("textures/Container/container", ".png", true));
     //Emerald
     sceneUtils.materials.push_back(MaterialInfo(glm::vec3(0.0215f, 0.1745f, 0.0215f), glm::vec3(0.07568f, 0.61424f, 0.07568f), glm::vec3(0.633f, 0.727811f, 0.633f), 0.6));

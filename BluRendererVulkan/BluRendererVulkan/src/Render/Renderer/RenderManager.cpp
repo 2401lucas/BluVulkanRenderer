@@ -40,7 +40,8 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
-    graphicsPipeline = new GraphicsPipeline(device, buildDependencies.shaders, descriptorSetLayouts, renderPass);
+    standardGraphicsPipeline = new GraphicsPipeline(device, { buildDependencies.shaders[0], buildDependencies.shaders[1] }, descriptorSetLayouts, renderPass);
+    wireframeGraphicsPipeline = new GraphicsPipeline(device, { buildDependencies.shaders[2], buildDependencies.shaders[3] }, descriptorSetLayouts, renderPass);
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     modelManager = new ModelManager(device);
@@ -71,8 +72,10 @@ void RenderManager::cleanup()
     delete modelManager;
     graphicsCommandPool->cleanup(device);
     delete graphicsCommandPool;
-    graphicsPipeline->cleanup(device);
-    delete graphicsPipeline;
+    standardGraphicsPipeline->cleanup(device);
+    delete standardGraphicsPipeline;
+    wireframeGraphicsPipeline->cleanup(device);
+    delete wireframeGraphicsPipeline;
     graphicsMaterialDescriptorSetLayout->cleanup(device);
     delete graphicsMaterialDescriptorSetLayout;
     graphicsDescriptorSetLayout->cleanup(device);
@@ -159,14 +162,14 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
 
     auto modelCount = modelManager->getModelCount();
 
-    graphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-    graphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+    wireframeGraphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    wireframeGraphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+    standardGraphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
 
     for (int i = 0; i < modelCount; i++)
     {
         modelManager->bindBuffers(currentCommandBuffer, i);
-        modelManager->updatePushConstants(currentCommandBuffer, graphicsPipeline->getPipelineLayout(), i);
+        modelManager->updatePushConstants(currentCommandBuffer, standardGraphicsPipeline->getPipelineLayout(), i);
 
         modelManager->drawIndexed(currentCommandBuffer, i);
     }
