@@ -4,6 +4,7 @@
 #include "../src/Render/Buffer/Buffer.h"
 #include "../include/RenderConst.h"
 #include <glm/matrix.hpp>
+#include <glm/trigonometric.hpp>
 
 struct GPUCameraData {
 	alignas(16) glm::mat4 view;
@@ -27,11 +28,11 @@ struct LightInfo {
 	//Type 1 - Directional
 	//Type 2 - Point
 	//Type 3 - Spot
-	LightInfo(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 col, float constant, float linear, float quad) {
+	LightInfo(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 col, float constant, float linear, float quad, float innerCutoff, float outerCutoff) {
 		position = glm::vec4(pos, lightType);
-		rotation = glm::vec4(rot, 0);
+		rotation = glm::vec4(rot, glm::radians(innerCutoff));
 		colour = col;
-		distInfo = glm::vec4(constant, linear, quad, 0);
+		distInfo = glm::vec4(constant, linear, quad, glm::radians(outerCutoff));
 	}
 };
 

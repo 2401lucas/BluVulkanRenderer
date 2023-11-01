@@ -108,7 +108,7 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     int numOfLights = sceneInfo->lights.size();
     for (uint32_t i = 0; i < numOfLights; i++)
     {
-        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor, sceneInfo->lights[i].constant, sceneInfo->lights[i].linear, sceneInfo->lights[i].quad);
+        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor, sceneInfo->lights[i].constant, sceneInfo->lights[i].linear, sceneInfo->lights[i].quad, sceneInfo->lights[i].innerCutoff, sceneInfo->lights[i].outerCutoff);
     }
     scn.ambientColor = sceneInfo->ambientColor;
     scn.cameraPosition = glm::vec4(sceneInfo->cameras[0].position, numOfLights);
@@ -118,7 +118,7 @@ void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const
     memcpy(sceneMappedBufferManager->getMappedBuffer(bufferIndex), &scn, sizeof(scn));
 }
 
-//Index 0 Camera.
+//Index 0 Camera
 //Index 1 Scene
 //Index 2 Material
 MappedBufferManager* ModelManager::getMappedBufferManager(uint32_t index) {

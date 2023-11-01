@@ -12,9 +12,39 @@ struct SceneLight {
 	float constant;
 	float linear;
 	float quad;
+	float innerCutoff;
+	float outerCutoff;
 
-	SceneLight(int lightType, glm::vec3 pos, glm::vec3 rot, glm::vec4 color, float constant, float linear, float quad)
-		: lightType(lightType), lightPosition(pos), lightRotation(rot), lightColor(color), constant(constant), linear(linear), quad(quad) {}
+	//Directional Light
+	SceneLight(glm::vec3 rot, glm::vec4 color) 
+		: lightRotation(rot), lightColor(color) {
+		lightType = 1,
+		lightPosition = glm::vec3(0);
+		constant = 0;
+		linear = 0;
+		quad = 0;
+		innerCutoff = 0;
+		outerCutoff = 0;
+	}
+
+	//Point Light
+	SceneLight(glm::vec3 pos, glm::vec4 color, float constant, float linear, float quad)
+		: lightType(lightType), lightPosition(pos), lightColor(color), constant(constant), linear(linear), quad(quad) {
+		lightType = 2,
+		lightRotation = glm::vec3(0);
+		innerCutoff = 0;
+		outerCutoff = 0;
+	}
+
+	//Spot Light
+	SceneLight(glm::vec3 pos, glm::vec3 rot, glm::vec4 color, float innerCutoff, float outerCutoff)
+		: lightPosition(pos), lightRotation(rot), lightColor(color), innerCutoff(innerCutoff), outerCutoff(outerCutoff) {
+		lightType = 3,
+		constant = 0;
+		linear = 0;
+		quad = 0;
+	}
+
 };
 
 struct SceneCamera {
@@ -70,7 +100,7 @@ struct SceneInfo {
 	//Models---------------------------
 	std::vector<SceneModel> staticModels;
 	std::vector<SceneModel> dynamicModels;
-	//Ligting--------------------------
+	//Lighting--------------------------
 	std::vector<SceneLight> lights;
 
 	//Fog------------------------------
@@ -84,7 +114,8 @@ struct SceneInfo {
 		fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
 		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.0, 0.5, 0.5), glm::vec4(1.0, 1.0, 1.0, 1)));
 		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.5, 0.5, 0), glm::vec4(1.0, 1.0, 1.0, 1)));
-		lights.push_back(SceneLight(2, glm::vec3(-5.0f, -5.0f, 3.0f), glm::vec3(0.0), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
+		lights.push_back(SceneLight(glm::vec3(-5.0f, -5.0f, 3.0f), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
+		//lights.push_back(SceneLight(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.45, 0.45, 0.1), glm::vec4(1.0, 1.0, 1.0, 5), 1, 1.5));
 		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/container.png", 1, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", 1, glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
