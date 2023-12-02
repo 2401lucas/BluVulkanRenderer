@@ -40,14 +40,19 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
-    standardGraphicsPipeline = new GraphicsPipeline(device, { buildDependencies.shaders[0], buildDependencies.shaders[1] }, descriptorSetLayouts, renderPass);
-    wireframeGraphicsPipeline = new GraphicsPipeline(device, { buildDependencies.shaders[2], buildDependencies.shaders[3] }, descriptorSetLayouts, renderPass);
+    
+    graphicsPipelines.resize(buildDependencies.shaders.size() / 2);
+    for (size_t i = 0; i < graphicsPipelines.size(); i++)
+    {
+        graphicsPipelines[i] = new GraphicsPipeline(device, { buildDependencies.shaders[i * 2], buildDependencies.shaders[i * 2 + 1] }, descriptorSetLayouts, renderPass);
+    }
+
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    graphicsCommandPool->createCommandBuffers(device);
 
     modelManager = new ModelManager(device);
     modelManager->loadTextures(device, graphicsCommandPool, buildDependencies.textures);
     descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelManager);
-    graphicsCommandPool->createCommandBuffers(device);
     
     //TODO Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
     camera = new Camera(glm::fvec3(2.0f, 2.0f, 2.0f), glm::fvec3(0.0f, 0.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
@@ -72,10 +77,10 @@ void RenderManager::cleanup()
     delete modelManager;
     graphicsCommandPool->cleanup(device);
     delete graphicsCommandPool;
-    standardGraphicsPipeline->cleanup(device);
-    delete standardGraphicsPipeline;
-    wireframeGraphicsPipeline->cleanup(device);
-    delete wireframeGraphicsPipeline;
+    for(GraphicsPipeline* pipeline : graphicsPipelines) {
+        pipeline->cleanup(device);
+        delete pipeline;
+    }
     graphicsMaterialDescriptorSetLayout->cleanup(device);
     delete graphicsMaterialDescriptorSetLayout;
     graphicsDescriptorSetLayout->cleanup(device);
@@ -128,7 +133,7 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
         throw std::runtime_error("failed to acquire swap chain image!");
     }
 
-    //TODO: Support multiple cameras
+    //TODO Camera manager?
     camera->updateCamera(sceneInfo->cameras[0]);
     //TODO: Load models only when the model list is updated
     if (!temp)

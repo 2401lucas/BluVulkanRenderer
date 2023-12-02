@@ -31,9 +31,7 @@ private:
 	Swapchain* swapchain;
 	Descriptor* graphicsDescriptorSetLayout;
 	Descriptor* graphicsMaterialDescriptorSetLayout;
-	GraphicsPipeline* standardGraphicsPipeline;
-	GraphicsPipeline* pbrGraphicsPipeline;
-	GraphicsPipeline* wireframeGraphicsPipeline;
+	std::vector<GraphicsPipeline*> graphicsPipelines;
 	CommandPool* graphicsCommandPool;
 	ModelManager* modelManager;
 	DescriptorSetManager* descriptorManager;

@@ -37,7 +37,8 @@ void ModelManager::cleanup(Device* deviceInfo)
     delete cameraMappedBufferManager;
 }
 
-//TODO: createVertexBuffer & createIndexBuffer shares a lot of code
+//TODO: createVertexBuffer & createIndexBuffer shares a lot of code 
+// Instead of creating a buffer per model, compile model vertices into singular array and create singlular buffer
 void ModelManager::createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices)
 {
     VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
