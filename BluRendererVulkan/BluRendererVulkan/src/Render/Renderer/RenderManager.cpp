@@ -42,8 +42,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
     
     graphicsPipelines.resize(buildDependencies.shaders.size() / 2);
-    for (size_t i = 0; i < graphicsPipelines.size(); i++)
-    {
+    for (size_t i = 0; i < graphicsPipelines.size(); i++) {
         graphicsPipelines[i] = new GraphicsPipeline(device, { buildDependencies.shaders[i * 2], buildDependencies.shaders[i * 2 + 1] }, descriptorSetLayouts, renderPass);
     }
 
@@ -165,18 +164,14 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     swapchain->setViewport(currentCommandBuffer);
     swapchain->setScissor(currentCommandBuffer);
 
-    auto modelCount = modelManager->getModelCount();
+    // BindBuffers -> Command Buffer, model ID
 
-    wireframeGraphicsPipeline->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
-    wireframeGraphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-    standardGraphicsPipeline->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
 
-    for (int i = 0; i < modelCount; i++)
-    {
-        modelManager->bindBuffers(currentCommandBuffer, i);
-        modelManager->updatePushConstants(currentCommandBuffer, standardGraphicsPipeline->getPipelineLayout(), i);
-
-        modelManager->drawIndexed(currentCommandBuffer, i);
+    for (int i = 0; i < graphicsPipelines.size(); i++) {
+        graphicsPipelines[i]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+        graphicsPipelines[i]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+    
+        modelManager->drawModels(currentCommandBuffer, i);
     }
 
     renderPass->endRenderPass(currentCommandBuffer);

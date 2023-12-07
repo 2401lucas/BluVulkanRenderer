@@ -5,11 +5,16 @@
 #include "../Math/MathUtils.h"
 #include "../Image/ImageUtils.h"
 
-ModelManager::ModelManager(Device* deviceInfo)
+ModelManager::ModelManager(Device* deviceInfo, const int& numPipelines)
 {
     cameraMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     materialMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUMaterialData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    // TODO: sizeof(Vertex) * 1000000 is a placeholder value
+    for (size_t i = 0; i < numPipelines; i++) {
+        pipelineVertexBuffers.push_back(new Buffer(deviceInfo, sizeof(Vertex) * 1000000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+    }
 }
 
 void ModelManager::cleanup(Device* deviceInfo)
@@ -29,7 +34,7 @@ void ModelManager::cleanup(Device* deviceInfo)
         delete model;
     }
 
-    for (auto texture : textures) {
+    for (auto texture : textures) { 
         texture.cleanup(deviceInfo);
     }
 
@@ -38,7 +43,6 @@ void ModelManager::cleanup(Device* deviceInfo)
 }
 
 //TODO: createVertexBuffer & createIndexBuffer shares a lot of code 
-// Instead of creating a buffer per model, compile model vertices into singular array and create singlular buffer
 void ModelManager::createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices)
 {
     VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
@@ -71,6 +75,43 @@ void ModelManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPoo
     delete indexStagingBuffer;
 }
 
+//Single buffer per pipeline, dynamically sized
+void ModelManager::drawModels(const VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t& frameIndex, const int32_t& pipelineIndex)
+{
+    VkDeviceSize offsets[] = { 0 };
+
+    auto vertBuff = pipelineVertexBuffers[pipelineIndex]->getBuffer();
+    auto indBuff = pipelineVertexBuffers[pipelineIndex]->getBuffer();
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertBuff, offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indBuff, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &modelData[frameIndex]);
+
+    // Vertex Buffers aka Mesh Data, Index Buffers AKA Mesh Data IDs, Push Consts AKA texture data IDs
+    
+    //Needs to specify how many models to draw, and the vertex offset per model
+    //Model->
+    //MeshPath(ModelID)
+    //ShaderPath
+    //TexturePath
+    //Transform Data
+    //
+
+    //ModelManager(Engine)(Models*)->
+    //Holds model data
+    //ModelManager(Renderer)
+    // Holds raw Mesh data
+    //Compile Vertices into Pipeline respective buffers
+    //Compile Indices into Pipeline respective buffers
+    //
+
+    int indexOffset = 0;
+    // For each model in models with matching pipelineIndex
+    for(auto model : models) {
+        vkCmdDrawIndexed(commandBuffer, model->getMesh()->getIndices().size(), 1, indexOffset, 0, 0);
+        indexOffset += model->getMesh()->getIndices().size();
+    }
+}
+
 void ModelManager::bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index)
 {
     VkDeviceSize offsets[] = { 0 };
@@ -88,7 +129,7 @@ void ModelManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelin
 
 void ModelManager::drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index)
 {
-    vkCmdDrawIndexed(commandBuffer, models[index]->getMesh()->getIndices().size(), 1, 0, 0, 0);
+    
 }
 
 void ModelManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex) {
