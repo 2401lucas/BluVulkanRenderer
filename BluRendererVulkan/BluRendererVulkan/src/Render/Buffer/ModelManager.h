@@ -26,9 +26,10 @@ struct TextureData {
 
 class ModelManager {
 public:
-	ModelManager(Device* deviceInfo);
+	ModelManager(Device* deviceInfo, const int& numPipelines);
 	void cleanup(Device* deviceInfo);
 
+	void drawModels(const VkCommandBuffer& commandBuffer, const int32_t pipelineIndex);
 	void bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index);
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index);
 	void drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index);
@@ -49,6 +50,9 @@ private:
 	void createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices);
 	void createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices);
 	
+	std::vector<Buffer*> pipelineVertexBuffers;
+	std::vector<Buffer*> pipelineIndexBuffers;
+
 	std::vector<Buffer*> vertexBuffers;
 	std::vector<Buffer*> indexBuffers;
 
