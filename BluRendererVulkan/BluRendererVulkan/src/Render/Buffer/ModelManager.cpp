@@ -84,7 +84,7 @@ void ModelManager::drawModels(const VkCommandBuffer& commandBuffer, VkPipelineLa
     auto indBuff = pipelineVertexBuffers[pipelineIndex]->getBuffer();
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertBuff, offsets);
     vkCmdBindIndexBuffer(commandBuffer, indBuff, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &modelData[frameIndex]);
+    vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), &modelData[modelIndex]);
 
     // Vertex Buffers aka Mesh Data, Index Buffers AKA Mesh Data IDs, Push Consts AKA texture data IDs
     
