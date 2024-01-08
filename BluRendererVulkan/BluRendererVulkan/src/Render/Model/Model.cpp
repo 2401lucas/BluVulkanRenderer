@@ -1,11 +1,12 @@
 #include "Model.h"
 
-Model::Model(const SceneModel& modelInfo, uint32_t textureIndex, uint32_t materialIndex)
-	: textureIndex(textureIndex), materialIndex(materialIndex) {
-	mesh = new Mesh(modelInfo.modelPath);
-	position = modelInfo.position;
-	rotation = modelInfo.rotation;
-	scale = modelInfo.scale;
+Model::Model(const SceneModel& modelInfo, uint32_t textureIndex, uint32_t textureType)
+	: textureIndex(textureIndex), textureType(textureType) {
+	mesh			= new Mesh(modelInfo.modelPath);
+	materialIndex	= modelInfo.materialIndex;
+	position		= modelInfo.position;
+	rotation		= modelInfo.rotation;
+	scale			= modelInfo.scale;
 }
 
 void Model::cleanup()
@@ -20,6 +21,11 @@ Mesh* Model::getMesh()
 }
 
 uint32_t Model::getTextureIndex()
+{
+	return textureIndex;
+}
+
+uint32_t Model::getTextureType()
 {
 	return textureIndex;
 }
