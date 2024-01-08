@@ -32,11 +32,18 @@ int BluRendererVulkan::run(int argc, char** argv)
 	deviceSettings.enabledFragShaderBarycentricFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_BARYCENTRIC_FEATURES_KHR; 
 	deviceSettings.enabledFragShaderBarycentricFeatures.fragmentShaderBarycentric = VK_TRUE;
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
-
+	//Prepares window & input handling
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);
-	Scene scene = Scene("temp");
+	//Initializes the Persistant Renderer Components
 	renderManager = std::make_unique<RenderManager>(windowManager->getWindow(), appInfo, deviceSettings);
+	//Initializes the EngineComponenets
 	engineCore = std::make_unique<EngineCore>();
+
+	//Preloads all scene dependencies for rendering manager
+	//TODO: Preload only 1 scene at a time
+	Scene scene = Scene("temp");
+	
+	renderManager->createRenderer(SceneUtils::getBuildDependencies());
 
 	bool isRunning = true;
 	std::chrono::steady_clock::time_point startTime = std::chrono::high_resolution_clock::now();
@@ -46,6 +53,8 @@ int BluRendererVulkan::run(int argc, char** argv)
 	{
 		float frameTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 		startTime = std::chrono::high_resolution_clock::now();
+		//Handle Scene Change (EngineCore Scene setup + recreate Renderer in RenderManager)
+
 		//Handles Events & Input
 		windowManager->handleEvents();
 		// Process Game entities & objects (Send input)

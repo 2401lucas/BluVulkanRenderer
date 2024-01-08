@@ -1,4 +1,5 @@
 #pragma once
+
 #include <glm/vec4.hpp>
 #include <glm/vec3.hpp>
 #include <vector>
@@ -112,7 +113,7 @@ struct SceneInfo {
 		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.5, 0.5, 0), glm::vec4(1.0, 1.0, 1.0, 1)));
 		lights.push_back(SceneLight(glm::vec3(-5.0f, -5.0f, 3.0f), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
 		//lights.push_back(SceneLight(glm::vec3(1.0f, 10.0f, 0.0f), glm::vec3(0.45, 0.45, 0.1), glm::vec4(1.0, 1.0, 1.0, 1), 1, 0.045f, 0.0075f, 1, 1.5));
-		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/container.png", 1, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
+		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.png", 1, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", 1, glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
 		//dynamicModels.push_back(SceneModel("models/stanford-bunny.obj", "textures/simpleColour.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
@@ -137,13 +138,20 @@ struct ShaderInfo
 		: type(sType), fileName(fName) {}
 };
 
+enum textureType
+{
+	BASIC = 1,
+	DIFFSPEC = 2,
+	PBR = 3
+};
+
 struct TextureInfo {
 	std::string fileName;
 	std::string fileType;
-	bool hasMaps;
+	textureType type;
 
-	TextureInfo(const std::string& fName, const std::string& fType, bool hasMaps)
-		: fileName(fName), fileType(fType), hasMaps(hasMaps) {}
+	TextureInfo(const std::string& fName, const std::string& fType, const textureType& type)
+		: fileName(fName), fileType(fType), type(type) {}
 };
 
 struct MaterialInfo {

@@ -5,17 +5,19 @@
 
 class Model {
 public:
-	Model(const SceneModel& modelPath, uint32_t textureIndex, uint32_t materialIndex);
+	Model(const SceneModel& modelPath, uint32_t textureIndex, uint32_t textureType);
     void cleanup();
 
 	Mesh* getMesh();
 	uint32_t getTextureIndex();
+	uint32_t getTextureType();
 	uint32_t getMaterialIndex();
 	glm::vec3& getPosition();
 private:
 	Mesh* mesh;
 	uint32_t textureIndex;
 	uint32_t materialIndex;
+	uint32_t textureType;
 
 	//TODO: Inherit this 
 	glm::vec3 position;
