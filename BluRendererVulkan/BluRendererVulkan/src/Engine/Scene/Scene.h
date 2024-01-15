@@ -62,11 +62,12 @@ struct SceneModel {
 	const char* modelPath;
 	const char* texturePath;
 	int materialIndex;
+	uint32_t pipelineIndex;
 	bool isStatic;
 	bool useGPUInstancing;
 
-	SceneModel(const char* modelPath, const char* texturePath, int materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, bool useGPUInstancing)
-		: modelPath(modelPath), texturePath(texturePath), materialIndex(materialIndex) {
+	SceneModel(const char* modelPath, const char* texturePath, int materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, bool useGPUInstancing, uint32_t pipelineIndex)
+		: modelPath(modelPath), texturePath(texturePath), materialIndex(materialIndex), pipelineIndex(pipelineIndex) {
 		position = glm::vec4(pos, 0);
 		rotation = glm::vec4(rot, useGPUInstancing ? 0 : 1);
 		this->scale = glm::vec4(scale, 0.0f);

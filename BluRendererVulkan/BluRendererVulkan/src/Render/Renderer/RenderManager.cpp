@@ -3,6 +3,7 @@
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Descriptors/Types/UBO/UBO.h"
 #include "../src/Engine/Scene/SceneUtils.h"
+#include "../Mesh/MeshUtils.h"
 
 RenderManager::RenderManager(VulkanInstance* vkInstance, Device* device, const SceneDependancies& sceneDependancies)
 {
@@ -113,8 +114,7 @@ void RenderManager::createSyncObjects(Device* device) {
     }
 }
 
-//TODO: Load static models once
-void RenderManager::drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo)
+void RenderManager::drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo, std::vector<Model*> models)
 {
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
@@ -132,7 +132,7 @@ void RenderManager::drawFrame(Device* device, const bool& framebufferResized, co
     //TODO Camera manager?
     camera->updateCamera(sceneInfo->cameras[0]);
     
-    modelBufferManager->updateUniformBuffers(device, camera, sceneInfo, frameIndex, models);
+    modelBufferManager->updateUniformBuffer(device, camera, sceneInfo, frameIndex, models);
 
     vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
     VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(frameIndex);
@@ -157,25 +157,30 @@ void RenderManager::drawFrame(Device* device, const bool& framebufferResized, co
     
     //Prealloc buffer for bindBuffers
     //can we use 1 vertex & 1 index buffer?
-    //Prepare here
+    modelBufferManager->prepareBuffer(device, graphicsCommandPool, MeshUtils::getVerticesFromModels(models), MeshUtils::getIndicesFromModels(models));
+    modelBufferManager->bindBuffers(currentCommandBuffer);
 
     int boundPipelineId = -1;
-    culledModelList;
-    auto modelCount = culledModelList.size();
+    int vertexOffset = 0;
+    int indexOffset = 0;
+    auto modelCount = models.size();
     for (int i = 0; i < modelCount; i++)
     {
-        if (boundPipelineId != culledModelList.pipelineID)
+        if (boundPipelineId != models[i]->getPipelineIndex())
         {
-            graphicsPipelines[culledModelList.pipelineID]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
-            graphicsPipelines[culledModelList.pipelineID]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-            graphicsPipelines[culledModelList.pipelineID]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+            graphicsPipelines[models[i]->getPipelineIndex()]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+            graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+            graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
         }
         //May not be needed if we use 1 buffer with offsets
         //Keep tally of offset here, incrementing
-        bindBuffers(currentCommandBuffer, i);
-        updatePushConstants(currentCommandBuffer, graphicsPipelines[culledModelList.pipelineID]->getPipelineLayout(), i);
-        //GPU Instancing?
-        drawIndexed(currentCommandBuffer, i);
+        modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[models[i]->getPipelineIndex()]->getPipelineLayout(), i);
+        
+        uint32_t indexCount = models[i]->getMesh()->getIndices().size();
+        modelBufferManager->drawIndexed(currentCommandBuffer, indexCount, vertexOffset, indexOffset);
+
+        vertexOffset += models[i]->getMesh()->getVertices().size();
+        indexOffset += indexCount;
     }
 
     renderPass->endRenderPass(currentCommandBuffer);

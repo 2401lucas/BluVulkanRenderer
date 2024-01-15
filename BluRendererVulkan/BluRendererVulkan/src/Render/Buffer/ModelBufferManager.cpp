@@ -24,10 +24,9 @@ void ModelBufferManager::cleanup(Device* deviceInfo)
     delete materialMappedBufferManager;
 }
 
-void ModelBufferManager::createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices)
+void ModelBufferManager::prepareBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices, std::vector<uint32_t> indices)
 {
     VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
-
     Buffer* vertexStagingBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     vertexStagingBuffer->copyData(deviceInfo, vertices.data(), 0, vertexBufferSize, 0);
 
@@ -36,12 +35,8 @@ void ModelBufferManager::createVertexBuffer(Device* deviceInfo, CommandPool* com
 
     vertexStagingBuffer->freeBuffer(deviceInfo);
     delete vertexStagingBuffer;
-}
 
-void ModelBufferManager::createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices)
-{
     VkDeviceSize indicesBufferSize = sizeof(uint32_t) * indices.size();
-
     Buffer* indexStagingBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     indexStagingBuffer->copyData(deviceInfo, indices.data(), 0, indicesBufferSize, 0);
 
@@ -52,7 +47,7 @@ void ModelBufferManager::createIndexBuffer(Device* deviceInfo, CommandPool* comm
     delete indexStagingBuffer;
 }
 
-void ModelBufferManager::bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index)
+void ModelBufferManager::bindBuffers(const VkCommandBuffer& commandBuffer)
 {
     VkDeviceSize offsets[] = { 0 };
 
@@ -65,9 +60,9 @@ void ModelBufferManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkP
     vkCmdPushConstants(commandBuffer, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstantData), (void*)&pushConstData);
 }
 
-void ModelBufferManager::drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index)
+void ModelBufferManager::drawIndexed(const VkCommandBuffer& commandBuffer, const int32_t& indexCount, const int32_t& vertexOffset, const int32_t& indexOffset)
 {
-    vkCmdDrawIndexed(commandBuffer, models[index]->getMesh()->getIndices().size(), 1, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, indexCount, 1, indexOffset, vertexOffset, 0);
 }
 
 void ModelBufferManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& bufferIndex, std::vector<Model*> models) {
