@@ -17,10 +17,10 @@ int BluRendererVulkan::run(int argc, char** argv)
 {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = "Renderer Example";
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 2);
+	appInfo.pApplicationName = "Blu Renderer";
+	appInfo.applicationVersion = VK_MAKE_VERSION(1, 2, 0);
 	appInfo.pEngineName = "Blu Engine";
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 2);
+	appInfo.engineVersion = VK_MAKE_VERSION(1, 2, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_2;
 
 	DeviceSettings deviceSettings{};
@@ -42,8 +42,6 @@ int BluRendererVulkan::run(int argc, char** argv)
 	//Preloads all scene dependencies for rendering manager
 	//TODO: Preload only 1 scene at a time
 	Scene scene = Scene("temp");
-	
-	renderManager->createRenderer(SceneUtils::getBuildDependencies());
 
 	bool isRunning = true;
 	std::chrono::steady_clock::time_point startTime = std::chrono::high_resolution_clock::now();
