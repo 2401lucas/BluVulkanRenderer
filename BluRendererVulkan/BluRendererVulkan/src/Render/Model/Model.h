@@ -12,9 +12,11 @@ public:
 	uint32_t getTextureIndex();
 	uint32_t getTextureType();
 	uint32_t getMaterialIndex();
+	uint32_t getPipelineIndex();
 	glm::vec3& getPosition();
 private:
 	Mesh* mesh;
+	uint32_t pipelineIndex;
 	uint32_t textureIndex;
 	uint32_t materialIndex;
 	uint32_t textureType;

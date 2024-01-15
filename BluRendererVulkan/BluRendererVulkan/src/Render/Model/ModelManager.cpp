@@ -18,7 +18,7 @@ void ModelManager::cleanup(Device* deviceInfo) {
     }
 }
 
-Model* ModelManager::addModel(const SceneModel& modelCreateInfo) {
+uint32_t ModelManager::addModel(const SceneModel& modelCreateInfo) {
     models.push_back(new Model(modelCreateInfo, getTextureIndex(modelCreateInfo.texturePath), getTextureType(modelCreateInfo.texturePath)));
 }
 

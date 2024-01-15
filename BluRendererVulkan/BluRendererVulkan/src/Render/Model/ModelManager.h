@@ -59,7 +59,7 @@ public:
 	void cleanup(Device* deviceInfo);
 
 	//Models
-	Model* addModel(const SceneModel& modelCreateInfos);
+	uint32_t addModel(const SceneModel& modelCreateInfos);
 	void deleteAllModels();
 	void deleteModel(Model* model);
 	std::list<Model*> getModels();
