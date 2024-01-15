@@ -49,43 +49,31 @@ struct TextureData {
 	}
 };
 
+//Model Settings:
+//Static Models
+//Scene Persistant models(DDOL)
+
 class ModelManager {
 public:
 	ModelManager(Device* deviceInfo);
 	void cleanup(Device* deviceInfo);
 
-	void loadModels(Device* deviceInfo, CommandPool* commandPool, const std::vector<SceneModel> modelCreateInfos);
-	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
-	
-	void bindBuffers(const VkCommandBuffer& commandBuffer, const int32_t index);
-	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const int32_t index);
-	void drawIndexed(const VkCommandBuffer& commandBuffer, const uint32_t& index);
+	//Models
+	Model* addModel(const SceneModel& modelCreateInfos);
+	void deleteAllModels();
+	void deleteModel(Model* model);
+	std::list<Model*> getModels();
 
+	//Textures
+	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
 	std::vector<TextureData>& getTextures();
 	uint32_t getTextureIndex(const char* path);
 	uint32_t getTextureType(const char* path);
 
-	void updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& mappedBufferManagerIndex, const uint32_t& bufferIndex);
-	//Index 0 Camera.
-	//Index 1 Scene
-	//Index 2 Material
-	MappedBufferManager* getMappedBufferManager(uint32_t index);
-	int getModelCount();
 
 private:
-	void createVertexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices);
-	void createIndexBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<uint32_t> indices);
-
-	std::vector<Buffer*> vertexBuffers;
-	std::vector<Buffer*> indexBuffers;
-
-	std::vector<Model*> models;
-	std::vector<PushConstantData> modelData;
-
+	std::list<Model*> models;
+	//TODO: TextureManager
 	std::vector<TextureInfo> textureInfos;
 	std::vector<TextureData> textures;
-
-	MappedBufferManager* cameraMappedBufferManager;
-	MappedBufferManager* sceneMappedBufferManager;
-	MappedBufferManager* materialMappedBufferManager;
 };

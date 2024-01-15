@@ -60,4 +60,3 @@ bool WindowManager::isFramebufferResized()
 {
 	return input.isFramebufferResized();
 }
-

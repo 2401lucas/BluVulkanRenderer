@@ -56,12 +56,14 @@ struct SceneCamera {
 
 // TODO: Repack Memory
 struct SceneModel {
-	const char* modelPath;
-	const char* texturePath;
-	int materialIndex;
 	glm::vec4 position; // X,Y,Z Position	| W isDynamic
 	glm::vec4 rotation; // X,Y,Z Rotation	| W useGPUInstancing
 	glm::vec4 scale;	// X,Y,Z Scale		| W TBD
+	const char* modelPath;
+	const char* texturePath;
+	int materialIndex;
+	bool isStatic;
+	bool useGPUInstancing;
 
 	SceneModel(const char* modelPath, const char* texturePath, int materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, bool useGPUInstancing)
 		: modelPath(modelPath), texturePath(texturePath), materialIndex(materialIndex) {
