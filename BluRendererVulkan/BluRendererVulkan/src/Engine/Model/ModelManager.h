@@ -2,12 +2,6 @@
 #include <vector>
 #include "../Model/Model.h"
 #include "../Image/Image.h"
-#include "../Command/CommandPool.h"
-#include "../Buffer/Buffer.h"
-#include "../Camera/Camera.h"
-#include "../Descriptors/Types/PushConsts/PushConst.h"
-#include "../Buffer/MappedBufferManager.h"
-#include "../Descriptors/Types/UBO/UBO.h"
 
 struct TextureData {
 	Image* texture;	//PBR-> Albedo 
@@ -64,16 +58,6 @@ public:
 	void deleteModel(Model* model);
 	std::list<Model*> getModels();
 
-	//Textures
-	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
-	std::vector<TextureData>& getTextures();
-	uint32_t getTextureIndex(const char* path);
-	uint32_t getTextureType(const char* path);
-
-
 private:
 	std::list<Model*> models;
-	//TODO: TextureManager
-	std::vector<TextureInfo> textureInfos;
-	std::vector<TextureData> textures;
 };
