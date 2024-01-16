@@ -1,42 +1,18 @@
 #include "Model.h"
 
-Model::Model(const SceneModel& modelInfo, uint32_t textureIndex, uint32_t textureType)
-	: textureIndex(textureIndex), textureType(textureType) {
-	mesh			= new Mesh(modelInfo.modelPath);
-	materialIndex	= modelInfo.materialIndex;
-	position		= modelInfo.position;
-	rotation		= modelInfo.rotation;
-	scale			= modelInfo.scale;
+Model::Model(const SceneModel& modelInfo) {
+
 }
 
-void Model::cleanup()
+void Model::cleanup() {
+    for (auto component : components) {
+        //component->cleanup();
+        delete component;
+    }
+}
+
+//The ID of components is derived from the order of the components given when creating an Entity
+BaseComponent* Model::getComponent(uint32_t componentID)
 {
-	mesh->cleanup();
-	delete mesh;
+	return components.at(componentID);
 }
-
-Mesh* Model::getMesh()
-{
-	return mesh;
-}
-
-uint32_t Model::getTextureIndex()
-{
-	return textureIndex;
-}
-
-uint32_t Model::getTextureType()
-{
-	return textureIndex;
-}
-
-uint32_t Model::getMaterialIndex()
-{
-	return materialIndex;
-}
-
-glm::vec3& Model::getPosition()
-{
-	return position;
-}
-
