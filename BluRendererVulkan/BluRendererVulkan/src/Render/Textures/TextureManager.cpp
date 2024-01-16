@@ -1,45 +1,14 @@
-#pragma once
-#include "ModelManager.h"
-#include "../include/RenderConst.h"
-#include "../Descriptors/DescriptorUtils.h"
-#include "../Math/MathUtils.h"
-#include "../Image/ImageUtils.h"
+#include "TextureManager.h"
 
-ModelManager::ModelManager(Device* deviceInfo)
-{
-    
-}
 
-void ModelManager::cleanup(Device* deviceInfo) {
-    deleteAllModels();
+void TextureManager::cleanup(Device* deviceInfo) {
 
     for (auto texture : textures) {
         texture.cleanup(deviceInfo);
     }
 }
 
-uint32_t ModelManager::addModel(const SceneModel& modelCreateInfo) {
-    models.push_back(new Model(modelCreateInfo, getTextureIndex(modelCreateInfo.texturePath), getTextureType(modelCreateInfo.texturePath)));
-}
-
-void ModelManager::deleteAllModels() {
-    for (auto model : models) {
-        model->cleanup();
-        delete model;
-    }
-    models.clear();
-}
-
-std::list<Model*> ModelManager::getModels()
-{
-    return models;
-}
-
-void ModelManager::deleteModel(Model* model) {
-    models.remove(model);
-}
-
-void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures) {
+void TextureManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures) {
     textureInfos = textures;
 
     for (auto& tex : textures) {
@@ -57,18 +26,18 @@ void ModelManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, co
     }
 }
 
-std::vector<TextureData>& ModelManager::getTextures() {
+std::vector<TextureData>& TextureManager::getTextures() {
     return textures;
 }
 
 //TODO: Implement more optimized search like std::unordered_map with custom hash
-uint32_t ModelManager::getTextureIndex(const char* path) {
+uint32_t TextureManager::getTextureIndex(const char* path) {
     int index = 0;
     for (uint32_t i = 0; i < textureInfos.size(); i++) {
         if (textureInfos[i].fileName == path)
             return index;
-        
-        switch(textureInfos[i].type) {
+
+        switch (textureInfos[i].type) {
         case textureType::BASIC:
             index += 1;
             break;
@@ -83,7 +52,7 @@ uint32_t ModelManager::getTextureIndex(const char* path) {
     return 0;
 }
 
-uint32_t ModelManager::getTextureType(const char* path) {
+uint32_t TextureManager::getTextureType(const char* path) {
     for (uint32_t i = 0; i < textureInfos.size(); i++) {
         if (textureInfos[i].fileName == path)
             return textureInfos[i].type;

@@ -47,11 +47,11 @@ RenderManager::RenderManager(VulkanInstance* vkInstance, Device* device, const S
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     graphicsCommandPool->createCommandBuffers(device);
 
-    modelManager = new ModelManager(device);
+    modelBufferManager = new ModelBufferManager(device);
     
     //Loading Textures
-    modelManager->loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
-    descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelManager);
+    textureManager->loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
+    descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, textureManager);
 
     //Pre-update models
 
@@ -75,8 +75,8 @@ void RenderManager::cleanup(Device* device)
     delete camera;
     descriptorManager->cleanup(device);
     delete descriptorManager;
-    modelManager->cleanup(device);
-    delete modelManager;
+    modelBufferManager->cleanup(device);
+    delete modelBufferManager;
     graphicsCommandPool->cleanup(device);
     delete graphicsCommandPool;
     for(GraphicsPipeline* pipeline : graphicsPipelines) {
@@ -172,9 +172,8 @@ void RenderManager::drawFrame(Device* device, const bool& framebufferResized, co
             graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
             graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
         }
-        //May not be needed if we use 1 buffer with offsets
-        //Keep tally of offset here, incrementing
-        modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[models[i]->getPipelineIndex()]->getPipelineLayout(), i);
+
+        modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[models[i]->getPipelineIndex()]->getPipelineLayout(), PushConstantData(glm::vec4(i, models[i]->getTextureType(), models[i]->getTextureIndex(), models[i]->getMaterialIndex())));
         
         uint32_t indexCount = models[i]->getMesh()->getIndices().size();
         modelBufferManager->drawIndexed(currentCommandBuffer, indexCount, vertexOffset, indexOffset);
