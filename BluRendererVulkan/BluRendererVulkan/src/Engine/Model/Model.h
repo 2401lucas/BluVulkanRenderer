@@ -1,28 +1,19 @@
 #pragma once
 #include <vector>
+#include <memory>
 #include "../Mesh/Mesh.h"
 #include "../src/Engine/Scene/SceneUtils.h"
+#include "Components/BaseComponent.h"
 
 class Model {
 public:
-	Model(const SceneModel& modelPath, uint32_t textureIndex, uint32_t textureType);
+	Model(const SceneModel& modelPath);
     void cleanup();
 
-	Mesh* getMesh();
-	uint32_t getTextureIndex();
-	uint32_t getTextureType();
-	uint32_t getMaterialIndex();
-	uint32_t getPipelineIndex();
-	glm::vec3& getPosition();
-private:
-	Mesh* mesh;
-	uint32_t pipelineIndex;
-	uint32_t textureIndex;
-	uint32_t materialIndex;
-	uint32_t textureType;
+	BaseComponent* getComponent(uint32_t componentID);
 
-	//TODO: Inherit this 
-	glm::vec3 position;
-	glm::vec3 rotation;
-	glm::vec3 scale;
+	uint32_t componentID;
+private:
+	//TODO: Ensure memory is contiguous 
+	std::vector<BaseComponent*> components;
 };

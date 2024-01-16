@@ -2,12 +2,12 @@
 #include "ModelManager.h"
 #include "../Math/MathUtils.h"
 
-ModelManager::ModelManager(Device* deviceInfo)
+ModelManager::ModelManager()
 {
     
 }
 
-void ModelManager::cleanup(Device* deviceInfo) {
+void ModelManager::cleanup() {
     deleteAllModels();
 }
 
