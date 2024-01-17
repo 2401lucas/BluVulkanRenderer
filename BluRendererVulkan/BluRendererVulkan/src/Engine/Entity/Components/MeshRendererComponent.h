@@ -49,3 +49,8 @@ struct Vertex {
         return pos == other.pos && color == other.color && texCoord == other.texCoord && normal == other.normal;
     }
 };
+
+struct MeshRenderer {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+};
