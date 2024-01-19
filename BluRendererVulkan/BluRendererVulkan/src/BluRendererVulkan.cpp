@@ -58,7 +58,7 @@ int BluRendererVulkan::run(int argc, char** argv)
 		// Process Game entities & objects (Send input)
 		engineCore->update(frameTime, windowManager->getInput());
 		//Potentially reduce rate of update for physics
-		engineCore->updatePhysics(frameTime);
+		engineCore->fixedUpdate(frameTime);
 
 		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo());
 		currentTime = std::chrono::high_resolution_clock::now();

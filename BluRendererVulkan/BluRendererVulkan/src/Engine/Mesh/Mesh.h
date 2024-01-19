@@ -3,7 +3,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtx/hash.hpp>
-#include "../Model/Components/MeshRendererComponent.h"
+#include "../Entity/Components/MeshRendererComponent.h"
 
 namespace std {
     template<> struct hash<Vertex> {
