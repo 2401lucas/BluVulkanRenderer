@@ -4,6 +4,7 @@
 #include "../Descriptors/Types/UBO/UBO.h"
 #include "../src/Engine/Scene/SceneUtils.h"
 #include "../Mesh/MeshUtils.h"
+#include "RenderModelData.h"
 
 RenderManager::RenderManager(VulkanInstance* vkInstance, Device* device, const SceneDependancies& sceneDependancies)
 {
@@ -114,7 +115,14 @@ void RenderManager::createSyncObjects(Device* device) {
     }
 }
 
-void RenderManager::drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo, std::vector<Model*> models)
+//Models -> Enter Unordered (Need to remember updating Push Consts with model index/texture info)
+//Sum of Vertex/Index size should be saved to prealloc buffers for GPU? Should buffers be dynamically size or have a max size that it cannot exceed?
+//Should there be one buffer per index/vertex, or one for both
+//Lighting data / Camera data also needs to be sent
+//Update the UBO with model info (Should the model data be contiguous(Would that impact the effectiveness of ECS and if so how do other(Unity) systems handle the data transportation to the renderer/How do they manage the pipelines to prevent the rebinding of pipelines))
+//Descriptor sets/Graphics pipeline layout, how many should I have? How do we programmatically create pipelines that share the same GPL? Is there a benefit to multiple Descriptor sets? 
+//Descriptor sets could be split based on static and dynamic models
+void RenderManager::drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo, std::vector<RenderModelData*> models)
 {
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 

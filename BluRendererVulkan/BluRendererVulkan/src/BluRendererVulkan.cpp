@@ -60,7 +60,7 @@ int BluRendererVulkan::run(int argc, char** argv)
 		//Potentially reduce rate of update for physics
 		engineCore->fixedUpdate(frameTime);
 
-		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo());
+		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo(), engineCore->getRendererData());
 		currentTime = std::chrono::high_resolution_clock::now();
 	}
 

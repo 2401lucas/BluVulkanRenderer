@@ -1,3 +1,6 @@
+//OUTDATED - 2024/01/19
+//This is a generic component manager for an ECS system that stores similar components. The current ECS design stores all of an entities data together, prefering to iterate of entities than components;
+
 #include <vector>
 #include <queue>
 
