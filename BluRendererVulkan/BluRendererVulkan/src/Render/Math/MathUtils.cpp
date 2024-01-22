@@ -2,6 +2,7 @@
 #include <glm/matrix.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
+
 glm::fvec3 MathUtils::CalculateForwardFromEulerAngles(const glm::fvec3& eulerAngles) {
     glm::mat4 rotationMatrix = glm::mat4(1.0f);
 
@@ -24,5 +25,18 @@ glm::mat4 MathUtils::ApplyTransformAndRotation(const glm::fvec3& transform, cons
     //newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
 
     newMat = glm::translate(newMat, transform);
+    return newMat;
+}
+
+//TODO: Implement Rotation and Scale
+glm::mat4 MathUtils::TransformToMat4(const Transform* transformData)
+{
+    glm::mat4 newMat = glm::mat4(1.0f);
+
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+
+    newMat = glm::translate(newMat, transformData->position);
     return newMat;
 }

@@ -34,3 +34,9 @@ void EntityChunkManager::removeData(uint64_t id)
 
 	it->removeData(dataId);
 }
+
+uint32_t EntityChunkManager::getSize()
+{
+	std::list<EntityChunk>::iterator it = entityChunks.begin();
+	return it->getSize();
+}

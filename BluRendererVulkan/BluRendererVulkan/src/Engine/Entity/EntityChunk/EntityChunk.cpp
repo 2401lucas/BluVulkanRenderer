@@ -28,3 +28,8 @@ bool EntityChunk::isFull()
 {
 	return false;
 }
+
+uint32_t EntityChunk::getSize()
+{
+	return entityChunkData.size();
+}
