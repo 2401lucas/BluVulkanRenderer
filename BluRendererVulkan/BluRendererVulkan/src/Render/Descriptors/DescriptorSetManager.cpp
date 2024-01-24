@@ -2,10 +2,9 @@
 #include <stdexcept>
 #include "../Descriptors/Types/UBO/UBO.h"
 #include "DescriptorUtils.h"
-#include "../src/Engine//Scene/SceneUtils.h"
 
 
-DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelManager* modelManager)
+DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager& textureManager)
 {
     std::vector<VkDescriptorPoolSize> globalPoolSizes{2, VkDescriptorPoolSize()};
     globalPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -21,7 +20,7 @@ DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector
 
     globalDescriptorPool = new DescriptorPool(deviceInfo, globalPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
     matDescriptorPool = new DescriptorPool(deviceInfo, matPoolSizes, RenderConst::MAX_FRAMES_IN_FLIGHT, 0);
-    createDescriptorSets(deviceInfo, descriptorLayouts, modelManager);
+    createDescriptorSets(deviceInfo, descriptorLayouts, modelBufferManager, textureManager);
 }
 
 void DescriptorSetManager::cleanup(Device* deviceInfo)
@@ -40,7 +39,7 @@ void DescriptorSetManager::cleanup(Device* deviceInfo)
 //Descriptor Set 1 Material Data
 //  Fragment Data: 
 //      An array of all textures up to a max of MAX_TEXTURES, updated only when textures are added (TODO Investigate: Possibly when removed too, but this shouldn't happen often, or at all)
-void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelManager* modelManager)
+void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager& textureManager)
 {
     std::vector<VkDescriptorSetLayout> globalLayout(RenderConst::MAX_FRAMES_IN_FLIGHT, descriptorLayouts[0]);
     VkDescriptorSetAllocateInfo globalAllocInfo{};
@@ -71,12 +70,12 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
 
         //Global Descriptor Set
         VkDescriptorBufferInfo gpuCameraBufferInfo{};
-        gpuCameraBufferInfo.buffer = modelManager->getMappedBufferManager(0)->getUniformBuffer(i)->getBuffer();
+        gpuCameraBufferInfo.buffer = modelBufferManager->getMappedBufferManager(0)->getUniformBuffer(i)->getBuffer();
         gpuCameraBufferInfo.offset = 0;
         gpuCameraBufferInfo.range = sizeof(GPUCameraData);
 
         VkDescriptorBufferInfo gpuSceneBufferInfo{};
-        gpuSceneBufferInfo.buffer = modelManager->getMappedBufferManager(1)->getUniformBuffer(i)->getBuffer();
+        gpuSceneBufferInfo.buffer = modelBufferManager->getMappedBufferManager(1)->getUniformBuffer(i)->getBuffer();
         gpuSceneBufferInfo.offset = 0;
         gpuSceneBufferInfo.range = sizeof(GPUSceneData);
 
@@ -85,7 +84,7 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
 
         //Material Descriptor Set
         std::vector<VkDescriptorImageInfo> textureImageDescriptorInfo;
-        auto& textures = modelManager->getTextures();
+        auto& textures = textureManager.getTextures();
         for (uint32_t matIndex = 0; matIndex < textures.size(); matIndex++) {
             VkDescriptorImageInfo texImageInfo{};
             texImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

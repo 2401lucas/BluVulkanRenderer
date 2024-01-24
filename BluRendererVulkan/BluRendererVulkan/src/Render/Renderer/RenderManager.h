@@ -9,22 +9,24 @@
 #include "../Descriptors/Descriptor.h"
 #include "../Pipeline/GraphicsPipeline.h"
 #include "../Command/CommandPool.h"
-#include "../Model/Model.h"
 #include "../Buffer/Buffer.h"
 #include "../Buffer/ModelBufferManager.h"
 #include "../Descriptors/DescriptorSetManager.h"
-#include "../src/Engine/Scene/Scene.h"
-#include "../Camera/Camera.h"
+#include "RenderSceneData.h"
+#include "../Textures/TextureManager.h"
+
 
 class RenderManager {
 public:
-	RenderManager(VulkanInstance* vkInstance, Device* device, const SceneDependancies& sceneDependancies);
-	void cleanup(Device* device);
-	void drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo, std::vector<Model*> models);
+	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager& textureManager);
+	void cleanup();
+	void drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo, RenderSceneData& sceneData);
 
 private:
-	void createSyncObjects(Device* device);
+	void createSyncObjects();
 
+	VulkanInstance* vkInstance;
+	Device* device;
 	RenderPass* renderPass;
 	Swapchain* swapchain;
 	Descriptor* graphicsDescriptorSetLayout;
@@ -34,7 +36,6 @@ private:
 	ModelBufferManager* modelBufferManager;
 	DescriptorSetManager* descriptorManager;
 	Scene* currentScene;
-	Camera* camera;
 
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;

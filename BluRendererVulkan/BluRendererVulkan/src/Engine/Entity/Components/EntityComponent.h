@@ -1,6 +1,8 @@
 //A default component for all entities
 #pragma once
 
-struct EntityData {
+#include "BaseComponent.h"
+
+struct EntityData : BaseComponent {
 	bool isActive;
 };

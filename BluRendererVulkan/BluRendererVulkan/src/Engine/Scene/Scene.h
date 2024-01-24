@@ -4,6 +4,7 @@
 #include <glm/vec3.hpp>
 #include <vector>
 #include <string>
+#include "../Entity/Components/MaterialComponent.h"
 
 struct SceneLight {
 	int lightType;
@@ -47,8 +48,13 @@ struct SceneLight {
 struct SceneCamera {
 	glm::vec3 position; // X,Y,Z Position
 	glm::vec3 rotation; // X,Y,Z Rotation 
+	float fov;
+	float ratio;
+	float zNear;
+	float zFar;
 
-	SceneCamera(glm::vec3 pos, glm::vec3 rot) {
+	SceneCamera(glm::vec3 pos, glm::vec3 rot, float fov, float ratio, float zNear, float zFar) 
+	: fov(fov), ratio(ratio), zNear(zNear), zFar(zFar) {
 		position = glm::vec4(pos, 0);
 		rotation = glm::vec4(rot, 0);
 	}
@@ -56,20 +62,19 @@ struct SceneCamera {
 
 // TODO: Repack Memory
 struct SceneModel {
-	glm::vec4 position; // X,Y,Z Position	| W isDynamic
-	glm::vec4 rotation; // X,Y,Z Rotation	| W useGPUInstancing
+	glm::vec4 position; // X,Y,Z Position	| W TBD
+	glm::vec4 rotation; // X,Y,Z Rotation	| W TBD
 	glm::vec4 scale;	// X,Y,Z Scale		| W TBD
 	const char* modelPath;
 	const char* texturePath;
+	//This will be read in when loading models from scene file
+	int shaderSetID;
 	int materialIndex;
-	uint32_t pipelineIndex;
-	bool isStatic;
-	bool useGPUInstancing;
 
-	SceneModel(const char* modelPath, const char* texturePath, int materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, bool useGPUInstancing, uint32_t pipelineIndex)
-		: modelPath(modelPath), texturePath(texturePath), materialIndex(materialIndex), pipelineIndex(pipelineIndex) {
+	SceneModel(const char* modelPath, const char* texturePath, const int& shaderPath, const int& materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale)
+		: modelPath(modelPath), texturePath(texturePath), shaderSetID(shaderPath), materialIndex(materialIndex) {
 		position = glm::vec4(pos, 0);
-		rotation = glm::vec4(rot, useGPUInstancing ? 0 : 1);
+		rotation = glm::vec4(rot, 0);
 		this->scale = glm::vec4(scale, 0.0f);
 	}
 
@@ -83,14 +88,6 @@ struct SceneModel {
 
 	glm::vec3 getScale() {
 		return glm::vec3(scale.x, scale.y, scale.z);
-	}
-
-	bool isDynamic() {
-		return position.w == 0;
-	}
-
-	bool useGPUInstancing() {
-		return rotation.w == 0;
 	}
 };
 
@@ -107,21 +104,6 @@ struct SceneInfo {
 	glm::vec4 fogColor; // w is for exponent
 	glm::vec4 fogDistances; //x for min, y for max, zw unused.
 	glm::vec4 ambientColor;
-
-	SceneInfo() {
-		ambientColor = glm::vec4(0.6, 0.5, 0.1, 0.1);
-		fogColor = glm::vec4(0.048f, 0.048f, 0.048f, 1.0f); // Light Gray
-		fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
-		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.0, 0.5, 0.5), glm::vec4(1.0, 1.0, 1.0, 1)));
-		//lights.push_back(SceneLight(1, glm::vec3(0.0f), glm::vec3(0.5, 0.5, 0), glm::vec4(1.0, 1.0, 1.0, 1)));
-		lights.push_back(SceneLight(glm::vec3(-5.0f, -5.0f, 3.0f), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
-		//lights.push_back(SceneLight(glm::vec3(1.0f, 10.0f, 0.0f), glm::vec3(0.45, 0.45, 0.1), glm::vec4(1.0, 1.0, 1.0, 1), 1, 0.045f, 0.0075f, 1, 1.5));
-		dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.png", 1, glm::vec3(-1.0f, -1.0f, -0.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/simpleColour.png", glm::vec3(-2.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		//dynamicModels.push_back(SceneModel("models/viking_room.obj", "textures/viking_room.png", 1, glm::vec3(1.0f, -2.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		//dynamicModels.push_back(SceneModel("models/stanford-bunny.obj", "textures/simpleColour.png", glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f), false));
-		cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
-	}
 };
 
 enum shaderType
@@ -141,19 +123,12 @@ struct ShaderInfo
 		: type(sType), fileName(fName) {}
 };
 
-enum textureType
-{
-	BASIC = 1,
-	DIFFSPEC = 2,
-	PBR = 3
-};
-
 struct TextureInfo {
 	std::string fileName;
 	std::string fileType;
-	textureType type;
+	TextureType type;
 
-	TextureInfo(const std::string& fName, const std::string& fType, const textureType& type)
+	TextureInfo(const std::string& fName, const std::string& fType, const TextureType& type)
 		: fileName(fName), fileType(fType), type(type) {}
 };
 
@@ -167,12 +142,19 @@ struct MaterialInfo {
 		: ambient(ambient), diffuse(diffuse), specular(specular), shininess(shininess) {}
 };
 
+struct SceneDependancies {
+	std::vector<ShaderInfo> shaders;
+	std::vector<TextureInfo> textures;
+	std::vector<MaterialInfo> materials;
+};
+
 class Scene {
 public:
 	Scene(const char* scenePath);
 	
 	void cleanup();
 	SceneInfo* getSceneInfo();
+	SceneDependancies getSceneDependancies();
 
 private:
 	SceneInfo* info;

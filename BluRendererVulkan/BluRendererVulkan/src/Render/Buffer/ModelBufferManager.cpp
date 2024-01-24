@@ -24,6 +24,7 @@ void ModelBufferManager::cleanup(Device* deviceInfo)
     delete materialMappedBufferManager;
 }
 
+//This leaks memory bad, shouldn't be being recreated every frame
 void ModelBufferManager::prepareBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices, std::vector<uint32_t> indices)
 {
     VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
@@ -65,29 +66,37 @@ void ModelBufferManager::drawIndexed(const VkCommandBuffer& commandBuffer, const
     vkCmdDrawIndexed(commandBuffer, indexCount, 1, indexOffset, vertexOffset, 0);
 }
 
-void ModelBufferManager::updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& bufferIndex, std::vector<Model*> models) {
+void ModelBufferManager::updateUniformBuffer(Device* deviceInfo, const uint32_t& bufferIndex, RenderSceneData& sceneData) {
     // Vertex
     GPUCameraData ubo{};
-    ubo.view = camera->getViewMat();
-    ubo.proj = camera->getProjMat();
+    ubo.view = sceneData.cameraData.viewMat;
+    ubo.proj = sceneData.cameraData.projMat;
 
-    auto modelCount = models.size();
-
-    for (int i = 0; i < modelCount; i++) {
-        ubo.model[i] = MathUtils::ApplyTransformAndRotation(models[i]->getPosition(), glm::vec3(0));
+    int uboModelIndex = 0;
+    for (auto& modelData : sceneData.modelData) {
+        for (int i = 0; i < modelData.second.size(); i++, uboModelIndex++) {
+            ubo.model[uboModelIndex] = modelData.second[i].modelTransform;
+        }
     }
 
     // Frag
     GPUSceneData scn{};
-    int numOfLights = sceneInfo->lights.size();
+    int numOfLights = sceneData.lightData.size();
     for (uint32_t i = 0; i < numOfLights; i++) {
-        scn.lightInfo[i] = LightInfo(sceneInfo->lights[i].lightType, sceneInfo->lights[i].lightPosition, sceneInfo->lights[i].lightRotation, sceneInfo->lights[i].lightColor, sceneInfo->lights[i].constant, sceneInfo->lights[i].linear, sceneInfo->lights[i].quad, sceneInfo->lights[i].innerCutoff, sceneInfo->lights[i].outerCutoff);
+        scn.lightInfo[i] = LightInfo(sceneData.lightData[i].lightType, 
+            sceneData.lightData[i].lightPosition, 
+            sceneData.lightData[i].lightRotation, 
+            sceneData.lightData[i].lightColor,
+            sceneData.lightData[i].constant,
+            sceneData.lightData[i].linear,
+            sceneData.lightData[i].quad,
+            sceneData.lightData[i].innerCutoff,
+            sceneData.lightData[i].outerCutoff);
     }
-    scn.ambientColor = sceneInfo->ambientColor;
-    scn.cameraPosition = glm::vec4(sceneInfo->cameras[0].position, numOfLights);
+    scn.ambientColor = glm::vec4(0.1,0.1,0.1,0.1);
+    scn.cameraPosition = glm::vec4(sceneData.cameraData.position, numOfLights);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
-
     memcpy(sceneMappedBufferManager->getMappedBuffer(bufferIndex), &scn, sizeof(scn));
 }
 

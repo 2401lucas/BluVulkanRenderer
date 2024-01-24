@@ -1,5 +1,7 @@
 #pragma once
 
-struct Script {
+#include "BaseComponent.h"
+
+struct Script : BaseComponent{
 
 };

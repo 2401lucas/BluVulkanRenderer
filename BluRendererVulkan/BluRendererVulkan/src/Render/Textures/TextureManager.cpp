@@ -13,13 +13,13 @@ void TextureManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, 
 
     for (auto& tex : textures) {
         switch (tex.type) {
-        case textureType::BASIC:
+        case TextureType::SingleTexture:
             this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str())));
             break;
-        case textureType::DIFFSPEC:
+        case TextureType::Phong:
             this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_specular" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_diffuse" + tex.fileType).c_str())));
             break;
-        case textureType::PBR:
+        case TextureType::PBR:
             this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_normal" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_metallic" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_roughness" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_ao" + tex.fileType).c_str())));
             break;
         }
@@ -38,13 +38,13 @@ uint32_t TextureManager::getTextureIndex(const char* path) {
             return index;
 
         switch (textureInfos[i].type) {
-        case textureType::BASIC:
+        case TextureType::SingleTexture:
             index += 1;
             break;
-        case textureType::DIFFSPEC:
+        case TextureType::Phong:
             index += 3;
             break;
-        case textureType::PBR:
+        case TextureType::PBR:
             index += 5;
             break;
         }
@@ -57,4 +57,5 @@ uint32_t TextureManager::getTextureType(const char* path) {
         if (textureInfos[i].fileName == path)
             return textureInfos[i].type;
     }
+    return 0;
 }

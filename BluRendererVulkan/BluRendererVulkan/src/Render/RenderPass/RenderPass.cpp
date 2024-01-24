@@ -17,7 +17,7 @@ RenderPass::RenderPass(Device* deviceInfo, std::vector<VkAttachmentDescription>&
     }
 }
 
-void RenderPass::cleaup(Device* deviceInfo)
+void RenderPass::cleanup(Device* deviceInfo)
 {
     vkDestroyRenderPass(deviceInfo->getLogicalDevice(), renderPass, nullptr);
 }

@@ -1,20 +1,19 @@
 #pragma once
 #include <vector>
-#include "../Model/Model.h"
 #include "../Image/Image.h"
 #include "../Command/CommandPool.h"
 #include "../Buffer/Buffer.h"
-#include "../Camera/Camera.h"
 #include "../Descriptors/Types/PushConsts/PushConst.h"
 #include "../Buffer/MappedBufferManager.h"
 #include "../Descriptors/Types/UBO/UBO.h"
+#include "../Renderer/RenderSceneData.h"
 
 class ModelBufferManager {
 public:
 	ModelBufferManager(Device* deviceInfo);
 	void cleanup(Device* deviceInfo);
 
-	void updateUniformBuffer(Device* deviceInfo, Camera* camera, const SceneInfo* sceneInfo, const uint32_t& bufferIndex, std::vector<Model*> models);
+	void updateUniformBuffer(Device* deviceInfo, const uint32_t& bufferIndex, RenderSceneData& sceneData);
 	void prepareBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices, std::vector<uint32_t> indices);
 	void bindBuffers(const VkCommandBuffer& commandBuffer);
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const PushConstantData& pushConstData);

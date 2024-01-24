@@ -2,12 +2,11 @@
 #include "../RenderPass/RenderPassUtils.h"
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Descriptors/Types/UBO/UBO.h"
-#include "../src/Engine/Scene/SceneUtils.h"
-#include "../Mesh/MeshUtils.h"
-#include "RenderModelData.h"
 
-RenderManager::RenderManager(VulkanInstance* vkInstance, Device* device, const SceneDependancies& sceneDependancies)
+RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager& textureManager)
 {
+    vkInstance = new VulkanInstance(appInfo);
+    device = new Device(window, vkInstance, deviceSettings);
     swapchain = new Swapchain(device);
 
     VkAttachmentDescription colorAttachment = RenderPassUtils::createAttachmentDescription(swapchain->getSwapchainFormat(), device->getMipSampleCount(), VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -51,21 +50,15 @@ RenderManager::RenderManager(VulkanInstance* vkInstance, Device* device, const S
     modelBufferManager = new ModelBufferManager(device);
     
     //Loading Textures
-    textureManager->loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
-    descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, textureManager);
+    textureManager.loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
+    descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelBufferManager, textureManager);
 
-    //Pre-update models
-
-    //TODO Update to allow transformations & rotations via input, requiring camera to exist not in the render manager. Also take everything non render manager related OUT include Scenes, model loading & more
-    //Also get Camera Info from build dependancies
-    camera = new Camera(glm::fvec3(2.0f, 2.0f, 2.0f), glm::fvec3(0.0f, 0.0f, 0.0f), glm::radians(45.0f), swapchain->getExtentRatio(), 0.1f, 10.0f);
-
-    createSyncObjects(device);
+    createSyncObjects();
 
     frameIndex = 0;
 }
 
-void RenderManager::cleanup(Device* device)
+void RenderManager::cleanup()
 {
     for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device->getLogicalDevice(), renderFinishedSemaphores[i], nullptr);
@@ -73,7 +66,6 @@ void RenderManager::cleanup(Device* device)
         vkDestroyFence(device->getLogicalDevice(), inFlightFences[i], nullptr);
     }
 
-    delete camera;
     descriptorManager->cleanup(device);
     delete descriptorManager;
     modelBufferManager->cleanup(device);
@@ -90,11 +82,15 @@ void RenderManager::cleanup(Device* device)
     delete graphicsDescriptorSetLayout;
     swapchain->cleanup(device);
     delete swapchain;
-    renderPass->cleaup(device);
+    renderPass->cleanup(device);
     delete renderPass;
+    device->cleanup(vkInstance);
+    delete device;
+    vkInstance->cleanup();
+    delete vkInstance;
 }
 
-void RenderManager::createSyncObjects(Device* device) {
+void RenderManager::createSyncObjects() {
     imageAvailableSemaphores.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(RenderConst::MAX_FRAMES_IN_FLIGHT);
@@ -122,7 +118,7 @@ void RenderManager::createSyncObjects(Device* device) {
 //Update the UBO with model info (Should the model data be contiguous(Would that impact the effectiveness of ECS and if so how do other(Unity) systems handle the data transportation to the renderer/How do they manage the pipelines to prevent the rebinding of pipelines))
 //Descriptor sets/Graphics pipeline layout, how many should I have? How do we programmatically create pipelines that share the same GPL? Is there a benefit to multiple Descriptor sets? 
 //Descriptor sets could be split based on static and dynamic models
-void RenderManager::drawFrame(Device* device, const bool& framebufferResized, const SceneInfo* sceneInfo, std::vector<RenderModelData*> models)
+void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo, RenderSceneData& sceneData)
 {
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
@@ -136,11 +132,8 @@ void RenderManager::drawFrame(Device* device, const bool& framebufferResized, co
     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
-
-    //TODO Camera manager?
-    camera->updateCamera(sceneInfo->cameras[0]);
     
-    modelBufferManager->updateUniformBuffer(device, camera, sceneInfo, frameIndex, models);
+    modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
 
     vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
     VkCommandBuffer currentCommandBuffer = graphicsCommandPool->getCommandBuffer(frameIndex);
@@ -165,29 +158,28 @@ void RenderManager::drawFrame(Device* device, const bool& framebufferResized, co
     
     //Prealloc buffer for bindBuffers
     //can we use 1 vertex & 1 index buffer?
-    modelBufferManager->prepareBuffer(device, graphicsCommandPool, MeshUtils::getVerticesFromModels(models), MeshUtils::getIndicesFromModels(models));
+    modelBufferManager->prepareBuffer(device, graphicsCommandPool, sceneData.modelData[0].at(0).meshRenderData.vertices, sceneData.modelData[0].at(0).meshRenderData.indices);
     modelBufferManager->bindBuffers(currentCommandBuffer);
 
-    int boundPipelineId = -1;
     int vertexOffset = 0;
     int indexOffset = 0;
-    auto modelCount = models.size();
-    for (int i = 0; i < modelCount; i++)
+    
+    for (auto& piplineIndex : sceneData.modelData)
     {
-        if (boundPipelineId != models[i]->getPipelineIndex())
+        graphicsPipelines[piplineIndex.first]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
+        graphicsPipelines[piplineIndex.first]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
+        graphicsPipelines[piplineIndex.first]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+        for (int i = 0; i < piplineIndex.second.size(); i++)
         {
-            graphicsPipelines[models[i]->getPipelineIndex()]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
-            graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, 1, descriptorManager->getGlobalDescriptorSet(frameIndex), 0, nullptr);
-            graphicsPipelines[models[i]->getPipelineIndex()]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
+            modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[piplineIndex.first]->getPipelineLayout(), PushConstantData(i, piplineIndex.second[i].materialData));
+
+            //Figure this out
+            uint32_t indexCount = piplineIndex.second.at(0).meshRenderData.indices.size();
+            modelBufferManager->drawIndexed(currentCommandBuffer, indexCount, vertexOffset, indexOffset);
+
+            vertexOffset += piplineIndex.second.at(0).meshRenderData.vertices.size();
+            indexOffset += indexCount;
         }
-
-        modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[models[i]->getPipelineIndex()]->getPipelineLayout(), PushConstantData(glm::vec4(i, models[i]->getTextureType(), models[i]->getTextureIndex(), models[i]->getMaterialIndex())));
-        
-        uint32_t indexCount = models[i]->getMesh()->getIndices().size();
-        modelBufferManager->drawIndexed(currentCommandBuffer, indexCount, vertexOffset, indexOffset);
-
-        vertexOffset += models[i]->getMesh()->getVertices().size();
-        indexOffset += indexCount;
     }
 
     renderPass->endRenderPass(currentCommandBuffer);

@@ -1,12 +1,15 @@
 #pragma once
+
+#include "BaseComponent.h"
+
 enum TextureType {
-	SingleTexture,
-	Phong,
-	PBR,
-	Cubemap,
+	SingleTexture = 0,
+	Phong = 1,
+	PBR = 2,
+	Cubemap = 3,
 };
 
-struct Material {
+struct MaterialData : BaseComponent {
 public:
 	/*const char* modelPath;
 	const char* texturePath;*/
