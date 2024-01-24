@@ -3,6 +3,7 @@
 #include <array>
 #include <vulkan/vulkan_core.h>
 #include <glm/glm.hpp>
+#include "BaseComponent.h"
 
 struct Vertex {
     glm::vec3 pos;
@@ -50,7 +51,7 @@ struct Vertex {
     }
 };
 
-struct MeshRenderer {
+struct MeshRenderer : BaseComponent {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
 };

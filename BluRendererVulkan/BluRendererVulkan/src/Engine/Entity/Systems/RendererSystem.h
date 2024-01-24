@@ -4,13 +4,9 @@
 #include "../Components/MaterialComponent.h"
 #include "../Components/TransformComponent.h"
 #include "../src/Render/Renderer/RenderModelData.h"
+#include "../../../Render/Renderer/RenderSceneData.h"
 
 class RendererSystem {
 public:
-	void clear();
-	void registerModel(MeshRenderer* meshData, Material* materialData, Transform* transformData);
-	std::map<int, std::vector<RenderModelData>>& getRenderData();
-
-private:
-	std::map<int, std::vector<RenderModelData>> renderData;
+	static void registerModel(const MeshRenderer* meshData, const MaterialData* materialData, const Transform* transformData, RenderSceneData& sceneData);
 };

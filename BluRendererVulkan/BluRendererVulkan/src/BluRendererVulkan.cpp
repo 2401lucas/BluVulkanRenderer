@@ -34,14 +34,16 @@ int BluRendererVulkan::run(int argc, char** argv)
 	deviceSettings.msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 	//Prepares window & input handling
 	windowManager = std::make_unique<WindowManager>(appInfo.pApplicationName);
-	//Initializes the Persistant Renderer Components
-	renderManager = std::make_unique<RenderManager>(windowManager->getWindow(), appInfo, deviceSettings);
 	//Initializes the EngineComponenets
 	engineCore = std::make_unique<EngineCore>();
+	//Initializes the Persistant Renderer Components
+	Scene scene = Scene("temp");
+	renderManager = std::make_unique<RenderManager>(windowManager->getWindow(), appInfo, deviceSettings, scene.getSceneDependancies(), engineCore->textureManager);
 
 	//Preloads all scene dependencies for rendering manager
 	//TODO: Preload only 1 scene at a time
-	Scene scene = Scene("temp");
+
+	engineCore->loadScene(&scene);
 
 	bool isRunning = true;
 	std::chrono::steady_clock::time_point startTime = std::chrono::high_resolution_clock::now();
@@ -56,11 +58,11 @@ int BluRendererVulkan::run(int argc, char** argv)
 		//Handles Events & Input
 		windowManager->handleEvents();
 		// Process Game entities & objects (Send input)
-		engineCore->update(frameTime, windowManager->getInput());
+		auto rendererData = engineCore->update(frameTime, windowManager->getInput());
 		//Potentially reduce rate of update for physics
 		engineCore->fixedUpdate(frameTime);
 
-		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo(), engineCore->getRendererData());
+		renderManager->drawFrame(windowManager->isFramebufferResized(), scene.getSceneInfo(), rendererData);
 		currentTime = std::chrono::high_resolution_clock::now();
 	}
 

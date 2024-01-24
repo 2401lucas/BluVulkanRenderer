@@ -2,9 +2,11 @@
 #include <map>
 #include "RenderModelData.h"
 #include "RenderLightData.h"
+#include "RenderCameraData.h"
 
-class RenderSceneData {
+struct RenderSceneData {
 public:
 	std::map<int, std::vector<RenderModelData>> modelData;
-	RenderLightData lightData;
+	std::vector<RenderLightData> lightData;
+	RenderCameraData cameraData;
 };

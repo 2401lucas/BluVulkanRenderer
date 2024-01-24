@@ -2,15 +2,19 @@
 #include "../Input/Input.h"
 #include  "../Entity/EntityManager.h"
 #include  "../../Render/Renderer/RenderSceneData.h"
+#include "../Scene/Scene.h"
+#include "../../Render/Textures/TextureManager.h"
 
 
 class EngineCore {
 public:
 	EngineCore();
 	//TODO: Create EngineTime struct to hold more time data(delta, startup...)
-	void update(const float& frameTime, InputData inputData);
+	RenderSceneData update(const float& frameTime, InputData inputData);
 	void fixedUpdate(const float& frameTime);
-	RenderSceneData& getRendererData();
+	void loadScene(Scene* scene);
+
+	TextureManager textureManager;
 
 private:
 	EntityManager entityManager;

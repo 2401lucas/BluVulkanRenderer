@@ -1,6 +1,7 @@
 #pragma once
 #include "../Image/ImageUtils.h"
 #include "../Image/Image.h"
+#include "../src/Engine/Entity/Components/MaterialComponent.h"
 #include <vector>
 
 struct TextureData {

@@ -1,6 +1,6 @@
 #include "EntityChunk.h"
 
-uint32_t EntityChunk::addEntityData(void* data)
+uint32_t EntityChunk::addEntityData(std::vector<BaseComponent*> data)
 {
 	if (!freeIds.empty()) {
 		auto id = freeIds.front();
@@ -13,7 +13,7 @@ uint32_t EntityChunk::addEntityData(void* data)
 	return (entityChunkData.size() - 1);
 }
 
-void* EntityChunk::getData(uint32_t id)
+std::vector<BaseComponent*> EntityChunk::getData(uint32_t id)
 {
 	return entityChunkData.at(id);
 }
