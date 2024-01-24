@@ -17,6 +17,9 @@ In vulkan, each render pipeline can only support one pair of shaders. This means
 ## Frustum Culling
 Frustum culling is an optimization to minimize GPU drawcalls. In simple terms, this ensures that the only objects that are rendered are objects that are visible to the camera. [Inigo Quilez describes an optimized version of Frustum Culling](http://iquilezles.org/articles/frustumcorrect/) which helps catch some edgecases where certain objects could slip the the cracks and be drawn when not visible.
 
+## The Vertex/Index Buffer
+This was a problem that really stumped me initially. I couldn't really find any inspiration or guidelines on how to handle these buffers. Initially I started by allocating a buffer per model, and updating those buffers every frame. This is obviously bad, but how could I fix this? The solution I settled on was one large buffer only being updated when changes(Addition/Deletes) happen in the scene. While this works, it does have a few problem that need addressing. If models are created and destroyed often, memory fragmentation will occur.(Inset Solution Here) A plus side is this design greatly decrease the information that the MeshRenderer component needs. The only information it requires now is a Bounding Box for culling, and the buffer position for the indices and vertices. The vertices and indices will now be managed by the MeshManager. This design should also make it easier to implement instanced rendering.
+
 ## In the works
 Proper Scene Asset loading & a Scene Editor
 
