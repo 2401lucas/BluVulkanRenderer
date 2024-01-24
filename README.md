@@ -28,13 +28,15 @@ Multi-Threading(Asset Loading, Command Buffer Generation, Frustrum Culling/ECS u
 
 
 ## Resources
+The majority of books I read about Graphics Programming ended up just being tutorials, showing the code and explaining what the code does instead of explaining the overall archetechture or the reasons for what they are programming. The best resource, and my most use resource by far was the Khronos documentation of vulkan. It is extremely detailed and contains all of the required information I needed with a complete explanation of the API. This allowed me to use whatever architecture I wanted. The hard part was coming up with an architecture, and I re-architectured this project a lot. While that may seem frustrating it allowed me to see the shortcomings of my previous designs. With that, I was able to understand the problems I was facing and how to fix them. It ended up giving me a much more in-depth understanding of the relationship of the Hardware, the Renderer and the Engine.
+
+https://registry.khronos.org/vulkan/
+
 https://vulkan-tutorial.com
 
 https://www.gameenginebook.com
 
 https://www.manning.com/books/c-plus-plus-concurrency-in-action-second-edition
-
-https://docs.vulkan.org/spec/latest/index.html
 
 https://learnopengl.com
 
