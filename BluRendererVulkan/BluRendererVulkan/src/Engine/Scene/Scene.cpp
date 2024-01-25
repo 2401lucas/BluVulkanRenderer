@@ -6,18 +6,18 @@ Scene::Scene(const char* scenePath)
 	//TODO: LOAD FROM FILE
 	
 	//Scene Wide
-	info->ambientColor = glm::vec4(0.6, 0.5, 0.1, 0.1);
+	info->ambientColor = glm::vec4(0.6, 0.5, 0.1, 1);
 	info->fogColor = glm::vec4(0.048f, 0.048f, 0.048f, 1.0f); // Light Gray
 	info->fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
 	
 	//Lighting----------------------
-	info->lights.push_back(SceneLight(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec4(1.0, 1.0, 1.0, 5), 1, 0.09f, 0.032f));
+	info->lights.push_back(SceneLight(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec4(1.0, 1.0, 1.0, 10), 1, 0.09f, 0.032f));
 	
 	//Models----------------------------
-	info->dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.png", 0, 1, glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)));
+	info->dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.png", 0, 1, glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(45.0f, 45.0f, 0.0f), glm::vec3(1.0f, 2.0f, 1.0f)));
 	
 	//Camera
-	info->cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), 0.785398/*45 deg in rad*/, 16/9, 0.1f, 10.0f));
+	info->cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), 0.785398163/*45 deg in rad*/, 16/9, 0.1f, 100.0f));
 }
 
 void Scene::cleanup()

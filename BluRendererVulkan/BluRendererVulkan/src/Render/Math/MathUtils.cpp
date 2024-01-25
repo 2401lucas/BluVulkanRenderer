@@ -20,25 +20,25 @@ glm::mat4 MathUtils::ApplyTransformAndRotation(const glm::fvec3& transform, cons
 {
     glm::mat4 newMat = glm::mat4(1.0f);
 
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+    newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
 
     newMat = glm::translate(newMat, transform);
     return newMat;
 }
 
-//TODO: Implement Rotation and Scale
 glm::mat4 MathUtils::TransformToMat4(const Transform* transformData)
 {
-    glm::mat4 newMat = glm::mat4(1.0f);
+    glm::mat4 scale = glm::scale(glm::mat4(1.0f), transformData->scale);
 
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
-    //newMat = glm::rotate(newMat, glm::radians(eulerAngles.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
+    glm::mat4 rotMat = glm::mat4(1.0f);
+    rotMat = glm::rotate(rotMat, glm::radians(transformData->rotation.x), glm::vec3(1.0f, 0.0f, 0.0f)); // Pitch
+    rotMat = glm::rotate(rotMat, glm::radians(transformData->rotation.y), glm::vec3(0.0f, 1.0f, 0.0f)); // Yaw
+    rotMat = glm::rotate(rotMat, glm::radians(transformData->rotation.z), glm::vec3(0.0f, 0.0f, 1.0f)); // Roll
 
-    newMat = glm::translate(newMat, transformData->position);
-    return newMat;
+    glm::mat4 transformMat = glm::translate(glm::mat4(1.0f), transformData->position);
+    return transformMat * rotMat * scale;
 }
 
 void MathUtils::getFrustumPlanes(glm::mat4 mvp, glm::vec4* planes)
