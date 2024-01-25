@@ -28,7 +28,7 @@ Buffer::Buffer(Device* deviceInfo, const VkDeviceSize& bufferSize, const VkBuffe
     vkBindBufferMemory(deviceInfo->getLogicalDevice(), buffer, bufferMemory, 0);
 }
 
-void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, const VkDeviceSize& size)
+void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, const VkDeviceSize& size, const VkDeviceSize& dstOffset = 0)
 {
     VkCommandBuffer commandBuffer;
     commandPool->allocCommandBuffer(deviceInfo, commandBuffer);
@@ -36,6 +36,7 @@ void Buffer::copyBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* sr
 
     VkBufferCopy copyRegion{};
     copyRegion.size = size;
+    copyRegion.dstOffset = dstOffset;
     vkCmdCopyBuffer(commandBuffer, srcBuffer->getBuffer(), buffer, 1, &copyRegion);
 
     commandPool->endCommandBuffer(commandBuffer);

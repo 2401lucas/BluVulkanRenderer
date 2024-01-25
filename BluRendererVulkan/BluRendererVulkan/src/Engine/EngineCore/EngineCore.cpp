@@ -3,6 +3,7 @@
 #include "../Mesh/MeshUtils.h"
 #include "../Entity/Components/CameraComponent.h"
 #include "../Entity/Components/LightComponent.h"
+#include "../Entity/EntityArchetypes.h"
 
 EngineCore::EngineCore()
 {
@@ -13,6 +14,8 @@ RenderSceneData EngineCore::update(const float& frameTime, InputData inputData)
 {
 	RenderSceneData rendererData = entityManager.update();
 
+	rendererData.modelCreateData = meshManager.getRenderModelCreateData();
+	meshManager.clear();
 	return rendererData;
 }
 
@@ -20,7 +23,7 @@ void EngineCore::fixedUpdate(const float& frameTime)
 {
 	//Update Physics based on component type
 }
-
+//TODO: Move
 void EngineCore::loadScene(Scene* scene)
 {
 	auto sceneInfo = scene->getSceneInfo();
@@ -43,11 +46,10 @@ void EngineCore::loadScene(Scene* scene)
 		m->textureType = TextureType::Phong;
 		modelBase.push_back(m);
 
-		MeshRenderer* mr = new MeshRenderer();
-		MeshUtils::getMeshDataFromPath(model.modelPath, mr);
+		MeshRenderer* mr = meshManager.registerModel(model.modelPath);
 		modelBase.push_back(mr);
 
-		entityManager.createEntity(52, modelBase);
+		entityManager.createEntity(TransformComponent + MaterialComponent + MeshRendererComponent, modelBase);
 	}
 
 	for (auto& light : sceneInfo->lights) {
@@ -72,7 +74,7 @@ void EngineCore::loadScene(Scene* scene)
 		l->quad = light.quad;
 		lightBase.push_back(l);
 
-		entityManager.createEntity(12, lightBase);
+		entityManager.createEntity(TransformComponent + LightComponent, lightBase);
 	}
 
 	std::vector<BaseComponent*> cameraBase;
@@ -93,5 +95,5 @@ void EngineCore::loadScene(Scene* scene)
 	camera->zFar = sceneInfo->cameras[0].zFar;
 	cameraBase.push_back(camera);
 
-	entityManager.createEntity(68, cameraBase);
+	entityManager.createEntity(TransformComponent + CameraComponent, cameraBase);
 }

@@ -6,10 +6,10 @@ enum ComponentTypes{
 	InputComponent = 1,
 	ScriptComponent = 2,
 	TransformComponent = 4,
-	LightComponent = 8,
-	MaterialComponent = 16,
-	MeshRendererComponent = 32,
-	CameraComponent = 64,
+	CameraComponent = 8,
+	LightComponent = 16,
+	MaterialComponent = 32,
+	MeshRendererComponent = 64,
 };
 //Component Chunk
 //List Generic Components{Type, Data}

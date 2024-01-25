@@ -4,6 +4,7 @@
 #include  "../../Render/Renderer/RenderSceneData.h"
 #include "../Scene/Scene.h"
 #include "../../Render/Textures/TextureManager.h"
+#include "../Mesh/MeshManager.h"
 
 
 class EngineCore {
@@ -14,6 +15,7 @@ public:
 	void fixedUpdate(const float& frameTime);
 	void loadScene(Scene* scene);
 
+	MeshManager meshManager;
 	TextureManager textureManager;
 
 private:

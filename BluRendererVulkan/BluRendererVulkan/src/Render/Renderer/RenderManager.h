@@ -20,10 +20,13 @@ class RenderManager {
 public:
 	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager& textureManager);
 	void cleanup();
+
 	void drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo, RenderSceneData& sceneData);
 
 private:
 	void createSyncObjects();
+
+	void registerMesh(std::vector<RenderModelCreateData> modelCreateInfo);
 
 	VulkanInstance* vkInstance;
 	Device* device;

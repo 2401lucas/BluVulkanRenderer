@@ -8,5 +8,5 @@
 
 class RendererSystem {
 public:
-	static void registerModel(const MeshRenderer* meshData, const MaterialData* materialData, const Transform* transformData, RenderSceneData& sceneData);
+	static void registerModel(const MeshRenderer* meshData, const MaterialData* materialData, const Transform* transformData, RenderSceneData& sceneData, glm::vec4* frustumPlanes, glm::vec4* frustumCorners);
 };

@@ -6,15 +6,18 @@ ModelBufferManager::ModelBufferManager(Device* deviceInfo)
     cameraMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     materialMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUMaterialData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    vertexBufferAllocator = new BufferAllocator(deviceInfo, 1048576/*1MB*/, 1073741824/*1GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    indexBufferAllocator =  new BufferAllocator(deviceInfo, 1048576/*1MB*/, 1073741824/*256MB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 }
 
 void ModelBufferManager::cleanup(Device* deviceInfo)
 {
-    vertexBuffer->freeBuffer(deviceInfo);
-    delete vertexBuffer;
+    vertexBufferAllocator->cleanup(deviceInfo);
+    delete vertexBufferAllocator;
 
-    indexBuffer->freeBuffer(deviceInfo);
-    delete indexBuffer;
+    indexBufferAllocator->cleanup(deviceInfo);
+    delete indexBufferAllocator;
 
     cameraMappedBufferManager->cleanup(deviceInfo);
     delete cameraMappedBufferManager;
@@ -24,36 +27,18 @@ void ModelBufferManager::cleanup(Device* deviceInfo)
     delete materialMappedBufferManager;
 }
 
-//This leaks memory bad, shouldn't be being recreated every frame
-void ModelBufferManager::prepareBuffer(Device* deviceInfo, CommandPool* commandPool, std::vector<Vertex> vertices, std::vector<uint32_t> indices)
+void ModelBufferManager::loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData)
 {
-    VkDeviceSize vertexBufferSize = sizeof(Vertex) * vertices.size();
-    Buffer* vertexStagingBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    vertexStagingBuffer->copyData(deviceInfo, vertices.data(), 0, vertexBufferSize, 0);
-
-    vertexBuffer = new Buffer(deviceInfo, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vertexBuffer->copyBuffer(deviceInfo, commandPool, vertexStagingBuffer, vertexBufferSize);
-
-    vertexStagingBuffer->freeBuffer(deviceInfo);
-    delete vertexStagingBuffer;
-
-    VkDeviceSize indicesBufferSize = sizeof(uint32_t) * indices.size();
-    Buffer* indexStagingBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    indexStagingBuffer->copyData(deviceInfo, indices.data(), 0, indicesBufferSize, 0);
-
-    indexBuffer = new Buffer(deviceInfo, indicesBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    indexBuffer->copyBuffer(deviceInfo, commandPool, indexStagingBuffer, indicesBufferSize);
-
-    indexStagingBuffer->freeBuffer(deviceInfo);
-    delete indexStagingBuffer;
+    modelData.meshRenderer->vertexMemChunk = vertexBufferAllocator-> allocateBuffer(device, commandPool, modelData.vertices.data(), sizeof(Vertex) * modelData.vertices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    modelData.meshRenderer->indexMemChunk  = indexBufferAllocator->  allocateBuffer(device, commandPool, modelData.indices.data(), sizeof(uint32_t) * modelData.indices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 }
 
 void ModelBufferManager::bindBuffers(const VkCommandBuffer& commandBuffer)
 {
     VkDeviceSize offsets[] = { 0 };
 
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer->getBuffer(), offsets);
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBufferAllocator->getBuffer()->getBuffer(), offsets);
+    vkCmdBindIndexBuffer(commandBuffer, indexBufferAllocator->getBuffer()->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
 }
 
 void ModelBufferManager::updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const PushConstantData& pushConstData)
@@ -93,7 +78,7 @@ void ModelBufferManager::updateUniformBuffer(Device* deviceInfo, const uint32_t&
             sceneData.lightData[i].innerCutoff,
             sceneData.lightData[i].outerCutoff);
     }
-    scn.ambientColor = glm::vec4(0.1,0.1,0.1,0.1);
+    scn.ambientColor = glm::vec4(0.1,0.1,0.1,1);
     scn.cameraPosition = glm::vec4(sceneData.cameraData.position, numOfLights);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));

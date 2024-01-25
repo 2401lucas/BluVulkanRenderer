@@ -5,7 +5,7 @@
 class EntityChunkManager {
 public:
 	uint64_t addEntityData(std::vector<BaseComponent*> data);
-	std::vector<BaseComponent*> getData(uint64_t id);
+	std::vector<BaseComponent*>& getData(uint64_t id);
 	void removeData(uint64_t id);
 	//TODO: Limit Chunks to 16KB & fix this
 	uint32_t getSize();
