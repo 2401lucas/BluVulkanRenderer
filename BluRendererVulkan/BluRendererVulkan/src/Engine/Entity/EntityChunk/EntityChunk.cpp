@@ -13,7 +13,7 @@ uint32_t EntityChunk::addEntityData(std::vector<BaseComponent*> data)
 	return (entityChunkData.size() - 1);
 }
 
-std::vector<BaseComponent*> EntityChunk::getData(uint32_t id)
+std::vector<BaseComponent*>& EntityChunk::getData(uint32_t id)
 {
 	return entityChunkData.at(id);
 }

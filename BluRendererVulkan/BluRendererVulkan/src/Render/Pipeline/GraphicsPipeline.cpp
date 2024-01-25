@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include "GraphicsPipeline.h"
 #include "../Descriptors/Types/PushConsts/PushConst.h"
-#include "../../Engine/Entity/Components/MeshRendererComponent.h"
+#include "../../Engine/Mesh/MeshUtils.h"
 
 //TODO: MODULARIZE
 GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderInfo> shaders, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass* renderPass)

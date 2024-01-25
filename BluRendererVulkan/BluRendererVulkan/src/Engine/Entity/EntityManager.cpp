@@ -12,11 +12,14 @@
 #include "Components/CameraComponent.h"
 #include "Systems/CameraSystem.h"
 #include "Systems/LightSystem.h"
+#include "../../Render/Math/MathUtils.h"
 
-//TODO:
-// 5 Perform culling on models
+
 RenderSceneData EntityManager::update() {
 	RenderSceneData rendererData{};
+	
+	glm::vec4 frustumPlanes[6];
+	glm::vec4 frustumCorners[8];
 
 	for (auto& archetype : registeredEntityArchetypes) {
 		for (uint32_t i = 0; i < archetype.second.getSize(); i++) {
@@ -47,6 +50,21 @@ RenderSceneData EntityManager::update() {
 				transformData = static_cast<Transform*>(components.at(index));
 				index++;
 			}
+			Camera* cameraData;
+			if ((archetype.first & ComponentTypes::CameraComponent) == ComponentTypes::CameraComponent)
+			{
+				cameraData = static_cast<Camera*>(components.at(index));
+				index++;
+
+				CameraSystem::updateCamera(cameraData, transformData);
+
+				MathUtils::getFrustumPlanes(cameraData->proj * cameraData->view, frustumPlanes);
+				MathUtils::getFrustumCorners(cameraData->proj * cameraData->view, frustumCorners);
+
+				rendererData.cameraData.position = transformData->position;
+				rendererData.cameraData.projMat = cameraData->proj;
+				rendererData.cameraData.viewMat = cameraData->view;
+			}
 			//Update Enemies
 			//Update Collision
 			Light* lightData;
@@ -71,19 +89,7 @@ RenderSceneData EntityManager::update() {
 
 				//Perform Culling
 				//Collect indicies of models to be rendered
-				RendererSystem::registerModel(meshRendererData, matData, transformData, rendererData);
-			}
-			Camera* cameraData;
-			if ((archetype.first & ComponentTypes::CameraComponent) == ComponentTypes::CameraComponent) 
-			{
-				cameraData = static_cast<Camera*>(components.at(index));
-				index++;
-
-				CameraSystem::updateCamera(cameraData, transformData);
-
-				rendererData.cameraData.position = transformData->position;
-				rendererData.cameraData.projMat = cameraData->proj;
-				rendererData.cameraData.viewMat = cameraData->view;
+				RendererSystem::registerModel(meshRendererData, matData, transformData, rendererData, frustumPlanes, frustumCorners);
 			}
 		}
 	}
@@ -96,6 +102,10 @@ uint64_t EntityManager::createEntity(uint32_t components, std::vector<BaseCompon
 	if (registeredEntityArchetypes.count(components) == 0) {
 		registeredEntityArchetypes[components] = EntityChunkManager();
 	}
+
+	//The data is already being sent to the renderer(Probably not needed?)
+	//MeshRendererComponent should just hold the position of the data in the buffer?
+	//When loading the models into the vertex buffer, the position of the data can be saved to the MRC
 
 	return registeredEntityArchetypes[components].addEntityData(data);
 }

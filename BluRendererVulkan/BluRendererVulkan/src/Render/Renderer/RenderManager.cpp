@@ -111,15 +111,16 @@ void RenderManager::createSyncObjects() {
     }
 }
 
-//Models -> Enter Unordered (Need to remember updating Push Consts with model index/texture info)
 //Sum of Vertex/Index size should be saved to prealloc buffers for GPU? Should buffers be dynamically size or have a max size that it cannot exceed?
 //Should there be one buffer per index/vertex, or one for both
-//Lighting data / Camera data also needs to be sent
 //Update the UBO with model info (Should the model data be contiguous(Would that impact the effectiveness of ECS and if so how do other(Unity) systems handle the data transportation to the renderer/How do they manage the pipelines to prevent the rebinding of pipelines))
 //Descriptor sets/Graphics pipeline layout, how many should I have? How do we programmatically create pipelines that share the same GPL? Is there a benefit to multiple Descriptor sets? 
 //Descriptor sets could be split based on static and dynamic models
+//Register Models once, only updating the vertex buffer once
 void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo, RenderSceneData& sceneData)
 {
+    registerMesh(sceneData.modelCreateData);
+
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
@@ -155,15 +156,9 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
 
     swapchain->setViewport(currentCommandBuffer);
     swapchain->setScissor(currentCommandBuffer);
-    
-    //Prealloc buffer for bindBuffers
-    //can we use 1 vertex & 1 index buffer?
-    modelBufferManager->prepareBuffer(device, graphicsCommandPool, sceneData.modelData[0].at(0).meshRenderData.vertices, sceneData.modelData[0].at(0).meshRenderData.indices);
+
     modelBufferManager->bindBuffers(currentCommandBuffer);
 
-    int vertexOffset = 0;
-    int indexOffset = 0;
-    
     for (auto& piplineIndex : sceneData.modelData)
     {
         graphicsPipelines[piplineIndex.first]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
@@ -172,13 +167,7 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
         for (int i = 0; i < piplineIndex.second.size(); i++)
         {
             modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[piplineIndex.first]->getPipelineLayout(), PushConstantData(i, piplineIndex.second[i].materialData));
-
-            //Figure this out
-            uint32_t indexCount = piplineIndex.second.at(0).meshRenderData.indices.size();
-            modelBufferManager->drawIndexed(currentCommandBuffer, indexCount, vertexOffset, indexOffset);
-
-            vertexOffset += piplineIndex.second.at(0).meshRenderData.vertices.size();
-            indexOffset += indexCount;
+            modelBufferManager->drawIndexed(currentCommandBuffer, piplineIndex.second[i].meshRenderData.indexCount, piplineIndex.second[i].meshRenderData.vertexMemChunk.offset, piplineIndex.second[i].meshRenderData.indexMemChunk.offset);
         }
     }
 
@@ -227,4 +216,11 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     }
     
     frameIndex = (frameIndex + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
+}
+
+void RenderManager::registerMesh(std::vector<RenderModelCreateData> modelCreateData)
+{
+    for (auto& data : modelCreateData) {
+        modelBufferManager->loadModelIntoBuffer(device, graphicsCommandPool, data);
+    }
 }

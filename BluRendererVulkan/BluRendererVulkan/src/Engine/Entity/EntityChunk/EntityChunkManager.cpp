@@ -14,7 +14,7 @@ uint64_t EntityChunkManager::addEntityData(std::vector<BaseComponent*> data)
 	return id;
 }
 
-std::vector<BaseComponent*> EntityChunkManager::getData(uint64_t id)
+std::vector<BaseComponent*>& EntityChunkManager::getData(uint64_t id)
 {
 	uint32_t chunkId = (uint32_t)(id >> 32);
 	uint32_t dataId = (uint32_t)(id);
