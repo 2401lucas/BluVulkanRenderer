@@ -7,8 +7,8 @@ ModelBufferManager::ModelBufferManager(Device* deviceInfo)
     sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     materialMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUMaterialData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    vertexBufferAllocator = new BufferAllocator(deviceInfo, 1048576/*1MB*/, 1073741824/*1GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    indexBufferAllocator =  new BufferAllocator(deviceInfo, 1048576/*1MB*/, 1073741824/*256MB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vertexBufferAllocator = new BufferAllocator(deviceInfo, 1048576/*1MB*/, 10485760/*1GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    indexBufferAllocator =  new BufferAllocator(deviceInfo, 1048576/*1MB*/, 10485760/*256MB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 }
 
 void ModelBufferManager::cleanup(Device* deviceInfo)
@@ -78,7 +78,8 @@ void ModelBufferManager::updateUniformBuffer(Device* deviceInfo, const uint32_t&
             sceneData.lightData[i].innerCutoff,
             sceneData.lightData[i].outerCutoff);
     }
-    scn.ambientColor = glm::vec4(0.1,0.1,0.1,1);
+
+    scn.ambientColor = glm::vec4(1., 1., 1., 1);
     scn.cameraPosition = glm::vec4(sceneData.cameraData.position, numOfLights);
 
     memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo, sizeof(ubo));
