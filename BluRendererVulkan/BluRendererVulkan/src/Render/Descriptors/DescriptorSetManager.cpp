@@ -4,7 +4,7 @@
 #include "DescriptorUtils.h"
 
 
-DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager& textureManager)
+DescriptorSetManager::DescriptorSetManager(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager* textureManager)
 {
     std::vector<VkDescriptorPoolSize> globalPoolSizes{2, VkDescriptorPoolSize()};
     globalPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -39,7 +39,7 @@ void DescriptorSetManager::cleanup(Device* deviceInfo)
 //Descriptor Set 1 Material Data
 //  Fragment Data: 
 //      An array of all textures up to a max of MAX_TEXTURES, updated only when textures are added (TODO Investigate: Possibly when removed too, but this shouldn't happen often, or at all)
-void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager& textureManager)
+void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, ModelBufferManager* modelBufferManager, TextureManager* textureManager)
 {
     std::vector<VkDescriptorSetLayout> globalLayout(RenderConst::MAX_FRAMES_IN_FLIGHT, descriptorLayouts[0]);
     VkDescriptorSetAllocateInfo globalAllocInfo{};
@@ -84,7 +84,7 @@ void DescriptorSetManager::createDescriptorSets(Device* deviceInfo, const std::v
 
         //Material Descriptor Set
         std::vector<VkDescriptorImageInfo> textureImageDescriptorInfo;
-        auto& textures = textureManager.getTextures();
+        auto& textures = textureManager->getTextures();
         for (uint32_t matIndex = 0; matIndex < textures.size(); matIndex++) {
             VkDescriptorImageInfo texImageInfo{};
             texImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

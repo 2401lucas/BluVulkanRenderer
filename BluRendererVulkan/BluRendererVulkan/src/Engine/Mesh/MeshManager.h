@@ -7,11 +7,8 @@
 
 class MeshManager {
 public:
-	MeshRenderer* registerModel(const char* modelPath);
-	std::vector<RenderModelCreateData> getRenderModelCreateData();
-	void clear();
+	RenderModelCreateData registerModel(const char* modelPath, MeshRenderer* mr);
 
 private:
 	std::vector<MeshData> meshData;
-	std::vector<RenderModelCreateData> renderModelCreateData;
 };

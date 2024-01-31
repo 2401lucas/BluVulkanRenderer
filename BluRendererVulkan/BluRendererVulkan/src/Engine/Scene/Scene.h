@@ -60,19 +60,28 @@ struct SceneCamera {
 	}
 };
 
+struct TextureInfo {
+	std::string fileName;
+	std::string fileType;
+	TextureType type;
+
+	TextureInfo(const std::string& fName, const std::string& fType, const TextureType& type)
+		: fileName(fName), fileType(fType), type(type) {}
+};
+
 // TODO: Repack Memory
 struct SceneModel {
 	glm::vec4 position; // X,Y,Z Position	| W TBD
 	glm::vec4 rotation; // X,Y,Z Rotation	| W TBD
 	glm::vec4 scale;	// X,Y,Z Scale		| W TBD
 	const char* modelPath;
-	const char* texturePath;
+	TextureInfo textureInfo;
 	//This will be read in when loading models from scene file
 	int shaderSetID;
 	int materialIndex;
 
-	SceneModel(const char* modelPath, const char* texturePath, const int& shaderPath, const int& materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale)
-		: modelPath(modelPath), texturePath(texturePath), shaderSetID(shaderPath), materialIndex(materialIndex) {
+	SceneModel(const char* modelPath, TextureInfo textureInfo, const int& shaderPath, const int& materialIndex, glm::vec3 pos, glm::vec3 rot, glm::vec3 scale)
+		: modelPath(modelPath), textureInfo(textureInfo), shaderSetID(shaderPath), materialIndex(materialIndex) {
 		position = glm::vec4(pos, 0);
 		rotation = glm::vec4(rot, 0);
 		this->scale = glm::vec4(scale, 0.0f);
@@ -121,15 +130,6 @@ struct ShaderInfo
 
 	ShaderInfo(const shaderType& sType, const std::string& fName)
 		: type(sType), fileName(fName) {}
-};
-
-struct TextureInfo {
-	std::string fileName;
-	std::string fileType;
-	TextureType type;
-
-	TextureInfo(const std::string& fName, const std::string& fType, const TextureType& type)
-		: fileName(fName), fileType(fType), type(type) {}
 };
 
 struct MaterialInfo {

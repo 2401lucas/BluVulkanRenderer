@@ -11,13 +11,14 @@ Scene::Scene(const char* scenePath)
 	info->fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
 	
 	//Lighting----------------------
-	info->lights.push_back(SceneLight(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec4(1.0, 1.0, 1.0, 10), 1, 0.09f, 0.032f));
+	info->lights.push_back(SceneLight(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec4(1.0, 1.0, 1.0, 100), 1, 0.09f, 0.032f));
 	
 	//Models----------------------------
-	info->dynamicModels.push_back(SceneModel("models/cube.obj", "textures/blue.png", 0, 1, glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(45.0f, 45.0f, 0.0f), glm::vec3(1.0f, 2.0f, 1.0f)));
+	info->dynamicModels.push_back(SceneModel("models/cube.obj", TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1, glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(45.0f, 45.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)));
+	//info->dynamicModels.push_back(SceneModel("models/SpyCar.obj", TextureInfo("textures/SpyCar", ".png", TextureType::Phong), 0, 1, glm::vec3(.0f, .0f, .0f), glm::vec3(90.0f, 180.0f, 0.0f), glm::vec3(.1f, .1f, .1f)));
 	
 	//Camera
-	info->cameras.push_back(SceneCamera(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), 0.785398163/*45 deg in rad*/, 16/9, 0.1f, 100.0f));
+	info->cameras.push_back(SceneCamera(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f), 1.570796326/*90 deg in rad*/, 16/9, 0.1f, 100.0f));
 }
 
 void Scene::cleanup()
@@ -40,7 +41,7 @@ SceneDependancies Scene::getSceneDependancies()
 	
 	//Textures
 	sceneDepen.textures.push_back(TextureInfo("textures/blue", ".png", TextureType::Phong));
-	
+	sceneDepen.textures.push_back(TextureInfo("textures/SpyCar", ".png", TextureType::Phong));
 	//Materials
 
 	//Emerald

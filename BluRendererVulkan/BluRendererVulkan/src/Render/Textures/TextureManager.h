@@ -10,13 +10,17 @@ struct TextureData {
 	Image* diffuse;	//PBR-> Metallic 
 	Image* roughness;
 	Image* ao;
+	Image* image6;
 
+	TextureData() {}
 	TextureData(Image* texture)
 		: texture(texture) {}
 	TextureData(Image* texture, Image* specular, Image* diffuse)
 		: texture(texture), specular(specular), diffuse(diffuse) {}
 	TextureData(Image* albedo, Image* normal, Image* metallic, Image* roughness, Image* ao)
 		: texture(albedo), specular(normal), diffuse(metallic), roughness(roughness), ao(ao) {}
+	TextureData(Image* albedo, Image* normal, Image* metallic, Image* roughness, Image* ao, Image* image6)
+		: texture(albedo), specular(normal), diffuse(metallic), roughness(roughness), ao(ao), image6(image6) {}
 
 	void cleanup(Device* deviceInfo) {
 		texture->cleanup(deviceInfo);
@@ -41,6 +45,11 @@ struct TextureData {
 			ao->cleanup(deviceInfo);
 			delete(ao);
 		}
+
+		if (image6 != nullptr) {
+			image6->cleanup(deviceInfo);
+			delete(image6);
+		}
 	}
 };
 
@@ -48,12 +57,13 @@ class TextureManager {
 public:
 	void cleanup(Device* deviceInfo);
 
-	void loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures);
+	void loadTextures(Device* deviceInfo, CommandPool* commandPool, std::vector<TextureInfo> textureInfo);
 	std::vector<TextureData>& getTextures();
-	uint32_t getTextureIndex(const char* path);
+	uint32_t getTextureIndex(TextureInfo info);
 	uint32_t getTextureType(const char* path);
 
 private:
 	std::vector<TextureInfo> textureInfos;
 	std::vector<TextureData> textures;
+	TextureData skyBox;
 };

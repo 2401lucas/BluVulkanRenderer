@@ -103,9 +103,10 @@ uint64_t EntityManager::createEntity(uint32_t components, std::vector<BaseCompon
 		registeredEntityArchetypes[components] = EntityChunkManager();
 	}
 
-	//The data is already being sent to the renderer(Probably not needed?)
-	//MeshRendererComponent should just hold the position of the data in the buffer?
-	//When loading the models into the vertex buffer, the position of the data can be saved to the MRC
+	//Create Components
+	//Save components
+	//Whats missing:
+	//Load data onto GPU
 
 	return registeredEntityArchetypes[components].addEntityData(data);
 }

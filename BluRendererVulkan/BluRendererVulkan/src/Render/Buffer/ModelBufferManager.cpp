@@ -7,8 +7,8 @@ ModelBufferManager::ModelBufferManager(Device* deviceInfo)
     sceneMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     materialMappedBufferManager = new MappedBufferManager(deviceInfo, RenderConst::MAX_FRAMES_IN_FLIGHT, sizeof(GPUMaterialData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    vertexBufferAllocator = new BufferAllocator(deviceInfo, 1048576/*1MB*/, 10485760/*1GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    indexBufferAllocator =  new BufferAllocator(deviceInfo, 1048576/*1MB*/, 10485760/*256MB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vertexBufferAllocator = new BufferAllocator(deviceInfo, 8388608/*8MB*/, 2294967296/*4.2GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    indexBufferAllocator =  new BufferAllocator(deviceInfo, 8388608/*8MB*/, 2294967296/*4.2GB*/, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 }
 
 void ModelBufferManager::cleanup(Device* deviceInfo)
@@ -27,10 +27,12 @@ void ModelBufferManager::cleanup(Device* deviceInfo)
     delete materialMappedBufferManager;
 }
 
-void ModelBufferManager::loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData)
+std::pair<MemoryChunk, MemoryChunk> ModelBufferManager::loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData)
 {
-    modelData.meshRenderer->vertexMemChunk = vertexBufferAllocator-> allocateBuffer(device, commandPool, modelData.vertices.data(), sizeof(Vertex) * modelData.vertices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    modelData.meshRenderer->indexMemChunk  = indexBufferAllocator->  allocateBuffer(device, commandPool, modelData.indices.data(), sizeof(uint32_t) * modelData.indices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    auto vertexMemChunk = vertexBufferAllocator->allocateBuffer(device, commandPool, modelData.vertices.data(), sizeof(Vertex) * modelData.vertices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    auto indexMemChunk  = indexBufferAllocator->  allocateBuffer(device, commandPool, modelData.indices.data(), sizeof(uint32_t) * modelData.indices.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    std::pair<MemoryChunk, MemoryChunk> memD = std::make_pair(vertexMemChunk, indexMemChunk);
+    return memD;
 }
 
 void ModelBufferManager::bindBuffers(const VkCommandBuffer& commandBuffer)

@@ -1,6 +1,5 @@
 #include "TextureManager.h"
 
-
 void TextureManager::cleanup(Device* deviceInfo) {
 
     for (auto texture : textures) {
@@ -8,10 +7,10 @@ void TextureManager::cleanup(Device* deviceInfo) {
     }
 }
 
-void TextureManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, const std::vector<TextureInfo>& textures) {
-    textureInfos = textures;
-
-    for (auto& tex : textures) {
+void TextureManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, std::vector<TextureInfo> textureInfo) {
+    textureInfos = textureInfo;
+    
+    for (auto& tex : textureInfo) {
         switch (tex.type) {
         case TextureType::SingleTexture:
             this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str())));
@@ -22,6 +21,9 @@ void TextureManager::loadTextures(Device* deviceInfo, CommandPool* commandPool, 
         case TextureType::PBR:
             this->textures.push_back(TextureData(ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_normal" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_metallic" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_roughness" + tex.fileType).c_str()), ImageUtils::createImageFromPath(deviceInfo, commandPool, (tex.fileName + "_ao" + tex.fileType).c_str())));
             break;
+        case TextureType::Cubemap:
+            skyBox = TextureData(ImageUtils::createCubemapFromPath(deviceInfo, commandPool, tex.fileName, tex.fileType));
+            break;
         }
     }
 }
@@ -31,10 +33,10 @@ std::vector<TextureData>& TextureManager::getTextures() {
 }
 
 //TODO: Implement more optimized search like std::unordered_map with custom hash
-uint32_t TextureManager::getTextureIndex(const char* path) {
+uint32_t TextureManager::getTextureIndex(TextureInfo info) {
     int index = 0;
     for (uint32_t i = 0; i < textureInfos.size(); i++) {
-        if (textureInfos[i].fileName == path)
+        if (textureInfos[i].fileName == info.fileName)
             return index;
 
         switch (textureInfos[i].type) {
@@ -49,7 +51,7 @@ uint32_t TextureManager::getTextureIndex(const char* path) {
             break;
         }
     }
-    return 0;
+    return -1;
 }
 
 uint32_t TextureManager::getTextureType(const char* path) {

@@ -15,10 +15,10 @@ public:
 	VkDeviceMemory getImageMemory();
 	VkImageView getImageView();
 	VkSampler getImageSampler();
-	void createImageView(Device* deviceInfo, VkImageAspectFlags flags, VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D);
+	void createImageView(Device* deviceInfo, VkImageAspectFlags flags, VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D, std::optional<VkImageSubresourceRange> subresourceRange = std::nullopt);
 	void createTextureSampler(Device* deviceInfo);
-	void transitionImageLayout(Device* deviceInfo, CommandPool* commandPool, VkImageLayout newLayout);
-	void copyImageFromBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer);
+	void transitionImageLayout(Device* deviceInfo, CommandPool* commandPool, VkImageLayout newLayout, std::optional<VkImageSubresourceRange> subresourceRange);
+	void copyImageFromBuffer(Device* deviceInfo, CommandPool* commandPool, Buffer* srcBuffer, std::optional<std::vector<VkBufferImageCopy>> bufferCopyRegion);
 	void generateMipmaps(Device* deviceInfo, CommandPool *commandPool);
 
 private:

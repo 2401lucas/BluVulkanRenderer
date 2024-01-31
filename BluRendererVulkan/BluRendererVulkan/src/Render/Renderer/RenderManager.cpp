@@ -3,7 +3,7 @@
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Descriptors/Types/UBO/UBO.h"
 
-RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager& textureManager)
+RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager* textureManager)
 {
     vkInstance = new VulkanInstance(appInfo);
     device = new Device(window, vkInstance, deviceSettings);
@@ -37,7 +37,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     graphicsDescriptorSetLayout = new Descriptor(device, bindings);
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
     
     graphicsPipelines.resize(sceneDependancies.shaders.size() / 2);
     for (size_t i = 0; i < graphicsPipelines.size(); i++) {
@@ -49,8 +49,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
 
     modelBufferManager = new ModelBufferManager(device);
     
-    //Loading Textures
-    textureManager.loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
+    textureManager->loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
     descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelBufferManager, textureManager);
 
     createSyncObjects();
@@ -117,10 +116,8 @@ void RenderManager::createSyncObjects() {
 //Descriptor sets/Graphics pipeline layout, how many should I have? How do we programmatically create pipelines that share the same GPL? Is there a benefit to multiple Descriptor sets? 
 //Descriptor sets could be split based on static and dynamic models
 //Register Models once, only updating the vertex buffer once
-void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* sceneInfo, RenderSceneData& sceneData)
+void RenderManager::drawFrame(const bool& framebufferResized, RenderSceneData& sceneData)
 {
-    registerMesh(sceneData.modelCreateData);
-
     vkWaitForFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
@@ -158,7 +155,7 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     swapchain->setScissor(currentCommandBuffer);
 
     modelBufferManager->bindBuffers(currentCommandBuffer);
-
+    int modelID = 0;
     for (auto& piplineIndex : sceneData.modelData)
     {
         graphicsPipelines[piplineIndex.first]->bindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
@@ -166,8 +163,9 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
         graphicsPipelines[piplineIndex.first]->bindDescriptorSets(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1, descriptorManager->getMaterialDescriptorSet(frameIndex), 0, nullptr);
         for (int i = 0; i < piplineIndex.second.size(); i++)
         {
-            modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[piplineIndex.first]->getPipelineLayout(), PushConstantData(i, piplineIndex.second[i].materialData));
+            modelBufferManager->updatePushConstants(currentCommandBuffer, graphicsPipelines[piplineIndex.first]->getPipelineLayout(), PushConstantData(modelID, piplineIndex.second[i].materialData));
             modelBufferManager->drawIndexed(currentCommandBuffer, piplineIndex.second[i].meshRenderData.indexCount, piplineIndex.second[i].meshRenderData.vertexMemChunk.offset, piplineIndex.second[i].meshRenderData.indexMemChunk.offset);
+            modelID++;
         }
     }
 
@@ -218,9 +216,7 @@ void RenderManager::drawFrame(const bool& framebufferResized, const SceneInfo* s
     frameIndex = (frameIndex + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
 }
 
-void RenderManager::registerMesh(std::vector<RenderModelCreateData> modelCreateData)
+std::pair<MemoryChunk, MemoryChunk> RenderManager::registerMesh(RenderModelCreateData modelCreateInfo)
 {
-    for (auto& data : modelCreateData) {
-        modelBufferManager->loadModelIntoBuffer(device, graphicsCommandPool, data);
-    }
+    return modelBufferManager->loadModelIntoBuffer(device, graphicsCommandPool, modelCreateInfo);
 }

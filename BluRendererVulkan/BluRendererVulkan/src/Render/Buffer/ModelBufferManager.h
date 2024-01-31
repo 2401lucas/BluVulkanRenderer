@@ -15,7 +15,7 @@ public:
 	ModelBufferManager(Device* deviceInfo);
 	void cleanup(Device* deviceInfo);
 
-	void loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData);
+	std::pair<MemoryChunk, MemoryChunk> loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData);
 	void updateUniformBuffer(Device* deviceInfo, const uint32_t& bufferIndex, RenderSceneData& sceneData);
 	void bindBuffers(const VkCommandBuffer& commandBuffer);
 	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const PushConstantData& pushConstData);

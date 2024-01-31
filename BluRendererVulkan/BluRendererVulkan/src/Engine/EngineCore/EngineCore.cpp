@@ -5,17 +5,22 @@
 #include "../Entity/Components/LightComponent.h"
 #include "../Entity/EntityArchetypes.h"
 
-EngineCore::EngineCore()
+EngineCore::EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, Scene* scene)
 {
+	meshManager = new MeshManager();
+	textureManager = new TextureManager();
+	entityManager = new EntityManager();
+	renderManager = new RenderManager(window, appInfo, deviceSettings, scene->getSceneDependancies(), textureManager);
+	
 
+	loadScene(scene);
 }
 
-RenderSceneData EngineCore::update(const float& frameTime, InputData inputData)
+RenderSceneData EngineCore::update(const float& frameTime, InputData inputData, bool frameBufferResized)
 {
-	RenderSceneData rendererData = entityManager.update();
+	RenderSceneData rendererData = entityManager->update();
 
-	rendererData.modelCreateData = meshManager.getRenderModelCreateData();
-	meshManager.clear();
+	renderManager->drawFrame(frameBufferResized, rendererData);
 	return rendererData;
 }
 
@@ -42,14 +47,16 @@ void EngineCore::loadScene(Scene* scene)
 		MaterialData* m = new MaterialData();
 		m->materialIndex = model.materialIndex;
 		m->pipelineIndex = model.shaderSetID;
-		m->textureIndex = textureManager.getTextureIndex(model.texturePath);
-		m->textureType = TextureType::Phong;
+		m->textureIndex = textureManager->getTextureIndex(model.textureInfo);
+		m->textureType = model.textureInfo.type;
 		modelBase.push_back(m);
 
-		MeshRenderer* mr = meshManager.registerModel(model.modelPath);
+		MeshRenderer* mr = new MeshRenderer();
+		auto meshCreateData = meshManager->registerModel(model.modelPath, mr);
+		renderManager->registerMesh(meshCreateData);
 		modelBase.push_back(mr);
 
-		entityManager.createEntity(TransformComponent + MaterialComponent + MeshRendererComponent, modelBase);
+		entityManager->createEntity(TransformComponent + MaterialComponent + MeshRendererComponent, modelBase);
 	}
 
 	for (auto& light : sceneInfo->lights) {
@@ -74,7 +81,7 @@ void EngineCore::loadScene(Scene* scene)
 		l->quad = light.quad;
 		lightBase.push_back(l);
 
-		entityManager.createEntity(TransformComponent + LightComponent, lightBase);
+		entityManager->createEntity(TransformComponent + LightComponent, lightBase);
 	}
 
 	std::vector<BaseComponent*> cameraBase;
@@ -95,5 +102,5 @@ void EngineCore::loadScene(Scene* scene)
 	camera->zFar = sceneInfo->cameras[0].zFar;
 	cameraBase.push_back(camera);
 
-	entityManager.createEntity(TransformComponent + CameraComponent, cameraBase);
+	entityManager->createEntity(TransformComponent + CameraComponent, cameraBase);
 }
