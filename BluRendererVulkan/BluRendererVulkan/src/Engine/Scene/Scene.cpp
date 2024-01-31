@@ -19,11 +19,29 @@ Scene::Scene(const char* scenePath)
 	
 	//Camera
 	info->cameras.push_back(SceneCamera(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f), 1.570796326/*90 deg in rad*/, 16/9, 0.1f, 100.0f));
+
+	sceneDependancies = new SceneDependancies();
+	//Shaders
+	sceneDependancies->shaders.push_back(ShaderInfo(shaderType::VERTEX, "vert.spv"));
+	sceneDependancies->shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "frag.spv"));
+
+	//Textures
+	sceneDependancies->textures.push_back(TextureInfo("textures/blue", ".png", TextureType::Phong));
+	sceneDependancies->textures.push_back(TextureInfo("textures/SpyCar", ".png", TextureType::Phong));
+	//Materials
+
+	//Emerald
+	sceneDependancies->materials.push_back(MaterialInfo(glm::vec3(0.0215f, 0.1745f, 0.0215f), glm::vec3(0.07568f, 0.61424f, 0.07568f), glm::vec3(0.633f, 0.727811f, 0.633f), 0.6));
+	//Chrome
+	sceneDependancies->materials.push_back(MaterialInfo(glm::vec3(0.25f, 0.25f, 0.25f), glm::vec3(0.4f, 0.4f, 0.4f), glm::vec3(0.774597f, 0.774597f, 0.774597f), 0.6));
+	//Black Plastic
+	sceneDependancies->materials.push_back(MaterialInfo(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.01f, 0.01f, 0.01f), glm::vec3(0.50f, 0.50f, 0.50f), 0.25));
 }
 
 void Scene::cleanup()
 {
 	delete info;
+	delete sceneDependancies;
 }
 
 SceneInfo* Scene::getSceneInfo()
@@ -31,25 +49,7 @@ SceneInfo* Scene::getSceneInfo()
 	return info;
 }
 
-SceneDependancies Scene::getSceneDependancies()
+SceneDependancies* Scene::getSceneDependancies()
 {
-	//TODO: ASSIGN WHEN LOADING SCENES
-	SceneDependancies sceneDepen{};
-	//Shaders
-	sceneDepen.shaders.push_back(ShaderInfo(shaderType::VERTEX, "vert.spv"));
-	sceneDepen.shaders.push_back(ShaderInfo(shaderType::FRAGMENT, "frag.spv"));
-	
-	//Textures
-	sceneDepen.textures.push_back(TextureInfo("textures/blue", ".png", TextureType::Phong));
-	sceneDepen.textures.push_back(TextureInfo("textures/SpyCar", ".png", TextureType::Phong));
-	//Materials
-
-	//Emerald
-	sceneDepen.materials.push_back(MaterialInfo(glm::vec3(0.0215f, 0.1745f, 0.0215f), glm::vec3(0.07568f, 0.61424f, 0.07568f), glm::vec3(0.633f, 0.727811f, 0.633f), 0.6));
-	//Chrome
-	sceneDepen.materials.push_back(MaterialInfo(glm::vec3(0.25f, 0.25f, 0.25f), glm::vec3(0.4f, 0.4f, 0.4f), glm::vec3(0.774597f, 0.774597f, 0.774597f), 0.6));
-	//Black Plastic
-	sceneDepen.materials.push_back(MaterialInfo(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.01f, 0.01f, 0.01f), glm::vec3(0.50f, 0.50f, 0.50f), 0.25));
-
-	return sceneDepen;
+	return sceneDependancies;
 }

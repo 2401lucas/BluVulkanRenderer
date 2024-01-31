@@ -5,15 +5,17 @@
 #include "../Entity/Components/LightComponent.h"
 #include "../Entity/EntityArchetypes.h"
 
-EngineCore::EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, Scene* scene)
+EngineCore::EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings)
 {
-	meshManager = new MeshManager();
-	textureManager = new TextureManager();
-	entityManager = new EntityManager();
-	renderManager = new RenderManager(window, appInfo, deviceSettings, scene->getSceneDependancies(), textureManager);
-	
+	sceneManager = new SceneManager();
+	sceneManager->loadScene("temp");
 
-	loadScene(scene);
+	meshManager = new MeshManager();
+	entityManager = new EntityManager();
+
+	renderManager = new RenderManager(window, appInfo, deviceSettings, sceneManager->getSceneDependancies());
+
+	
 }
 
 RenderSceneData EngineCore::update(const float& frameTime, InputData inputData, bool frameBufferResized)
@@ -29,9 +31,14 @@ void EngineCore::fixedUpdate(const float& frameTime)
 	//Update Physics based on component type
 }
 //TODO: Move
-void EngineCore::loadScene(Scene* scene)
+void EngineCore::loadScene(const char* scenePath)
 {
-	auto sceneInfo = scene->getSceneInfo();
+	if (activeScene != nullptr) {
+		delete activeScene;
+	}
+	activeScene = new Scene(scenePath);
+
+	auto sceneInfo = activeScene->getSceneInfo();
 	for (auto& model : sceneInfo->dynamicModels) {
 		std::vector<BaseComponent*> modelBase;
 		EntityData* e = new EntityData();

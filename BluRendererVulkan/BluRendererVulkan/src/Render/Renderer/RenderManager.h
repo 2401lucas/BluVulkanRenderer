@@ -18,7 +18,7 @@
 
 class RenderManager {
 public:
-	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager* textureManager);
+	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies);
 	void cleanup();
 
 	void drawFrame(const bool& framebufferResized, RenderSceneData& sceneData);
@@ -38,7 +38,8 @@ private:
 	CommandPool* graphicsCommandPool;
 	ModelBufferManager* modelBufferManager;
 	DescriptorSetManager* descriptorManager;
-	Scene* currentScene;
+
+	TextureManager textureManager;
 
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;

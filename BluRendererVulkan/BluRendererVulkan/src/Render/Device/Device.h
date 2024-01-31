@@ -19,7 +19,7 @@ struct DeviceSettings {
 	VkPhysicalDeviceFeatures enabledDeviceFeatures;
 	VkPhysicalDeviceVulkan12Features enabledDeviceFeatures12;
 	VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR enabledFragShaderBarycentricFeatures;
-	VkSampleCountFlagBits msaaSamples;
+	VkSampleCountFlagBits aaSamples;
 };
 
 class Device {

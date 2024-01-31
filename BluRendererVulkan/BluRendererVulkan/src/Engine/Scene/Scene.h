@@ -154,8 +154,9 @@ public:
 	
 	void cleanup();
 	SceneInfo* getSceneInfo();
-	SceneDependancies getSceneDependancies();
+	SceneDependancies* getSceneDependancies();
 
 private:
 	SceneInfo* info;
+	SceneDependancies* sceneDependancies;
 };
