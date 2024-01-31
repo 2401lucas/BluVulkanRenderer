@@ -18,10 +18,11 @@
 
 class RenderManager {
 public:
-	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies);
+	RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies* sceneDependancies);
 	void cleanup();
 
 	void drawFrame(const bool& framebufferResized, RenderSceneData& sceneData);
+	int getTextureIndex(TextureInfo textureInfo);
 
 	std::pair<MemoryChunk, MemoryChunk> registerMesh(RenderModelCreateData modelCreateInfo);
 
@@ -39,7 +40,7 @@ private:
 	ModelBufferManager* modelBufferManager;
 	DescriptorSetManager* descriptorManager;
 
-	TextureManager textureManager;
+	TextureManager* textureManager;
 
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;

@@ -14,8 +14,6 @@ EngineCore::EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo, Dev
 	entityManager = new EntityManager();
 
 	renderManager = new RenderManager(window, appInfo, deviceSettings, sceneManager->getSceneDependancies());
-
-	
 }
 
 RenderSceneData EngineCore::update(const float& frameTime, InputData inputData, bool frameBufferResized)
@@ -54,7 +52,7 @@ void EngineCore::loadScene(const char* scenePath)
 		MaterialData* m = new MaterialData();
 		m->materialIndex = model.materialIndex;
 		m->pipelineIndex = model.shaderSetID;
-		m->textureIndex = textureManager->getTextureIndex(model.textureInfo);
+		m->textureIndex = renderManager->getTextureIndex(model.textureInfo);
 		m->textureType = model.textureInfo.type;
 		modelBase.push_back(m);
 

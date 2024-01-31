@@ -39,10 +39,6 @@ RenderSceneData EntityManager::update() {
 				updateRenderedEntity(components, rendererData, frustumPlanes, frustumCorners);
 				continue;
 			}
-			
-			EntityData* entityData = static_cast<EntityData*>(components[index]);
-			if (!entityData->isActive)
-				continue;
 
 			Input* inputData;
 			if ((archetype.first & ComponentTypes::InputComponent) == ComponentTypes::InputComponent)

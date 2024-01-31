@@ -3,7 +3,7 @@
 #include "../Descriptors/DescriptorUtils.h"
 #include "../Descriptors/Types/UBO/UBO.h"
 
-RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies& sceneDependancies, TextureManager* textureManager)
+RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, const SceneDependancies* sceneDependancies)
 {
     vkInstance = new VulkanInstance(appInfo);
     device = new Device(window, vkInstance, deviceSettings);
@@ -31,7 +31,7 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     VkDescriptorSetLayoutBinding sceneLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> bindings = { cameraLayoutBinding, sceneLayoutBinding};
 
-    VkDescriptorSetLayoutBinding textureSamplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, sceneDependancies.textures.size() * 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
+    VkDescriptorSetLayoutBinding textureSamplerLayoutBinding = DescriptorUtils::createDescriptorSetBinding(0, sceneDependancies->textures.size() * 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     //VkDescriptorSetLayoutBinding materialLayoutBinding = DescriptorUtils::createDescriptorSetBinding(1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr, VK_SHADER_STAGE_FRAGMENT_BIT);
     std::vector<VkDescriptorSetLayoutBinding> materialBindings = { textureSamplerLayoutBinding };
 
@@ -39,17 +39,19 @@ RenderManager::RenderManager(GLFWwindow* window, const VkApplicationInfo& appInf
     graphicsMaterialDescriptorSetLayout = new Descriptor(device, materialBindings);
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts = { graphicsDescriptorSetLayout->getLayout(), graphicsMaterialDescriptorSetLayout->getLayout() };
     
-    graphicsPipelines.resize(sceneDependancies.shaders.size() / 2);
+    graphicsPipelines.resize(sceneDependancies->shaders.size() / 2);
     for (size_t i = 0; i < graphicsPipelines.size(); i++) {
-        graphicsPipelines[i] = new GraphicsPipeline(device, { sceneDependancies.shaders[i * 2], sceneDependancies.shaders[i * 2 + 1] }, descriptorSetLayouts, renderPass);
+        graphicsPipelines[i] = new GraphicsPipeline(device, { sceneDependancies->shaders[i * 2], sceneDependancies->shaders[i * 2 + 1] }, descriptorSetLayouts, renderPass);
     }
 
     graphicsCommandPool = new CommandPool(device, device->findQueueFamilies().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
     graphicsCommandPool->createCommandBuffers(device);
 
     modelBufferManager = new ModelBufferManager(device);
-    
-    textureManager->loadTextures(device, graphicsCommandPool, sceneDependancies.textures);
+
+    textureManager = new TextureManager();
+    textureManager->loadTextures(device, graphicsCommandPool, sceneDependancies->textures);
+
     descriptorManager = new DescriptorSetManager(device, descriptorSetLayouts, modelBufferManager, textureManager);
 
     createSyncObjects();
@@ -214,6 +216,11 @@ void RenderManager::drawFrame(const bool& framebufferResized, RenderSceneData& s
     }
     
     frameIndex = (frameIndex + 1) % RenderConst::MAX_FRAMES_IN_FLIGHT;
+}
+
+int RenderManager::getTextureIndex(TextureInfo textureInfo)
+{
+    return textureManager->getTextureIndex(textureInfo);
 }
 
 std::pair<MemoryChunk, MemoryChunk> RenderManager::registerMesh(RenderModelCreateData modelCreateInfo)

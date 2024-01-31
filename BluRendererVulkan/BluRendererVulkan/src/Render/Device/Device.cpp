@@ -224,7 +224,7 @@ uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags prope
 
 VkSampleCountFlagBits Device::getMipSampleCount()
 {
-	return settings.msaaSamples;
+	return settings.aaSamples;
 }
 
 VkQueue& Device::getGraphicsQueue()
