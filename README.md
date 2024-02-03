@@ -12,13 +12,32 @@ Memory is not something I would've put much thought into before, but now it's se
 I found trying to program for high cache efficiency intriguing. There is nothing explicit about writing code with high cache efficiency besides high level architectural choices. I chose my design of ECS, where similiar entities are stored together with their components, as it made more sense to me than storing groups of components. I knew that I wanted to update all of an entities components together, and having them stored contiguously really helped cache read speeds. My best explanation of cache optimization would be similar to reading a book. When words are organized sequentially, left to right, for every page it's really easy to read. If words are spread out sporadically and you need to search for the next word, things slow down quickly. Another useful optimization, specifically for ECS components, keeping the data under 64 bytes allows for a single cache read to load the data in.
 
 ## Multiple Pipelines
-In vulkan, each render pipeline can only support one pair of shaders. This means we will need multiple pipelines, and gives us reason to minimize the number of shader pairs we have. In my implementation vertices are sorted based on the pipeline they are bound to, allowing them to be iterated upon with minimal pipeline binds, which can be an expensive operation.
+In vulkan, each render pipeline can only support one pair of shaders. This means we will need multiple pipelines, and gives us reason to minimize the number of shader pairs we have. In my implementation mesh is sorted based on the pipeline that is being used. This allows for minimal binds BindVertexBuffer, BindIndexBuffer, BindPipeline, and BindDescriptorSet calls which can be an expensive operations.
+
+```
+bindBuffers();
+for (auto& pipeline : pipelines) {
+    bindPipeline();
+    bindDescriptorSets();
+    bindDescriptorSets();
+    for (auto& mesh : pipelineMeshData) {
+        updatePushConstants();
+        drawIndexed();
+    }
+}
+```
+
+## Bindless Descriptors & The Multiple Pipeline Problem
+While having multiple pipelines is great, it introduces a new issue. Too many pipelines. How many pipelines is too many? Well Unreal engine can use over 100000 pipelines, but an engine like ID Tech 7(Doom Eternal) has less than 500 pipelines. How they can manage this? ID Tech 7 uses a bindless design for their buffers, textures and materials. For Textures, texture arrays are uploaded to the Shader with the size being unbound. This requires [VK_EXT_descriptor_indexing](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_descriptor_indexing.html) & [runtimeDescriptorArray](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceDescriptorIndexingFeatures.html), both Vulkan 1.2 Core Features). For Vertex/Index buffers this means having one large buffer that stores all the data.
+
+## Mesh Shaders
+What is a Mesh Shader? While Vertex & Fragment shaders are great they have a lot of limitations, some that require other shaders to be used in conjunction with them such as Hull, Tesselation, Domain & Geometry. This can be slow and are harder to optimize with their unpredictable nature. This is a problem as once mesh data is uploaded to the GPU, it should be static. There are exceptions(Such as skeletons) but updating large chunks of data on the gpu from the cpu is super slow and it cannot be done from a vertex shader. Compute Shaders are better designed for the hardware and can update GPU memory but are limited in what it can do, namely reading and writing from GPU memory without an output (Triangles for the Rasterization pipeline). This would still need a vertex shader. A Mesh Shader is both designed for the hardware, and have can output triangles. It can read a chunk of data, update it and output up to 256 triangles. It's main limitation (other than device compatibility) is from chunks being run independently and unable to communicate with other chunks. 
 
 ## Frustum Culling
 Frustum culling is an optimization to minimize GPU drawcalls. In simple terms, this ensures that the only objects that are rendered are objects that are visible to the camera. [Inigo Quilez describes an optimized version of Frustum Culling](http://iquilezles.org/articles/frustumcorrect/) which helps catch some edgecases where certain objects could slip the the cracks and be drawn when not visible.
 
 ## The Vertex/Index Buffer
-This was a problem that really stumped me initially. I couldn't really find any inspiration or guidelines on how to handle these buffers. Initially I started by allocating a buffer per model, and updating those buffers every frame. This is obviously bad, but how could I fix this? The solution I settled on was one large buffer only being updated when changes(Addition/Deletes) happen in the scene. While this works, it does have a few problem that need addressing. If models are created and destroyed often, memory fragmentation will occur.(Inset Solution Here) A plus side is this design greatly decrease the information that the MeshRenderer component needs. The only information it requires now is a Bounding Box for culling, and the buffer position for the indices and vertices. The vertices and indices will now be managed by the MeshManager. This design should also make it easier to implement instanced rendering.
+(TODO)
 
 ## In the works
 Proper Scene Asset loading & a Scene Editor
