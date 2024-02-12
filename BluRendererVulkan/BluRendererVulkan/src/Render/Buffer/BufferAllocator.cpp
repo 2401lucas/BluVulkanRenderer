@@ -2,7 +2,19 @@
 
 BufferAllocator::BufferAllocator(Device* deviceInfo, VkDeviceSize chunkSize, VkDeviceSize allocatedSize, const VkBufferUsageFlags& usage, const VkMemoryPropertyFlags& properties)
 	: chunkSize(chunkSize) {
-	buffer = new Buffer(deviceInfo, allocatedSize, usage, properties);
+	
+
+
+
+
+    // buffer = new Buffer(deviceInfo, allocatedSize, usage, properties);
+    
+    
+    VkMemoryAllocateInfo allocateInfo;
+    VkAllocationCallbacks allocator;
+    VkDeviceMemory memory;
+
+    vkAllocateMemory(deviceInfo->getLogicalDevice(), &allocateInfo, &allocator, &memory);
 }
 
 void BufferAllocator::cleanup(Device* deviceInfo)

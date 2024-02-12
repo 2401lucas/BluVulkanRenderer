@@ -1,14 +1,13 @@
-#include <stdexcept>
 #include "GraphicsPipeline.h"
+#include <stdexcept>
 #include "../Descriptors/Types/PushConsts/PushConst.h"
 #include "../../Engine/Mesh/MeshUtils.h"
 
 //TODO: MODULARIZE
-GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::vector<ShaderInfo> shaders, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass* renderPass)
+GraphicsPipeline::GraphicsPipeline(Device* deviceInfo, const std::pair<ShaderInfo, ShaderInfo> shaders, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass* renderPass)
 {
-    for (auto shader : shaders) {
-        createShaderModule(deviceInfo, shader);
-    }
+    createShaderModule(deviceInfo, shaders.first);
+    createShaderModule(deviceInfo, shaders.second);
 
     auto shaderStageInfo = getShaderStageInfo();
 

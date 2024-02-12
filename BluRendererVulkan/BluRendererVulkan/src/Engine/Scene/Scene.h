@@ -143,7 +143,8 @@ struct MaterialInfo {
 };
 
 struct SceneDependancies {
-	std::vector<ShaderInfo> shaders;
+	std::vector<std::pair<ShaderInfo, ShaderInfo>> shaderPairs;
+	std::vector<ShaderInfo> computeShaders;
 	std::vector<TextureInfo> textures;
 	std::vector<MaterialInfo> materials;
 };
