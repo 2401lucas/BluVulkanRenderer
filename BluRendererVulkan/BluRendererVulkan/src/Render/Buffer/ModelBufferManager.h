@@ -21,7 +21,8 @@ class ModelBufferManager {
   void generateDescriptorSets(
       Device* device, std::vector<VkDescriptorSetLayout>& descriptorLayouts,
       std::vector<TextureData> textureData);
-  void updateUniformBuffer(Device* deviceInfo, const uint32_t& bufferIndex,
+  std::vector<InstanceData> updateUniformBuffer(Device* deviceInfo,
+                                                const uint32_t& bufferIndex,
                            RenderSceneData& sceneData);
   void updatePushConstants(VkCommandBuffer& commandBuffer,
                            VkPipelineLayout& layout,

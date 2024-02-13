@@ -64,16 +64,11 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
 
   swapchain->createFramebuffers(device, renderPass);
 
-  VkDescriptorSetLayoutBinding cameraLayoutBinding =
-      DescriptorUtils::createDescriptorSetBinding(
-          0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr,
-          VK_SHADER_STAGE_VERTEX_BIT);
   VkDescriptorSetLayoutBinding sceneLayoutBinding =
       DescriptorUtils::createDescriptorSetBinding(
-          1, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr,
+          0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, nullptr,
           VK_SHADER_STAGE_FRAGMENT_BIT);
-  std::vector<VkDescriptorSetLayoutBinding> uboBindings = {cameraLayoutBinding,
-                                                           sceneLayoutBinding};
+  std::vector<VkDescriptorSetLayoutBinding> uboBindings = {sceneLayoutBinding};
 
   VkDescriptorSetLayoutBinding textureSamplerLayoutBinding =
       DescriptorUtils::createDescriptorSetBinding(
@@ -187,7 +182,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
     throw std::runtime_error("failed to acquire swap chain image!");
   }
 
-  modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
+  auto instanceData = modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
+  meshManager->updateInstanceBuffers(device, graphicsCommandPool, instanceData);
 
   vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
   VkCommandBuffer currentCommandBuffer =

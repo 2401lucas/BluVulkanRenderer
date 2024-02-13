@@ -61,18 +61,6 @@ void ModelBufferManager::generateDescriptorSets(
                                          globalInfoDescriptorPool,
                                          globalDescriptorSets);
 
-  std::vector<VkDescriptorBufferInfo> gpuCameraBufferInfos;
-  for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
-    VkDescriptorBufferInfo gpuCameraBufferInfo{};
-    gpuCameraBufferInfo.buffer =
-        cameraMappedBufferManager->getUniformBuffer(i)->getBuffer();
-    gpuCameraBufferInfo.offset = 0;
-    gpuCameraBufferInfo.range = sizeof(GPUCameraData);
-    gpuCameraBufferInfos.push_back(gpuCameraBufferInfo);
-  }
-  DescriptorUtils::createBufferDescriptorSet(device, globalDescriptorSets, 0,
-                                             gpuCameraBufferInfos);
-
   std::vector<VkDescriptorBufferInfo> sceneBufferInfos;
   for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
     VkDescriptorBufferInfo gpuSceneBufferInfo{};
@@ -82,7 +70,7 @@ void ModelBufferManager::generateDescriptorSets(
     gpuSceneBufferInfo.range = sizeof(GPUSceneData);
     sceneBufferInfos.push_back(gpuSceneBufferInfo);
   }
-  DescriptorUtils::createBufferDescriptorSet(device, globalDescriptorSets, 1,
+  DescriptorUtils::createBufferDescriptorSet(device, globalDescriptorSets, 0,
                                              sceneBufferInfos);
 
   DescriptorUtils::allocateDesriptorSets(device, descriptorLayouts[1],
@@ -114,18 +102,18 @@ void ModelBufferManager::generateDescriptorSets(
                                             textureImageDescriptorInfos);
 }
 
-void ModelBufferManager::updateUniformBuffer(Device* deviceInfo,
-                                             const uint32_t& bufferIndex,
-                                             RenderSceneData& sceneData) {
-  // Vertex
-  GPUCameraData ubo{};
-  ubo.view = sceneData.cameraData.viewMat;
-  ubo.proj = sceneData.cameraData.projMat;
+std::vector<InstanceData> ModelBufferManager::updateUniformBuffer(
+    Device* deviceInfo, const uint32_t& bufferIndex,
+    RenderSceneData& sceneData) {
+  auto vp = sceneData.cameraData.projMat * sceneData.cameraData.viewMat;
 
-  int uboModelIndex = 0;
+  std::vector<InstanceData> modelDatas;
   for (auto& modelData : sceneData.modelData) {
-    for (int i = 0; i < modelData.second.size(); i++, uboModelIndex++) {
-      ubo.model[uboModelIndex] = modelData.second[i].modelTransform;
+    for (int i = 0; i < modelData.second.size(); i++) {
+      InstanceData data;
+      data.mvp = vp * modelData.second[i].modelTransform;
+      data.texIndex = modelData.second[i].materialData.y;
+      modelDatas.push_back(data);
     }
   }
 
@@ -144,10 +132,9 @@ void ModelBufferManager::updateUniformBuffer(Device* deviceInfo,
   scn.ambientColor = glm::vec4(1., 1., 1., 1);
   scn.cameraPosition = glm::vec4(sceneData.cameraData.position, numOfLights);
 
-  memcpy(cameraMappedBufferManager->getMappedBuffer(bufferIndex), &ubo,
-         sizeof(ubo));
   memcpy(sceneMappedBufferManager->getMappedBuffer(bufferIndex), &scn,
          sizeof(scn));
+  return modelDatas;
 }
 
 // Index 0 Camera

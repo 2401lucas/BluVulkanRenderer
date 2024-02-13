@@ -52,11 +52,14 @@ void EngineCore::loadScene(const char* scenePath) {
     m->textureType = model.textureInfo.type;
     modelBase.push_back(m);
 
-    MeshRenderer* mr = new MeshRenderer();
     MeshData md;
     md.meshPath = model.modelPath;
     MeshUtils::getMeshDataFromPath(&md);
     renderManager->getRenderer()->registerMesh(md);
+    MeshRenderer* mr = new MeshRenderer();
+    mr->path = model.modelPath;
+    mr->boundingBox = md.boundingBox;
+    mr->indexCount = md.indices.size();
     modelBase.push_back(mr);
 
     entityManager->createEntity(
