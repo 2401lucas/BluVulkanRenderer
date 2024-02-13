@@ -6,5 +6,5 @@
 
 class GraphicsPipeline : public Pipeline {
 public:
-	GraphicsPipeline(Device*, std::vector<ShaderInfo>, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass*);
+	GraphicsPipeline(Device*, std::pair<ShaderInfo, ShaderInfo>, const std::vector<VkDescriptorSetLayout>& descriptorLayouts, RenderPass*);
 };

@@ -1,36 +1,42 @@
 #pragma once
 #include <vector>
-#include "../Image/Image.h"
-#include "../Command/CommandPool.h"
-#include "../Buffer/Buffer.h"
-#include "../Descriptors/Types/PushConsts/PushConst.h"
-#include "../Buffer/MappedBufferManager.h"
-#include "../Descriptors/Types/UBO/UBO.h"
-#include "../Renderer/RenderSceneData.h"
+
 #include "../../Engine/Mesh/MeshUtils.h"
+#include "../Buffer/Buffer.h"
+#include "../Buffer/MappedBufferManager.h"
+#include "../Command/CommandPool.h"
+#include "../Descriptors/DescriptorPool.h"
+#include "../Descriptors/DescriptorUtils.h"
+#include "../Descriptors/Types/PushConsts/PushConst.h"
+#include "../Descriptors/Types/UBO/UBO.h"
+#include "../Image/Image.h"
+#include "../Renderer/RenderSceneData.h"
 #include "BufferAllocator.h"
 
 class ModelBufferManager {
-public:
-	ModelBufferManager(Device* deviceInfo);
-	void cleanup(Device* deviceInfo);
+ public:
+  ModelBufferManager(Device* deviceInfo);
+  void cleanup(Device* deviceInfo);
 
-	std::pair<MemoryChunk, MemoryChunk> loadModelIntoBuffer(Device* device, CommandPool* commandPool, RenderModelCreateData modelData);
-	void updateUniformBuffer(Device* deviceInfo, const uint32_t& bufferIndex, RenderSceneData& sceneData);
-	void bindBuffers(const VkCommandBuffer& commandBuffer);
-	void updatePushConstants(VkCommandBuffer& commandBuffer, VkPipelineLayout& layout, const PushConstantData& pushConstData);
-	void drawIndexed(const VkCommandBuffer& commandBuffer, const int32_t& indexCount, const int32_t& vertexOffset, const int32_t& indexOffset);
+  void generateDescriptorSets(
+      Device* device, std::vector<VkDescriptorSetLayout>& descriptorLayouts,
+      std::vector<TextureData> textureData);
+  std::vector<InstanceData> updateUniformBuffer(Device* deviceInfo,
+                                                const uint32_t& bufferIndex,
+                           RenderSceneData& sceneData);
+  void updatePushConstants(VkCommandBuffer& commandBuffer,
+                           VkPipelineLayout& layout,
+                           const PushConstantData& pushConstData);
+  MappedBufferManager* getMappedBufferManager(uint32_t index);
+  VkDescriptorSet* getGlobalDescriptorSet(uint32_t frameIndex);
+  VkDescriptorSet* getTextureDescriptorSet(uint32_t frameIndex);
 
-	//Index 0 Camera
-	//Index 1 Scene
-	//Index 2 Material
-	MappedBufferManager* getMappedBufferManager(uint32_t index);
+ private:
+  MappedBufferManager* cameraMappedBufferManager;
+  MappedBufferManager* sceneMappedBufferManager;
+  std::vector<VkDescriptorSet> globalDescriptorSets;
+  std::vector<VkDescriptorSet> textureDescriptorSets;
 
-private:
-	MappedBufferManager* cameraMappedBufferManager;
-	MappedBufferManager* sceneMappedBufferManager;
-	MappedBufferManager* materialMappedBufferManager;
-
-	BufferAllocator* vertexBufferAllocator;
-	BufferAllocator* indexBufferAllocator;
+  DescriptorPool* globalInfoDescriptorPool;
+  DescriptorPool* textureDescriptorPool;
 };

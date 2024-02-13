@@ -2,7 +2,7 @@
 #include <vector>
 #include "../../Engine/Mesh/MeshUtils.h"
 
-struct RenderModelCreateData {
+struct RenderMeshCreateData {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 };

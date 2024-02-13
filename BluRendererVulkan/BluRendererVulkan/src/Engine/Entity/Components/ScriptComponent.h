@@ -2,6 +2,4 @@
 
 #include "BaseComponent.h"
 
-struct Script : BaseComponent{
-
-};
+struct Script : BaseComponent {};

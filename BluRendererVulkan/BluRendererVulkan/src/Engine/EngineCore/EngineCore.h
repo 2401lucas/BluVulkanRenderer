@@ -1,26 +1,27 @@
 #pragma once
-#include "../Input/Input.h"
-#include  "../../Render/Renderer/RenderSceneData.h"
-#include "../Scene/Scene.h"
-
-#include  "../Entity/EntityManager.h"
+#include "../../Render/Renderer/RenderSceneData.h"
 #include "../../Render/Textures/TextureManager.h"
-#include "../Mesh/MeshManager.h"
+#include "../Entity/EntityManager.h"
+#include "../Input/Input.h"
+#include "../Scene/SceneManager.h"
 #include "../src/Render/Renderer/RenderManager.h"
 
+struct EngineTime {
+  float deltaTime;
+  float totalTime;
+};
 
 class EngineCore {
-public:
-	EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo, DeviceSettings deviceSettings, Scene* scene);
-	//TODO: Create EngineTime struct to hold more time data(delta, startup...)
-	RenderSceneData update(const float& frameTime, InputData inputData, bool frameBufferResized);
-	void fixedUpdate(const float& frameTime);
-	void loadScene(Scene* scene);
+ public:
+  EngineCore(GLFWwindow* window, const VkApplicationInfo& appInfo,
+             DeviceSettings deviceSettings);
+  RenderSceneData update(const float& time, InputData inputData,
+                         bool frameBufferResized);
+  void fixedUpdate(const EngineTime& time);
+  void loadScene(const char* scenePath);
 
-
-private:
-	RenderManager* renderManager;
-	MeshManager* meshManager;
-	TextureManager* textureManager;
-	EntityManager* entityManager;
+ private:
+  SceneManager* sceneManager;
+  RenderManager* renderManager;
+  EntityManager* entityManager;
 };

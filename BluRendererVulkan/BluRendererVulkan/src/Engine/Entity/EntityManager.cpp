@@ -30,6 +30,16 @@ RenderSceneData EntityManager::update() {
 				continue;
 			index++;
 
+			switch (archetype.first)
+			{
+			case ComponentTypes::TransformComponent + ComponentTypes::CameraComponent:
+				updateCamera(components, rendererData, frustumPlanes, frustumCorners);
+				continue;
+			case ComponentTypes::TransformComponent + ComponentTypes::MaterialComponent + ComponentTypes::MeshRendererComponent:
+				updateRenderedEntity(components, rendererData, frustumPlanes, frustumCorners);
+				continue;
+			}
+
 			Input* inputData;
 			if ((archetype.first & ComponentTypes::InputComponent) == ComponentTypes::InputComponent)
 			{
@@ -50,21 +60,6 @@ RenderSceneData EntityManager::update() {
 				transformData = static_cast<Transform*>(components.at(index));
 				index++;
 			}
-			Camera* cameraData;
-			if ((archetype.first & ComponentTypes::CameraComponent) == ComponentTypes::CameraComponent)
-			{
-				cameraData = static_cast<Camera*>(components.at(index));
-				index++;
-
-				CameraSystem::updateCamera(cameraData, transformData);
-
-				MathUtils::getFrustumPlanes(cameraData->proj * cameraData->view, frustumPlanes);
-				MathUtils::getFrustumCorners(cameraData->proj * cameraData->view, frustumCorners);
-
-				rendererData.cameraData.position = transformData->position;
-				rendererData.cameraData.projMat = cameraData->proj;
-				rendererData.cameraData.viewMat = cameraData->view;
-			}
 			//Update Enemies
 			//Update Collision
 			Light* lightData;
@@ -82,7 +77,7 @@ RenderSceneData EntityManager::update() {
 				index++;
 			}
 			MeshRenderer* meshRendererData;
-			if ((archetype.first & ComponentTypes::MeshRendererComponent) == ComponentTypes::MeshRendererComponent)
+			if ((archetype.first & ComponentTypes::MeshRendererComponent) == ComponentTypes::MeshRendererComponent && matData != nullptr && transformData != nullptr)
 			{
 				meshRendererData = static_cast<MeshRenderer*>(components.at(index));
 				index++;
@@ -95,6 +90,29 @@ RenderSceneData EntityManager::update() {
 	}
 
 	return rendererData;
+}
+
+void EntityManager::updateCamera(std::vector<BaseComponent*> components, RenderSceneData& rendererData, glm::vec4* frustumPlanes, glm::vec4* frustumCorners)
+{
+	Transform* transformData = static_cast<Transform*>(components.at(1));;
+	Camera* cameraData = static_cast<Camera*>(components.at(2));
+
+	CameraSystem::updateCamera(cameraData, transformData);
+	MathUtils::getFrustumPlanes(cameraData->proj * cameraData->view, frustumPlanes);
+	MathUtils::getFrustumCorners(cameraData->proj * cameraData->view, frustumCorners);
+
+	rendererData.cameraData.position = transformData->position;
+	rendererData.cameraData.projMat = cameraData->proj;
+	rendererData.cameraData.viewMat = cameraData->view;
+}
+
+void EntityManager::updateRenderedEntity(std::vector<BaseComponent*> components, RenderSceneData& rendererData, glm::vec4* frustumPlanes, glm::vec4* frustumCorners)
+{
+	Transform* transformData = static_cast<Transform*>(components.at(1));;
+	MaterialData* matData = static_cast<MaterialData*>(components.at(2));
+	MeshRenderer* meshRendererData = static_cast<MeshRenderer*>(components.at(3));
+
+	RendererSystem::registerModel(meshRendererData, matData, transformData, rendererData, frustumPlanes, frustumCorners);
 }
 
 uint64_t EntityManager::createEntity(uint32_t components, std::vector<BaseComponent*> data)

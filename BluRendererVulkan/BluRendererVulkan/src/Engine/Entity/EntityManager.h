@@ -7,6 +7,9 @@
 class EntityManager {
 public:
 	RenderSceneData update();
+	//ArchetypeSpecificUpdates
+	void updateCamera(std::vector<BaseComponent*> components, RenderSceneData& rendererData, glm::vec4* frustumPlanes, glm::vec4* frustumCorners);
+	void updateRenderedEntity(std::vector<BaseComponent*> components, RenderSceneData& rendererData, glm::vec4* frustumPlanes, glm::vec4* frustumCorners);
 
 	uint64_t createEntity(uint32_t components, std::vector<BaseComponent*> componentData);
 	std::vector<BaseComponent*> getEntityData(uint32_t components, uint64_t id);
