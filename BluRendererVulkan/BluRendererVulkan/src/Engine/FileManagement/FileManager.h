@@ -1,14 +1,12 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
-namespace Core {
-	namespace System {
-		class FileManager {
-		public:
-			static std::vector<char> readBinary(const char*);
+class FileManager {
+ public:
+  static std::vector<char> readBinary(const char*);
+  static std::vector<std::string> readFile(std::string);
 
-			FileManager() = delete;
-		};
-	}
-}
+  FileManager() = delete;
+};

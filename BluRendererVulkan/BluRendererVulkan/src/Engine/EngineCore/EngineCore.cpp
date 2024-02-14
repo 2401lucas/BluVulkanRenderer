@@ -54,6 +54,7 @@ void EngineCore::loadScene(const char* scenePath) {
 
     MeshData md;
     md.meshPath = model.modelPath;
+    //TODO: Cache mesh data
     MeshUtils::getMeshDataFromPath(&md);
     renderManager->getRenderer()->registerMesh(md);
     MeshRenderer* mr = new MeshRenderer();

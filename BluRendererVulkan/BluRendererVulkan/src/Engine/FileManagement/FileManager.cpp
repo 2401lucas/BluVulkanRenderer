@@ -22,3 +22,7 @@ std::vector<char> Core::System::FileManager::readBinary(const char* filePath)
 
 	return buffer;
 }
+
+std::vector<std::string> FileManager::readFile(std::string) {
+        return std::vector<std::string>();
+}

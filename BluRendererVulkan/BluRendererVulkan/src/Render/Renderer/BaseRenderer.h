@@ -15,8 +15,7 @@ class BaseRenderer {
   virtual void draw(const bool& framebufferResized, RenderSceneData&);
   void registerMesh(MeshData mesh);
   void registerMeshes(std::vector<MeshData> meshes);
-  void registerTextures(std::vector<TextureInfo>);
-  uint32_t getTextureIndex(TextureInfo info);
+  uint32_t registerMaterial(BasicMaterial matInfo);
 
  protected:
   struct InstancedData {
@@ -33,5 +32,5 @@ class BaseRenderer {
   CommandPool* graphicsCommandPool;
 
   MeshBufferManager* meshManager;
-  TextureManager* textureManager;
+  MaterialManager* materialManager;
 };

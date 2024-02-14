@@ -73,7 +73,7 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   VkDescriptorSetLayoutBinding textureSamplerLayoutBinding =
       DescriptorUtils::createDescriptorSetBinding(
           0,
-          sceneDependancies->textures.size() * 3,  // TODO
+          sceneDependancies->basicMaterials.size() * 3,  // TODO
           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr,
           VK_SHADER_STAGE_FRAGMENT_BIT);
   std::vector<VkDescriptorSetLayoutBinding> textureBindings = {
@@ -104,11 +104,9 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   // }
 
   modelBufferManager = new ModelBufferManager(device);
+  materialManager->preregisterBasicMaterials(device, graphicsCommandPool,
+                                             sceneDependancies->basicMaterials);
 
-  textureManager->loadTextures(device, graphicsCommandPool,
-                               sceneDependancies->textures);
-  modelBufferManager->generateDescriptorSets(
-      device, graphicsDescriptorSetLayouts, textureManager->getTextures());
   createSyncObjects();
 }
 
@@ -182,7 +180,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
     throw std::runtime_error("failed to acquire swap chain image!");
   }
 
-  auto instanceData = modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
+  auto instanceData =
+      modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
   meshManager->updateInstanceBuffers(device, graphicsCommandPool, instanceData);
 
   vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
