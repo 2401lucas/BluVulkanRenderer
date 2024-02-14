@@ -82,7 +82,7 @@ struct SceneModel {
   glm::vec4 rotation;  // X,Y,Z Rotation	| W TBD
   glm::vec4 scale;     // X,Y,Z Scale		| W TBD
   const char* modelPath;
-  std::string materialInfo;
+  std::string materialPath;
   // This will be read in when loading models from scene file
   int shaderSetID;
   int materialIndex;
@@ -91,7 +91,7 @@ struct SceneModel {
              const int& shaderPath, const int& materialIndex, glm::vec3 pos,
              glm::vec3 rot, glm::vec3 scale)
       : modelPath(modelPath),
-        materialInfo(materialInfo),
+        materialPath(materialInfo),
         shaderSetID(shaderPath),
         materialIndex(materialIndex) {
     position = glm::vec4(pos, 0);

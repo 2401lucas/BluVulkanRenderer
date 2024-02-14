@@ -48,7 +48,7 @@ void BaseRenderer::registerMeshes(std::vector<MeshData> meshes) {
   meshManager->rebuildBuffers(device, graphicsCommandPool);
 }
 
-uint32_t BaseRenderer::registerMaterial(BasicMaterial matInfo) {
+uint32_t BaseRenderer::registerMaterial(std::string matPath) {
   return materialManager->registerBasicMaterial(device, graphicsCommandPool,
-                                                matInfo);
+                                                matPath);
 }

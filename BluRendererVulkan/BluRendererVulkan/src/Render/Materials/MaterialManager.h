@@ -6,10 +6,6 @@
 #include "../Image/Image.h"
 #include "../Textures/TextureManager.h"
 
-struct Texture {
-  std::string filePath;
-  uint32_t imageIndex;
-};
 struct MetallicProperty {
   Texture metallicMap;
   float metallic;
@@ -37,15 +33,14 @@ class MaterialManager {
   MaterialManager();
   void cleanup(Device* device);
   void preregisterBasicMaterials(Device* device, CommandPool* commandPool,
-                                 std::vector<BasicMaterial> mats);
+                                 std::vector<std::string> matPaths);
   uint32_t registerBasicMaterial(Device* device, CommandPool* commandPool,
-                                 BasicMaterial mat);
+                                 std::string matPath);
   std::vector<BasicMaterial> getBasicMaterials();
 
+  TextureManager* textureManager;
  private:
   // Contains all Material Data that is to be used with the UberShader
-  std::unordered_map<std::string, uint32_t> basicUberMaterialsIndex;
+  std::unordered_map<std::string, uint32_t> basicUberMaterialIndices;
   std::vector<BasicMaterial> basicUberMaterials;
-
-  TextureManager textureManager;
 };

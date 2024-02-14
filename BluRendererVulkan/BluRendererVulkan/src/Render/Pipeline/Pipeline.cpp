@@ -68,13 +68,13 @@ std::vector<char> Pipeline::getBinaryData(const ShaderInfo& shaderInfo)
 	switch (shaderInfo.type)
 	{
 	case VERTEX:
-		code = Core::System::FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
+		code = FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
 		break;
 	case FRAGMENT:
-		code = Core::System::FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
+		code = FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
 		break;
 	case COMPUTE:
-		code = Core::System::FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
+		code = FileManager::readBinary(("shaders/" + shaderInfo.fileName).c_str());
 		break;
 	case NONE:
 	default:

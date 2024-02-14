@@ -1,42 +1,50 @@
 #include "MaterialManager.h"
+
 #include "../../Engine/FileManagement/FileManager.h"
 
-MaterialManager::MaterialManager() { textureManager = TextureManager(); }
+MaterialManager::MaterialManager() { textureManager = new TextureManager(); }
 
 void MaterialManager::cleanup(Device* device) {
-  textureManager.cleanup(device);
+  textureManager->cleanup(device);
 }
 
 void MaterialManager::preregisterBasicMaterials(
-    Device* device, CommandPool* commandPool, std::vector<std::string> matPaths) {
+    Device* device, CommandPool* commandPool,
+    std::vector<std::string> matPaths) {
   for (auto& matPath : matPaths) {
-    if (basicUberMaterialsIndex.count(matPath) == 0) {
-      basicUberMaterialsIndex[matPath] = basicUberMaterials.size();
-      auto file = FileManager::readFile(matPath);
-      textureManager.registerTexture(device, commandPool, matPath.albedoMap);
-      textureManager.registerTexture(device, commandPool,
-                                     matPath.metallicProperty.metallicMap);
-      textureManager.registerTexture(device, commandPool,
-                                     matPath.normalProperty.normalMap);
-      basicUberMaterials.push_back(matPath);
+    if (basicUberMaterialIndices.count(matPath) == 0) {
+      basicUberMaterialIndices[matPath] = basicUberMaterials.size();
+      BasicMaterial basicMat;
+      basicMat.albedoMap.filePath = "textures/blue.png";
+      // FileManager::readStructFromFile<BasicMaterial>(matPath, basicMat);
+      textureManager->registerTexture(device, commandPool, basicMat.albedoMap);
+      //textureManager.registerTexture(device, commandPool,
+                                     //basicMat.metallicProperty.metallicMap);
+      //textureManager.registerTexture(device, commandPool,
+                                     //basicMat.normalProperty.normalMap);
+      basicUberMaterials.push_back(basicMat);
     }
   }
 }
 
 uint32_t MaterialManager::registerBasicMaterial(Device* device,
                                                 CommandPool* commandPool,
-                                                BasicMaterial mat) {
-  if (basicUberMaterialsIndex.count(mat.materialPath) == 0) {
-    basicUberMaterialsIndex[mat.materialPath] = basicUberMaterials.size();
-    basicUberMaterials.push_back(mat);
-    textureManager.registerTexture(device, commandPool, mat.albedoMap);
-    textureManager.registerTexture(device, commandPool,
-                                   mat.metallicProperty.metallicMap);
-    textureManager.registerTexture(device, commandPool,
-                                   mat.normalProperty.normalMap);
+                                                std::string matPath) {
+  if (basicUberMaterialIndices.count(matPath) == 0) {
+    basicUberMaterialIndices[matPath] = basicUberMaterials.size();
+    BasicMaterial basicMat;
+    basicMat.albedoMap.filePath = "textures/blue.png";
+    // FileManager::readStructFromFile<BasicMaterial>(matPath, basicMat);
+    textureManager->registerTexture(device, commandPool, basicMat.albedoMap);
+    // textureManager.registerTexture(device, commandPool,
+    // basicMat.metallicProperty.metallicMap);
+    // textureManager.registerTexture(device, commandPool,
+    // basicMat.normalProperty.normalMap);
+    basicUberMaterials.push_back(basicMat);
+
     return basicUberMaterials.size() - 1;
   } else {
-    return basicUberMaterialsIndex[mat.materialPath];
+    return basicUberMaterialIndices[matPath];
   }
 }
 

@@ -106,11 +106,15 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   modelBufferManager = new ModelBufferManager(device);
   materialManager->preregisterBasicMaterials(device, graphicsCommandPool,
                                              sceneDependancies->basicMaterials);
-
+  modelBufferManager->generateDescriptorSets(device,
+                                             graphicsDescriptorSetLayouts, materialManager->textureManager->getImages());
+  ui = new UI(device, graphicsCommandPool, renderPass);
   createSyncObjects();
 }
 
 void DefaultRenderer::cleanup() {
+  ui->cleanup(device);
+  delete ui;
   for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroySemaphore(device->getLogicalDevice(), renderFinishedSemaphores[i],
                        nullptr);
@@ -197,6 +201,9 @@ void DefaultRenderer::draw(const bool& framebufferResized,
     throw std::runtime_error("failed to begin recording command buffer!");
   }
 
+  /*ui->newFrame(device, false);
+  ui->updateBuffers(device);*/
+
   std::vector<VkClearValue> clearValues({VkClearValue(), VkClearValue()});
   clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
   clearValues[1].depthStencil = {1.0f, 0};
@@ -219,6 +226,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
       currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1,
       modelBufferManager->getTextureDescriptorSet(frameIndex), 0, nullptr);
   meshManager->drawIndexedIndirect(currentCommandBuffer);
+
+  /*ui->draw(currentCommandBuffer, frameIndex);*/
 
   renderPass->endRenderPass(currentCommandBuffer);
 

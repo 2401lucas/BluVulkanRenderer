@@ -20,87 +20,9 @@ Scene::Scene(const char* scenePath) {
   // glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(45.0f, 45.0f, 0.0f),
   // glm::vec3(1.0f, 1.0f, 1.0f)));
   info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
+      SceneModel("models/cube.obj", "textures/blue.png", 0, 1,
                  glm::vec3(0.0f, -0.0f, -0.0f), glm::vec3(45.0f, 45.0f, 0.0f),
                  glm::vec3(1.0f, 1.0f, 1.0f)));
-  /*info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -3.0f, -0.0f), glm::vec3(0.0f, 0.0f, 18.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -6.0f, -0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 3.0f, -0.0f), glm::vec3(45.0f, 0.0f, 30.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 6.0f, -0.0f), glm::vec3(0.0f, 45.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -0.0f, -4.0f), glm::vec3(45.0f, 45.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -3.0f, -4.0f), glm::vec3(0.0f, 0.0f, 18.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -6.0f, -4.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 3.0f, -4.0f), glm::vec3(45.0f, 0.0f, 30.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 6.0f, -4.0f), glm::vec3(0.0f, 45.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -0.0f, 4.0f), glm::vec3(45.0f, 45.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -3.0f, 4.0f), glm::vec3(0.0f, 0.0f, 18.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, -6.0f, 4.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 3.0f, 4.0f), glm::vec3(45.0f, 0.0f, 30.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));
-  info->dynamicModels.push_back(
-      SceneModel("models/cube.obj",
-                 TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-                 glm::vec3(0.0f, 6.0f, 4.0f), glm::vec3(0.0f, 45.0f, 0.0f),
-                 glm::vec3(1.0f, 1.0f, 1.0f)));*/
-
-  // info->dynamicModels.push_back(SceneModel("models/SpyCar.obj",
-  // TextureInfo("textures/SpyCar", ".png", TextureType::Phong), 0, 1,
-  // glm::vec3(.0f, .0f, .0f), glm::vec3(90.0f, 180.0f, 0.0f), glm::vec3(.1f,
-  // .1f, .1f)));
 
   // Camera
   info->cameras.push_back(
@@ -113,26 +35,8 @@ Scene::Scene(const char* scenePath) {
       ShaderInfo(shaderType::VERTEX, "vert.spv"),
       ShaderInfo(shaderType::FRAGMENT, "frag.spv")));
 
-  // Textures
-  sceneDependancies->textures.push_back(
-      TextureInfo("textures/blue", ".png", TextureType::Phong));
-  sceneDependancies->textures.push_back(
-      TextureInfo("textures/SpyCar", ".png", TextureType::Phong));
-  // Materials
 
-  // Emerald
-  sceneDependancies->materials.push_back(
-      MaterialInfo(glm::vec3(0.0215f, 0.1745f, 0.0215f),
-                   glm::vec3(0.07568f, 0.61424f, 0.07568f),
-                   glm::vec3(0.633f, 0.727811f, 0.633f), 0.6));
-  // Chrome
-  sceneDependancies->materials.push_back(
-      MaterialInfo(glm::vec3(0.25f, 0.25f, 0.25f), glm::vec3(0.4f, 0.4f, 0.4f),
-                   glm::vec3(0.774597f, 0.774597f, 0.774597f), 0.6));
-  // Black Plastic
-  sceneDependancies->materials.push_back(
-      MaterialInfo(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.01f, 0.01f, 0.01f),
-                   glm::vec3(0.50f, 0.50f, 0.50f), 0.25));
+    sceneDependancies->basicMaterials.push_back("textures/blue.png");
 }
 
 void Scene::cleanup() {

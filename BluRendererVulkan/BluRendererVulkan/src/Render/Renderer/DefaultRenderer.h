@@ -2,11 +2,12 @@
 #include "../../Engine/Scene/Scene.h"
 #include "../Buffer/ModelBufferManager.h"
 #include "../Descriptors/Descriptor.h"
+#include "../Descriptors/DescriptorPool.h"
+#include "../ImGUI/UI.h"
 #include "../Pipeline/ComputePipeline.h"
 #include "../Pipeline/GraphicsPipeline.h"
 #include "../RenderPass/RenderPass.h"
 #include "BaseRenderer.h"
-#include "../Descriptors/DescriptorPool.h"
 
 class DefaultRenderer : public BaseRenderer {
  public:
@@ -27,6 +28,7 @@ class DefaultRenderer : public BaseRenderer {
   std::vector<ComputePipeline*> computePipelines;
   // Render Data Managers
   ModelBufferManager* modelBufferManager;
+  UI* ui;
 
   std::vector<VkSemaphore> imageAvailableSemaphores;
   std::vector<VkSemaphore> renderFinishedSemaphores;

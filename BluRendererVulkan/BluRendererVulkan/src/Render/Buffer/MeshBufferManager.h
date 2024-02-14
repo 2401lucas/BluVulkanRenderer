@@ -14,7 +14,9 @@ class MeshBufferManager {
   void drawIndexedIndirect(const VkCommandBuffer&);
 
  private:
-  std::unordered_map<std::string, VkDrawIndexedIndirectCommand> indirectCommands;
+  std::unordered_map<std::string, uint32_t> indirectCommandIndices;
+  std::vector<VkDrawIndexedIndirectCommand> indirectCommands;
+
   std::vector<Vertex> vertices;
   std::vector<uint32_t> indices;
   Buffer* vertexBuffer = nullptr;

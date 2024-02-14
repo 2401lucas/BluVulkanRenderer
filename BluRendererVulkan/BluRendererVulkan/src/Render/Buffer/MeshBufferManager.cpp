@@ -5,19 +5,20 @@ MeshBufferManager::MeshBufferManager(Device* deviceInfo) {}
 void MeshBufferManager::cleanup(Device* deviceInfo) {}
 
 void MeshBufferManager::registerMesh(const MeshData& meshData) {
-  if (indirectCommands.count(meshData.meshPath) == 0) {
+  if (indirectCommandIndices.count(meshData.meshPath) == 0) {
     VkDrawIndexedIndirectCommand cmd{};
     cmd.firstInstance = indirectCommands.size();
     cmd.instanceCount = 1;
     cmd.firstIndex = indices.size();
     cmd.indexCount = meshData.indices.size();
-    indirectCommands[meshData.meshPath] = cmd;
+    indirectCommandIndices[meshData.meshPath] = indirectCommands.size();
+    indirectCommands.push_back(cmd);
     vertices.insert(std::end(vertices), std::begin(meshData.vertices),
                     std::end(meshData.vertices));
     indices.insert(std::end(indices), std::begin(meshData.indices),
                    std::end(meshData.indices));
   } else {
-    indirectCommands[meshData.meshPath].instanceCount++;
+    indirectCommands[indirectCommandIndices[meshData.meshPath]].instanceCount++;
   }
 }
 
@@ -68,23 +69,15 @@ void MeshBufferManager::rebuildBuffers(Device* deviceInfo,
   indexStagingBuffer->freeBuffer(deviceInfo);
   delete indexStagingBuffer;
 
-  // Yeah, this is not ideal. I should probably write a custom map that allows
-  // me to access all values data but that is for another day.
-  // Even in worst case Scenario, this is only running when buffers are rebuild
-  // and it should not be happening often
-  std::vector<VkDrawIndexedIndirectCommand> cmds;
-  for (auto& [key, value] : indirectCommands) {
-    cmds.push_back(value);
-  }
-
   VkDeviceSize indirectCommandsBufferSize =
-      sizeof(VkDrawIndexedIndirectCommand) * cmds.size();
+      sizeof(VkDrawIndexedIndirectCommand) * indirectCommands.size();
 
   Buffer* indirectCommandsStagingBuffer = new Buffer(
       deviceInfo, indirectCommandsBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  indirectCommandsStagingBuffer->copyData(deviceInfo, cmds.data(), 0,
+  indirectCommandsStagingBuffer->copyData(deviceInfo, indirectCommands.data(),
+                                          0,
                                           indirectCommandsBufferSize, 0);
   indirectCommandsBuffer = new Buffer(
       deviceInfo, indirectCommandsBufferSize,

@@ -6,7 +6,10 @@
 class FileManager {
  public:
   static std::vector<char> readBinary(const char*);
-  static std::vector<std::string> readFile(std::string);
+  template<typename T>
+  static void readStructFromFile(std::string&, T&);
+  template <typename T>
+  static void writeStructFromFile(std::string&, T&);
 
   FileManager() = delete;
 };

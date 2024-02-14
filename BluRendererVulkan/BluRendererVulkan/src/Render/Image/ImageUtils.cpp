@@ -4,17 +4,6 @@
 #include <stdexcept>
 #include <string>
 
-std::vector<Image*> ImageUtils::createTexturesFromCreateInfo(Device* deviceInfo, CommandPool* commandPool, std::vector<TextureInfo> materialInfo)
-{
-	std::vector<Image*> newTextures;
-
-	for (auto& newT : materialInfo) {
-		newTextures.push_back(createImageFromPath(deviceInfo, commandPool, newT.fileName.c_str()));
-	}
-
-	return newTextures;
-}
-
 Image* ImageUtils::createImageFromPath(Device* deviceInfo, CommandPool* commandPool, const char* path)
 {
 	int texWidth, texHeight, texChannels;

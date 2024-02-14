@@ -20,7 +20,7 @@ class ModelBufferManager {
 
   void generateDescriptorSets(
       Device* device, std::vector<VkDescriptorSetLayout>& descriptorLayouts,
-      std::vector<TextureData> textureData);
+      std::vector<Image*> textureData);
   std::vector<InstanceData> updateUniformBuffer(Device* deviceInfo,
                                                 const uint32_t& bufferIndex,
                            RenderSceneData& sceneData);

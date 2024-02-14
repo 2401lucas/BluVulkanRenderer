@@ -52,6 +52,15 @@ void Buffer::copyData(Device* deviceInfo, const void* src, const VkDeviceSize& o
     vkUnmapMemory(deviceInfo->getLogicalDevice(), bufferMemory);
 }
 
+void Buffer::flush(Device* device, VkDeviceSize& size, VkDeviceSize offset) {
+    VkMappedMemoryRange mappedRange = {};
+    mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    mappedRange.memory = bufferMemory;
+    mappedRange.offset = offset;
+    mappedRange.size = size;
+    vkFlushMappedMemoryRanges(device->getLogicalDevice(), 1, &mappedRange);
+}
+
 void Buffer::freeBuffer(Device* deviceInfo)
 {
     vkDestroyBuffer(deviceInfo->getLogicalDevice(), buffer, nullptr);
