@@ -49,5 +49,5 @@ class UI {
   struct PushConstBlock {
     glm::vec2 scale;
     glm::vec2 translate;
-  } pushConstBlock;
+  };
 };

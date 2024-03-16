@@ -8,15 +8,15 @@
 #include "../Entity/Components/MaterialComponent.h"
 
 struct SceneLight {
-  int lightType;
+  glm::vec4 lightColor;
   glm::vec3 lightPosition;  // XYZ Position
   glm::vec3 lightRotation;  // XYZ Rotation
-  glm::vec4 lightColor;
   float constant;
   float linear;
   float quad;
   float innerCutoff;
   float outerCutoff;
+  int lightType;
 
   // Directional Light
   SceneLight(glm::vec3 rot, glm::vec4 color)

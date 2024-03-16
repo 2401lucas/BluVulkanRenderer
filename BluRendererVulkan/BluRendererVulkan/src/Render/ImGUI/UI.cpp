@@ -239,21 +239,22 @@ void UI::updateBuffers(Device* device) {
   }
 
   // Upload data
-  ImDrawVert* vtxDst = (ImDrawVert*)vertexBuffer->getBuffer();
-  ImDrawIdx* idxDst = (ImDrawIdx*)indexBuffer->getBuffer();
+  int offsetVtx = 0;
+  int offsetIdx = 0;
 
   for (int n = 0; n < imDrawData->CmdListsCount; n++) {
     const ImDrawList* cmd_list = imDrawData->CmdLists[n];
-    memcpy(vtxDst, cmd_list->VtxBuffer.Data,
-           cmd_list->VtxBuffer.Size * sizeof(ImDrawVert));
-    memcpy(idxDst, cmd_list->IdxBuffer.Data,
-           cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx));
-    vtxDst += cmd_list->VtxBuffer.Size;
-    idxDst += cmd_list->IdxBuffer.Size;
+    vertexBuffer->copyData(device, cmd_list->VtxBuffer.Data, offsetVtx,
+                           cmd_list->VtxBuffer.Size * sizeof(ImDrawVert), 0);
+
+    indexBuffer->copyData(device, cmd_list->IdxBuffer.Data, offsetIdx,
+                          cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx), 0);
+    offsetVtx += cmd_list->VtxBuffer.Size;
+    offsetIdx += cmd_list->IdxBuffer.Size;
   }
 
-  vertexBuffer->flush(device, vertexBufferSize, 0);
-  indexBuffer->flush(device, indexBufferSize, 0);
+  // vertexBuffer->flush(device, vertexBufferSize, 0);
+  // indexBuffer->flush(device, indexBufferSize, 0);
 }
 
 void UI::draw(VkCommandBuffer commandBuffer, int frameNum) {
@@ -275,13 +276,14 @@ void UI::draw(VkCommandBuffer commandBuffer, int frameNum) {
 
   vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
+  PushConstBlock pushConstBlock = PushConstBlock();
   // UI scale and translate via push constants
   pushConstBlock.scale =
       glm::vec2(2.0f / io.DisplaySize.x, 2.0f / io.DisplaySize.y);
   pushConstBlock.translate = glm::vec2(-1.0f);
   vkCmdPushConstants(commandBuffer, uiPipeline->getPipelineLayout(),
-                     VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstBlock),
-                     &pushConstBlock);
+                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                     0, sizeof(PushConstBlock), &pushConstBlock);
 
   // Render commands
   ImDrawData* imDrawData = ImGui::GetDrawData();

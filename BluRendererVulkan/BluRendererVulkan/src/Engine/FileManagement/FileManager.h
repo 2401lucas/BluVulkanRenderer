@@ -9,7 +9,7 @@ class FileManager {
   template<typename T>
   static void readStructFromFile(std::string&, T&);
   template <typename T>
-  static void writeStructFromFile(std::string&, T&);
+  static void writeStructToFile(std::string&, T&);
 
   FileManager() = delete;
 };

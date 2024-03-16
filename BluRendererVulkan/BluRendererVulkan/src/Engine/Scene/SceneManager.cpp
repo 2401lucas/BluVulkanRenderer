@@ -8,6 +8,8 @@ void SceneManager::cleanup()
 	}
 }
 
+//TODO: When changing scenes some UI should be in place while scene loads
+// Multiple Scenes should also be able to be active, IE: Game Scene + UI Scene
 void SceneManager::loadScene(const char* path)
 {
 	cleanup();

@@ -106,8 +106,9 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   modelBufferManager = new ModelBufferManager(device);
   materialManager->preregisterBasicMaterials(device, graphicsCommandPool,
                                              sceneDependancies->basicMaterials);
-  modelBufferManager->generateDescriptorSets(device,
-                                             graphicsDescriptorSetLayouts, materialManager->textureManager->getImages());
+  modelBufferManager->generateDescriptorSets(
+      device, graphicsDescriptorSetLayouts,
+      materialManager->textureManager->getImages());
   ui = new UI(device, graphicsCommandPool, renderPass);
   createSyncObjects();
 }
@@ -201,8 +202,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
     throw std::runtime_error("failed to begin recording command buffer!");
   }
 
-  /*ui->newFrame(device, false);
-  ui->updateBuffers(device);*/
+  //ui->newFrame(device, false);
+  //ui->updateBuffers(device);
 
   std::vector<VkClearValue> clearValues({VkClearValue(), VkClearValue()});
   clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -227,7 +228,7 @@ void DefaultRenderer::draw(const bool& framebufferResized,
       modelBufferManager->getTextureDescriptorSet(frameIndex), 0, nullptr);
   meshManager->drawIndexedIndirect(currentCommandBuffer);
 
-  /*ui->draw(currentCommandBuffer, frameIndex);*/
+  //ui->draw(currentCommandBuffer, frameIndex);
 
   renderPass->endRenderPass(currentCommandBuffer);
 

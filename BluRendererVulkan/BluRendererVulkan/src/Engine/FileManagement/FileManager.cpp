@@ -32,7 +32,7 @@ void FileManager::readStructFromFile(std::string& filePath, T& data) {
 }
 
 template <typename T>
-void FileManager::writeStructFromFile(std::string& file_name, T& data) {
+void FileManager::writeStructToFile(std::string& file_name, T& data) {
   std::ofstream out;
   out.open(file_name, std::ios::binary);
   out.write(reinterpret_cast<char*>(&data), sizeof(T));

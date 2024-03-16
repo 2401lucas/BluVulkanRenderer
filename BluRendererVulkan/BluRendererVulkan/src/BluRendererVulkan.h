@@ -9,4 +9,4 @@ public:
 private:
 	std::unique_ptr<WindowManager> windowManager;
 	std::unique_ptr<EngineCore> engineCore;
-};
+}; 

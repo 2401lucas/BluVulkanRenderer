@@ -12,18 +12,7 @@ void MaterialManager::preregisterBasicMaterials(
     Device* device, CommandPool* commandPool,
     std::vector<std::string> matPaths) {
   for (auto& matPath : matPaths) {
-    if (basicUberMaterialIndices.count(matPath) == 0) {
-      basicUberMaterialIndices[matPath] = basicUberMaterials.size();
-      BasicMaterial basicMat;
-      basicMat.albedoMap.filePath = "textures/blue.png";
-      // FileManager::readStructFromFile<BasicMaterial>(matPath, basicMat);
-      textureManager->registerTexture(device, commandPool, basicMat.albedoMap);
-      //textureManager.registerTexture(device, commandPool,
-                                     //basicMat.metallicProperty.metallicMap);
-      //textureManager.registerTexture(device, commandPool,
-                                     //basicMat.normalProperty.normalMap);
-      basicUberMaterials.push_back(basicMat);
-    }
+    registerBasicMaterial(device, commandPool, matPath);
   }
 }
 
@@ -33,7 +22,7 @@ uint32_t MaterialManager::registerBasicMaterial(Device* device,
   if (basicUberMaterialIndices.count(matPath) == 0) {
     basicUberMaterialIndices[matPath] = basicUberMaterials.size();
     BasicMaterial basicMat;
-    basicMat.albedoMap.filePath = "textures/blue.png";
+    basicMat.albedoMap.filePath = "textures/cube.png";
     // FileManager::readStructFromFile<BasicMaterial>(matPath, basicMat);
     textureManager->registerTexture(device, commandPool, basicMat.albedoMap);
     // textureManager.registerTexture(device, commandPool,
@@ -46,8 +35,4 @@ uint32_t MaterialManager::registerBasicMaterial(Device* device,
   } else {
     return basicUberMaterialIndices[matPath];
   }
-}
-
-std::vector<BasicMaterial> MaterialManager::getBasicMaterials() {
-  return basicUberMaterials;
 }

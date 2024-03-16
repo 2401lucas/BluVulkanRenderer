@@ -23,7 +23,7 @@ class ModelBufferManager {
       std::vector<Image*> textureData);
   std::vector<InstanceData> updateUniformBuffer(Device* deviceInfo,
                                                 const uint32_t& bufferIndex,
-                           RenderSceneData& sceneData);
+                                                RenderSceneData& sceneData);
   void updatePushConstants(VkCommandBuffer& commandBuffer,
                            VkPipelineLayout& layout,
                            const PushConstantData& pushConstData);

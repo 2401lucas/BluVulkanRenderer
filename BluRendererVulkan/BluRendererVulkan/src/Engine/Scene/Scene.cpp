@@ -4,7 +4,7 @@ Scene::Scene(const char* scenePath) {
   info = new SceneInfo();
   // TODO: LOAD FROM FILE
 
-  // Scene Wide
+  // Scene Info
   info->ambientColor = glm::vec4(0.6, 0.5, 0.1, 1);
   info->fogColor = glm::vec4(0.048f, 0.048f, 0.048f, 1.0f);  // Light Gray
   info->fogDistances = glm::vec4(1.0f, 10.0f, 0.0f, 0.0f);
@@ -15,12 +15,8 @@ Scene::Scene(const char* scenePath) {
                                     0.032f));
 
   // Models----------------------------
-  // info->dynamicModels.push_back(SceneModel("models/cube.obj",
-  // TextureInfo("textures/blue", ".png", TextureType::Phong), 0, 1,
-  // glm::vec3(-2.0f, -2.0f, -2.0f), glm::vec3(45.0f, 45.0f, 0.0f),
-  // glm::vec3(1.0f, 1.0f, 1.0f)));
   info->dynamicModels.push_back(
-      SceneModel("models/cube.obj", "textures/blue.png", 0, 1,
+      SceneModel("models/cube.obj", "materials/cube.png", 0, 1,
                  glm::vec3(0.0f, -0.0f, -0.0f), glm::vec3(45.0f, 45.0f, 0.0f),
                  glm::vec3(1.0f, 1.0f, 1.0f)));
 
@@ -35,8 +31,8 @@ Scene::Scene(const char* scenePath) {
       ShaderInfo(shaderType::VERTEX, "vert.spv"),
       ShaderInfo(shaderType::FRAGMENT, "frag.spv")));
 
-
-    sceneDependancies->basicMaterials.push_back("textures/blue.png");
+    //sceneDependancies->basicMaterials.push_back("materials/default.mat");
+    sceneDependancies->basicMaterials.push_back("materials/cube.png");
 }
 
 void Scene::cleanup() {

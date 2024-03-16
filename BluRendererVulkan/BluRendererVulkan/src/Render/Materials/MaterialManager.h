@@ -11,6 +11,7 @@ struct MetallicProperty {
   float metallic;
   float smoothness;
 };
+
 struct NormalProperty {
   Texture normalMap;
   float amplitude;
@@ -36,7 +37,6 @@ class MaterialManager {
                                  std::vector<std::string> matPaths);
   uint32_t registerBasicMaterial(Device* device, CommandPool* commandPool,
                                  std::string matPath);
-  std::vector<BasicMaterial> getBasicMaterials();
 
   TextureManager* textureManager;
  private:
