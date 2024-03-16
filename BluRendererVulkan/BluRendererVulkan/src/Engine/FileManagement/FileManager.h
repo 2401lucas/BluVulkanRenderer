@@ -1,14 +1,15 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
-namespace Core {
-	namespace System {
-		class FileManager {
-		public:
-			static std::vector<char> readBinary(const char*);
+class FileManager {
+ public:
+  static std::vector<char> readBinary(const char*);
+  template<typename T>
+  static void readStructFromFile(std::string&, T&);
+  template <typename T>
+  static void writeStructToFile(std::string&, T&);
 
-			FileManager() = delete;
-		};
-	}
-}
+  FileManager() = delete;
+};

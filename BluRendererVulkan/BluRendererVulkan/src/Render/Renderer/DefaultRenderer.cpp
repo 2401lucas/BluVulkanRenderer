@@ -73,7 +73,7 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   VkDescriptorSetLayoutBinding textureSamplerLayoutBinding =
       DescriptorUtils::createDescriptorSetBinding(
           0,
-          sceneDependancies->textures.size() * 3,  // TODO
+          sceneDependancies->basicMaterials.size() * 3,  // TODO
           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nullptr,
           VK_SHADER_STAGE_FRAGMENT_BIT);
   std::vector<VkDescriptorSetLayoutBinding> textureBindings = {
@@ -104,15 +104,18 @@ DefaultRenderer::DefaultRenderer(GLFWwindow* window,
   // }
 
   modelBufferManager = new ModelBufferManager(device);
-
-  textureManager->loadTextures(device, graphicsCommandPool,
-                               sceneDependancies->textures);
+  materialManager->preregisterBasicMaterials(device, graphicsCommandPool,
+                                             sceneDependancies->basicMaterials);
   modelBufferManager->generateDescriptorSets(
-      device, graphicsDescriptorSetLayouts, textureManager->getTextures());
+      device, graphicsDescriptorSetLayouts,
+      materialManager->textureManager->getImages());
+  ui = new UI(device, graphicsCommandPool, renderPass);
   createSyncObjects();
 }
 
 void DefaultRenderer::cleanup() {
+  ui->cleanup(device);
+  delete ui;
   for (size_t i = 0; i < RenderConst::MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroySemaphore(device->getLogicalDevice(), renderFinishedSemaphores[i],
                        nullptr);
@@ -182,7 +185,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
     throw std::runtime_error("failed to acquire swap chain image!");
   }
 
-  auto instanceData = modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
+  auto instanceData =
+      modelBufferManager->updateUniformBuffer(device, frameIndex, sceneData);
   meshManager->updateInstanceBuffers(device, graphicsCommandPool, instanceData);
 
   vkResetFences(device->getLogicalDevice(), 1, &inFlightFences[frameIndex]);
@@ -197,6 +201,9 @@ void DefaultRenderer::draw(const bool& framebufferResized,
   if (vkBeginCommandBuffer(currentCommandBuffer, &beginInfo) != VK_SUCCESS) {
     throw std::runtime_error("failed to begin recording command buffer!");
   }
+
+  //ui->newFrame(device, false);
+  //ui->updateBuffers(device);
 
   std::vector<VkClearValue> clearValues({VkClearValue(), VkClearValue()});
   clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -220,6 +227,8 @@ void DefaultRenderer::draw(const bool& framebufferResized,
       currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 1, 1,
       modelBufferManager->getTextureDescriptorSet(frameIndex), 0, nullptr);
   meshManager->drawIndexedIndirect(currentCommandBuffer);
+
+  //ui->draw(currentCommandBuffer, frameIndex);
 
   renderPass->endRenderPass(currentCommandBuffer);
 

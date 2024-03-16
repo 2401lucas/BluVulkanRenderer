@@ -1,8 +1,8 @@
 #pragma once
 #include "../Buffer/MeshBufferManager.h"
 #include "../Device/Device.h"
+#include "../Materials/MaterialManager.h"
 #include "../Swapchain/Swapchain.h"
-#include "../Textures/TextureManager.h"
 #include "../VkInstance/VulkanInstance.h"
 #include "RenderSceneData.h"
 
@@ -15,8 +15,7 @@ class BaseRenderer {
   virtual void draw(const bool& framebufferResized, RenderSceneData&);
   void registerMesh(MeshData mesh);
   void registerMeshes(std::vector<MeshData> meshes);
-  void registerTextures(std::vector<TextureInfo>);
-  uint32_t getTextureIndex(TextureInfo info);
+  uint32_t registerMaterial(std::string matPath);
 
  protected:
   struct InstancedData {
@@ -33,5 +32,5 @@ class BaseRenderer {
   CommandPool* graphicsCommandPool;
 
   MeshBufferManager* meshManager;
-  TextureManager* textureManager;
+  MaterialManager* materialManager;
 };

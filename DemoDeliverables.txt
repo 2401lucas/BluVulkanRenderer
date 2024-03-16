@@ -1,0 +1,9 @@
+TODO Priority: 
+Compute Pipeline + ComputeShaders for Culling
+How to Remove MeshData from Buffers? (solution to manage them)
+ImGUI
+SceneEditor
+
+Fix Material System (Serializing Structs to disk for game assets, still need scene editor)
+GPU Instancing (Done)
+Fix DescriptorSets (Presumably fixed, needs more attention)

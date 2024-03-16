@@ -56,7 +56,7 @@ void ModelBufferManager::updatePushConstants(
 
 void ModelBufferManager::generateDescriptorSets(
     Device* device, std::vector<VkDescriptorSetLayout>& descriptorLayouts,
-    std::vector<TextureData> textureData) {
+    std::vector<Image*> textureData) {
   DescriptorUtils::allocateDesriptorSets(device, descriptorLayouts[0],
                                          globalInfoDescriptorPool,
                                          globalDescriptorSets);
@@ -82,18 +82,18 @@ void ModelBufferManager::generateDescriptorSets(
     for (uint32_t texIndex = 0; texIndex < textureData.size(); texIndex++) {
       VkDescriptorImageInfo texImageInfo{};
       texImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      texImageInfo.imageView = textureData[texIndex].texture->getImageView();
-      texImageInfo.sampler = textureData[texIndex].texture->getImageSampler();
+      texImageInfo.imageView = textureData[texIndex]->getImageView();
+      texImageInfo.sampler = textureData[texIndex]->getImageSampler();
       textureImageDescriptorInfo.push_back(texImageInfo);
       VkDescriptorImageInfo diffImageInfo{};
       diffImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      diffImageInfo.imageView = textureData[texIndex].diffuse->getImageView();
-      diffImageInfo.sampler = textureData[texIndex].diffuse->getImageSampler();
+      diffImageInfo.imageView = textureData[texIndex]->getImageView();
+      diffImageInfo.sampler = textureData[texIndex]->getImageSampler();
       textureImageDescriptorInfo.push_back(diffImageInfo);
       VkDescriptorImageInfo specImageInfo{};
       specImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      specImageInfo.imageView = textureData[texIndex].specular->getImageView();
-      specImageInfo.sampler = textureData[texIndex].specular->getImageSampler();
+      specImageInfo.imageView = textureData[texIndex]->getImageView();
+      specImageInfo.sampler = textureData[texIndex]->getImageSampler();
       textureImageDescriptorInfo.push_back(specImageInfo);
     }
     textureImageDescriptorInfos.push_back(textureImageDescriptorInfo);

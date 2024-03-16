@@ -9,7 +9,7 @@ BaseRenderer::BaseRenderer(GLFWwindow* window, const VkApplicationInfo& appInfo,
   frameIndex = RenderConst::MAX_FRAMES_IN_FLIGHT;
   swapchain = new Swapchain(device);
   meshManager = new MeshBufferManager(device);
-  textureManager = new TextureManager();
+  materialManager = new MaterialManager();
   graphicsCommandPool = new CommandPool(
       device, device->findQueueFamilies().graphicsFamily.value(),
       VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
@@ -17,10 +17,10 @@ BaseRenderer::BaseRenderer(GLFWwindow* window, const VkApplicationInfo& appInfo,
 }
 
 void BaseRenderer::cleanup() {
+  materialManager->cleanup(device);
+  delete materialManager;
   meshManager->cleanup(device);
   delete meshManager;
-  textureManager->cleanup(device);
-  delete textureManager;
   graphicsCommandPool->cleanup(device);
   delete graphicsCommandPool;
   swapchain->cleanup(device);
@@ -40,6 +40,7 @@ void BaseRenderer::registerMesh(MeshData meshData) {
   meshManager->registerMesh(meshData);
   meshManager->rebuildBuffers(device, graphicsCommandPool);
 }
+
 void BaseRenderer::registerMeshes(std::vector<MeshData> meshes) {
   for (auto& mesh : meshes) {
     meshManager->registerMesh(mesh);
@@ -47,10 +48,7 @@ void BaseRenderer::registerMeshes(std::vector<MeshData> meshes) {
   meshManager->rebuildBuffers(device, graphicsCommandPool);
 }
 
-void BaseRenderer::registerTextures(std::vector<TextureInfo> textureInfos) {
-  textureManager->loadTextures(device, graphicsCommandPool, textureInfos);
-}
-
-uint32_t BaseRenderer::getTextureIndex(TextureInfo info) {
-  return textureManager->getTextureIndex(info);
+uint32_t BaseRenderer::registerMaterial(std::string matPath) {
+  return materialManager->registerBasicMaterial(device, graphicsCommandPool,
+                                                matPath);
 }

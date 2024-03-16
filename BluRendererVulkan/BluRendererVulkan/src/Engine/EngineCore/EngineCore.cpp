@@ -45,15 +45,14 @@ void EngineCore::loadScene(const char* scenePath) {
     modelBase.push_back(t);
 
     MaterialData* m = new MaterialData();
-    m->materialIndex = model.materialIndex;
+    m->materialIndex =
+        renderManager->getRenderer()->registerMaterial(model.materialPath);
     m->pipelineIndex = model.shaderSetID;
-    m->textureIndex =
-        renderManager->getRenderer()->getTextureIndex(model.textureInfo);
-    m->textureType = model.textureInfo.type;
     modelBase.push_back(m);
 
     MeshData md;
     md.meshPath = model.modelPath;
+    // TODO: Cache mesh data
     MeshUtils::getMeshDataFromPath(&md);
     renderManager->getRenderer()->registerMesh(md);
     MeshRenderer* mr = new MeshRenderer();
