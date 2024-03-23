@@ -10,7 +10,7 @@ find_package(gli CONFIG REQUIRED)
 file(GLOB_RECURSE SOURCES "src/*.cpp" "src/*.h" "src/*.hpp" "src/**/*.cpp" "src/**/*.h" "src/**/*.hpp" "src/***/*.cpp" "src/***/*.h" "src/***/*.hpp" )
 
 # Add source to this project's executable.
-add_executable (BluRendererVulkan ${SOURCES} ${include_files} "src/Render/ResourceManagement/ExternalResources/VulkanglTFModel.cpp")
+add_executable (BluRendererVulkan ${SOURCES} ${include_files})
 
 target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
 target_include_directories(BluRendererVulkan PRIVATE ${Vulkan_INCLUDE_DIRS})
