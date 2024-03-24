@@ -395,8 +395,10 @@ class ImGUI {
 
     pipelineCreateInfo.pVertexInputState = &vertexInputState;
 
-    shaderStages[0] = baseRenderer->loadShader("shaders/ui.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] = baseRenderer->loadShader("shaders/ui.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+    shaderStages[0] = baseRenderer->loadShader("shaders/ui.vert.spv",
+                                               VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] = baseRenderer->loadShader("shaders/ui.frag.spv",
+                                               VK_SHADER_STAGE_FRAGMENT_BIT);
 
     VK_CHECK_RESULT(
         vkCreateGraphicsPipelines(device->logicalDevice, pipelineCache, 1,
@@ -618,21 +620,16 @@ class VulkanExample : public BaseRenderer {
   VkDescriptorSetLayout descriptorSetLayout;
   VkDescriptorSet descriptorSet;
 
-  VulkanExample(std::vector<const char*> args)
-      : BaseRenderer(args) {
+  VulkanExample(std::vector<const char*> args) : BaseRenderer(args) {
     title = "ImGui - Blu Renderer";
     camera.type = Camera::CameraType::lookat;
     camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
     camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
     camera.setPerspective(45.0f, (float)width / (float)height, 0.1f, 256.0f);
 
-    // SRS - Enable VK_KHR_get_physical_device_properties2 to retrieve device
-    // driver information for display
+    // Needed for  Device driver information
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-
-    // Don't use the ImGui overlay of the base framework in this sample
-    settings.overlay = false;
   }
 
   ~VulkanExample() {
@@ -857,7 +854,7 @@ class VulkanExample : public BaseRenderer {
         vkglTF::FileLoadingFlags::PreTransformVertices |
         vkglTF::FileLoadingFlags::PreMultiplyVertexColors |
         vkglTF::FileLoadingFlags::FlipY;
-    models.models.loadFromFile(getAssetPath() + "models/gltf/glTF-Embedded/buggy.gltf",
+    models.models.loadFromFile(getAssetPath() + "models/vulkanscenemodels.gltf",
                                vulkanDevice, queue, glTFLoadingFlags, 0.001f);
     models.background.loadFromFile(
         getAssetPath() + "models/vulkanscenebackground.gltf", vulkanDevice,

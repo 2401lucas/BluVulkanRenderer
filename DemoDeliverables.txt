@@ -1,4 +1,9 @@
 GOALS IN ORDER:
 Load new Scene
-Upgrade to PBR pipeline
-Start adding features
+Upgrade to PBR pipeline: 
+Loading PBR Models
+PBR Shaders
+:
+Start adding features: 
+
+:
