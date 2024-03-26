@@ -1,12 +1,6 @@
 GOALS IN ORDER:
-Upgrade to PBR pipeline: 
-Loading PBR Models
-PBR Shaders
+
 :
 Start adding features: 
 
 :
-
-To Be tested:
-Load new Scene
-Confirmed Implemented

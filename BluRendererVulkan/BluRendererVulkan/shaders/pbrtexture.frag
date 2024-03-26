@@ -34,7 +34,6 @@ layout (location = 0) out vec4 outColor;
 #define PI 3.1415926535897932384626433832795
 #define ALBEDO pow(texture(albedoMap, inUV).rgb, vec3(2.2))
 
-// From http://filmicgames.com/archives/75
 vec3 Uncharted2Tonemap(vec3 x)
 {
 	float A = 0.15;

@@ -10,7 +10,7 @@
 struct UISettings {
   bool displayLevel = true;
   bool cerberus = true;
-  bool displayBackground = true;
+  bool displaySkybox = true;
   bool animateLight = false;
   float lightSpeed = 0.25f;
   std::array<float, 50> frameTimes{};
@@ -445,7 +445,7 @@ class ImGUI {
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Render Level", &uiSettings.displayLevel);
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
-    ImGui::Checkbox("Display Skybox", &uiSettings.displayBackground);
+    ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
     ImGui::Checkbox("Animate light", &uiSettings.animateLight);
     ImGui::SliderFloat("Light speed", &uiSettings.lightSpeed, 0.1f, 1.0f);
     // ImGui::ShowStyleSelector("UI style");
@@ -589,11 +589,11 @@ class PbrRenderer : public BaseRenderer {
 
   struct Textures {
     vks::TextureCubeMap environmentCube;
-    PBRTextures pbrTextures;
     // Generated at runtime
     vks::Texture2D lutBrdf;
     vks::TextureCubeMap irradianceCube;
     vks::TextureCubeMap prefilteredCube;
+    PBRTextures pbrTextures;
   } textures;
 
   struct Models {
@@ -631,23 +631,23 @@ class PbrRenderer : public BaseRenderer {
     VkDescriptorSet skybox{VK_NULL_HANDLE};
   } descriptorSets;
 
-  VkPipelineLayout pipelineLayout;
-  VkDescriptorSetLayout descriptorSetLayout;
+  VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
+  VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
 
   PbrRenderer(std::vector<const char*> args) : BaseRenderer(args) {
     title = "PBR with IBL - Blu Renderer";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
-    camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 256.0f);
     camera.rotationSpeed = 0.25f;
 
-    camera.setRotation({-7.75f, 150.25f, 0.0f});
-    camera.setPosition({0.7f, 0.1f, 1.7f});
+    camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
+    camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
+    camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 5000.0f);
 
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
-    settings.overlay = true;
+    settings.overlay = false;
   }
 
   ~PbrRenderer() {
@@ -722,7 +722,7 @@ class PbrRenderer : public BaseRenderer {
       VkDeviceSize offsets[1] = {0};
 
       // Skybox
-      if (uiSettings.cerberus) {
+      if (uiSettings.displaySkybox) {
         vkCmdBindDescriptorSets(drawCmdBuffers[i],
                                 VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                                 0, 1, &descriptorSets.skybox, 0, NULL);
@@ -878,7 +878,7 @@ class PbrRenderer : public BaseRenderer {
             1, &blendAttachmentState);
     VkPipelineDepthStencilStateCreateInfo depthStencilState =
         vks::initializers::pipelineDepthStencilStateCreateInfo(
-            VK_FALSE, VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
+            VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS_OR_EQUAL);
     VkPipelineViewportStateCreateInfo viewportState =
         vks::initializers::pipelineViewportStateCreateInfo(1, 1);
     VkPipelineMultisampleStateCreateInfo multisampleState =
@@ -910,7 +910,6 @@ class PbrRenderer : public BaseRenderer {
     pipelineCI.pVertexInputState = vkglTF::Vertex::getPipelineVertexInputState(
         {vkglTF::VertexComponent::Position, vkglTF::VertexComponent::Normal,
          vkglTF::VertexComponent::UV, vkglTF::VertexComponent::Tangent});
-    ;
 
     // Skybox pipeline (background cube)
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
@@ -928,9 +927,6 @@ class PbrRenderer : public BaseRenderer {
     shaderStages[1] =
         loadShader("shaders/pbrtexture.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    // Enable depth test and write
-    depthStencilState.depthWriteEnable = VK_TRUE;
-    depthStencilState.depthTestEnable = VK_TRUE;
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
         device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.pbr));
   }
@@ -1644,7 +1640,6 @@ class PbrRenderer : public BaseRenderer {
   }
 
   // Prefilter environment cubemap
-  // See
   // https://placeholderart.wordpress.com/2015/07/28/implementation-notes-runtime-environment-map-filtering-for-image-based-lighting/
   void generatePrefilteredCube() {
     auto tStart = std::chrono::high_resolution_clock::now();
@@ -2137,12 +2132,13 @@ class PbrRenderer : public BaseRenderer {
     memcpy(uniformBuffers.object.mapped, &uboMatrices, sizeof(uboMatrices));
 
     // Skybox
-    uboMatrices.model = glm::mat4(glm::mat3(camera.matrices.view));
+    glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f, 5.0f, 5.0f));
+    uboMatrices.model = glm::mat4(glm::mat3(camera.matrices.view)) * scale;
     memcpy(uniformBuffers.skybox.mapped, &uboMatrices, sizeof(uboMatrices));
   }
 
   void updateParams() {
-    const float p = 15.0f;
+    const float p = 150.0f;
     uboParams.lights[0] = glm::vec4(-p, -p * 0.5f, -p, 1.0f);
     uboParams.lights[1] = glm::vec4(-p, -p * 0.5f, p, 1.0f);
     uboParams.lights[2] = glm::vec4(p, -p * 0.5f, p, 1.0f);
@@ -2204,9 +2200,9 @@ class PbrRenderer : public BaseRenderer {
 
   void draw() {
     BaseRenderer::prepareFrame();
+    buildCommandBuffers();
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &drawCmdBuffers[currentBuffer];
-
     VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
     BaseRenderer::submitFrame();
   }
