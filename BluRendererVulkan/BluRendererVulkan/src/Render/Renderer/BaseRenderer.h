@@ -1,4 +1,5 @@
 #pragma once
+
 #include <ShellScalingAPI.h>
 #include <assert.h>
 #include <fcntl.h>
@@ -121,7 +122,7 @@ class BaseRenderer {
   struct Settings {
     /** @brief Activates validation layers (and message output) when set to true
      */
-    bool validation = false;
+    bool validation = true;
     /** @brief Set to true if fullscreen mode has been requested via command
      * line */
     bool fullscreen = false;

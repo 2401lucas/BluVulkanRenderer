@@ -470,7 +470,7 @@ pipelineTessellationStateCreateInfo(uint32_t patchControlPoints) {
   return pipelineTessellationStateCreateInfo;
 }
 
-inline VkGraphicsPipelineCreateInfo pipelineCreateInfo(
+inline VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo(
     VkPipelineLayout layout, VkRenderPass renderPass,
     VkPipelineCreateFlags flags = 0) {
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
@@ -483,7 +483,7 @@ inline VkGraphicsPipelineCreateInfo pipelineCreateInfo(
   return pipelineCreateInfo;
 }
 
-inline VkGraphicsPipelineCreateInfo pipelineCreateInfo() {
+inline VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo() {
   VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
   pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
   pipelineCreateInfo.basePipelineIndex = -1;

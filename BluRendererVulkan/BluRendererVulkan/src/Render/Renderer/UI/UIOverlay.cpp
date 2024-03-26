@@ -247,7 +247,7 @@ void UIOverlay::preparePipeline(const VkPipelineCache pipelineCache,
       vks::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo =
-      vks::initializers::pipelineCreateInfo(pipelineLayout, renderPass);
+      vks::initializers::graphicsPipelineCreateInfo(pipelineLayout, renderPass);
 
   pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
   pipelineCreateInfo.pRasterizationState = &rasterizationState;

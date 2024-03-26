@@ -9,7 +9,9 @@
 
 #include "../VulkanResources/VulkanDevice.h"
 #include "../VulkanResources/VulkanTools.h"
-#include "vulkan/vulkan.h"
+
+#include <KTX/ktx.h>
+#include <KTX/ktxvulkan.h>
 
 namespace vks {
 class Texture {
@@ -38,6 +40,21 @@ class Texture {
       vkDestroySampler(device->logicalDevice, sampler, nullptr);
     }
     vkFreeMemory(device->logicalDevice, deviceMemory, nullptr);
+  }
+
+  ktxResult loadKTXFile(std::string filename, ktxTexture **target) {
+    ktxResult result = KTX_SUCCESS;
+
+    if (!vks::tools::fileExists(filename)) {
+      vks::tools::exitFatal("Could not load texture from " + filename +
+                                "\n\nMake sure the assets submodule has been "
+                                "checked out and is up-to-date.",
+                            -1);
+    }
+    result = ktxTexture_CreateFromNamedFile(
+        filename.c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, target);
+
+    return result;
   }
 };
 

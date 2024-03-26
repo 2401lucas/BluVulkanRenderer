@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <thread>
-#include "Render/Renderer/imguiRenderer.hpp"
+#include "Render/Renderer/PbrRenderer.hpp"
 
 const float MINFRAMETIME = 0.01666f;
 
@@ -15,12 +15,12 @@ int main(int argc, char** argv) {
 
 int BluRendererVulkan::run(int argc, char** argv) {
   std::vector<const char*> args;
-  BaseRenderer* vulkanExample = new VulkanExample(args);
-  vulkanExample->initVulkan();
-  vulkanExample->setupWindow();
-  vulkanExample->prepare();
-  vulkanExample->renderLoop();
-  delete (vulkanExample);	
+  BaseRenderer* pbrRenderer = new PbrRenderer(args);
+  pbrRenderer->initVulkan();
+  pbrRenderer->setupWindow();
+  pbrRenderer->prepare();
+  pbrRenderer->renderLoop();
+  delete (pbrRenderer);	
 
   return 0;
 }
