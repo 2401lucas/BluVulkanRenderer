@@ -1063,3 +1063,8 @@ void BaseRenderer::setupSwapChain() {
 }
 
 void BaseRenderer::OnUpdateUIOverlay(vks::UIOverlay* overlay) {}
+
+void BaseRenderer::setMsaaSampleCount(VkSampleCountFlagBits samples) {
+  sampleCount = samples;
+  windowResize();
+}

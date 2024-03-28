@@ -22,7 +22,7 @@ class UIOverlay {
   vks::VulkanDevice* device;
   VkQueue queue;
 
-  VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  VkSampleCountFlagBits rasterizationSamples = VK_SAMPLE_COUNT_2_BIT;
   uint32_t subpass = 0;
 
   vks::Buffer vertexBuffer;

@@ -47,6 +47,9 @@ class BaseRenderer {
   uint32_t destWidth;
   uint32_t destHeight;
   bool resizing = false;
+
+ protected:
+
   void handleMouseMove(int32_t x, int32_t y);
   void nextFrame();
   void updateOverlay();
@@ -55,10 +58,9 @@ class BaseRenderer {
   void createSynchronizationPrimitives();
   void initSwapchain();
   void setupSwapChain();
-  void createCommandBuffers();
+  virtual void createCommandBuffers();
   void destroyCommandBuffers();
 
- protected:
   uint32_t frameCounter = 0;
   uint32_t lastFPS = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp,
@@ -76,7 +78,6 @@ class BaseRenderer {
   void* deviceCreatepNextChain = nullptr;
   VkDevice device{VK_NULL_HANDLE};
   VkQueue queue{VK_NULL_HANDLE};
-  VkFormat depthFormat;
   VkCommandPool cmdPool{VK_NULL_HANDLE};
   VkPipelineStageFlags submitPipelineStages =
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -89,9 +90,7 @@ class BaseRenderer {
   VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
   std::vector<VkShaderModule> shaderModules;
   VkPipelineCache pipelineCache{VK_NULL_HANDLE};
-  // Wraps the swap chain to present images (framebuffers) to the windowing
-  // system
-  SwapChain swapChain;
+
   // Synchronization semaphores
   struct {
     // Swap chain image presentation
@@ -101,6 +100,8 @@ class BaseRenderer {
   } semaphores;
   std::vector<VkFence> waitFences;
   bool requiresStencil{false};
+  bool useSampleShading = false;
+  VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_2_BIT;
 
  public:
   bool prepared = false;
@@ -117,6 +118,10 @@ class BaseRenderer {
   CommandLineParser commandLineParser;
 
   vks::VulkanDevice* vulkanDevice;
+  // Wraps the swap chain to present images (framebuffers) to the windowing
+  // system
+  SwapChain swapChain;
+  VkFormat depthFormat;
 
   struct Settings {
     /** @brief Activates validation layers (and message output) when set to true
@@ -236,4 +241,5 @@ class BaseRenderer {
   /** @brief (Virtual) Called when the UI overlay is updating, can be used to
    * add custom elements to the overlay */
   virtual void OnUpdateUIOverlay(vks::UIOverlay* overlay);
+  virtual void setMsaaSampleCount(VkSampleCountFlagBits samples);
 };
