@@ -588,6 +588,17 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
                   : tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC3);
         }
 
+        if (primitive.attributes.find("TANGENT") !=
+            primitive.attributes.end()) {
+          const tinygltf::Accessor &tangentAccessor =
+              model.accessors[primitive.attributes.find("TANGENT")->second];
+          const tinygltf::BufferView &tangentView =
+              model.bufferViews[tangentAccessor.bufferView];
+          bufferTangent = reinterpret_cast<const float *>(&(
+              model.buffers[tangentView.buffer]
+                  .data[tangentAccessor.byteOffset + tangentView.byteOffset]));
+        }
+
         // Skinning
         // Joints
         if (primitive.attributes.find("JOINTS_0") !=
@@ -630,11 +641,12 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
           vert.normal = glm::normalize(glm::vec3(
               bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride])
                             : glm::vec3(0.0f)));
-          vert.uv =
-              bufferTexCoordSet0
-                  ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
-                  : glm::vec2(0.0f);
-          vert.tangent = glm::vec4(0.0f); //TODO
+          vert.uv = bufferTexCoordSet0
+                        ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
+                        : glm::vec2(0.0f);
+          vert.tangent = bufferTangent
+                             ? glm::vec4(glm::make_vec4(&bufferTangent[v * 4]))
+                             : glm::vec4(0.0f);
           vert.color =
               bufferColorSet0
                   ? glm::make_vec4(&bufferColorSet0[v * color0ByteStride])
@@ -1121,8 +1133,8 @@ void Model::loadAnimations(tinygltf::Model &gltfModel) {
 }
 
 void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
-                         VkQueue transferQueue,
-                         uint32_t fileLoadingFlags, float scale) {
+                         VkQueue transferQueue, uint32_t fileLoadingFlags,
+                         float scale) {
   tinygltf::Model gltfModel;
   tinygltf::TinyGLTF gltfContext;
 
@@ -1190,7 +1202,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     return;
   }
 
-  	// Pre-Calculations for requested features
+  // Pre-Calculations for requested features
   if ((fileLoadingFlags & FileLoadingFlags::PreTransformVertices) ||
       (fileLoadingFlags & FileLoadingFlags::PreMultiplyVertexColors) ||
       (fileLoadingFlags & FileLoadingFlags::FlipY)) {
