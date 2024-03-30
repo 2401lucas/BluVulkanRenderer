@@ -49,17 +49,9 @@ class BaseRenderer {
   uint32_t destHeight;
   bool resizing = false;
   void handleMouseMove(int32_t x, int32_t y);
-  void nextFrame();
-  void updateOverlay();
-  void createPipelineCache();
-  void createCommandPool();
-  void createSynchronizationPrimitives();
-  void initSwapchain();
-  void setupSwapChain();
-  void createCommandBuffers();
-  void destroyCommandBuffers();
 
  protected:
+  VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_4_BIT;
   uint32_t frameCounter = 0;
   uint32_t lastFPS = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp,
@@ -90,9 +82,7 @@ class BaseRenderer {
   VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
   std::vector<VkShaderModule> shaderModules;
   VkPipelineCache pipelineCache{VK_NULL_HANDLE};
-  // Wraps the swap chain to present images (framebuffers) to the windowing
-  // system
-  SwapChain swapChain;
+
   // Synchronization semaphores
   struct {
     // Swap chain image presentation
@@ -118,6 +108,7 @@ class BaseRenderer {
   CommandLineParser commandLineParser;
 
   vks::VulkanDevice* vulkanDevice;
+  SwapChain swapChain;
 
   struct Settings {
     /** @brief Activates validation layers (and message output) when set to true
@@ -168,6 +159,16 @@ class BaseRenderer {
 
   WindowManager* window;
 
+  void nextFrame();
+  void updateOverlay();
+  void createPipelineCache();
+  void createCommandPool();
+  void createSynchronizationPrimitives();
+  void initSwapchain();
+  void setupSwapChain();
+  void createCommandBuffers();
+  void destroyCommandBuffers();
+
   /** @brief Default base class constructor */
   BaseRenderer(std::vector<const char*> args);
   virtual ~BaseRenderer();
@@ -192,7 +193,7 @@ class BaseRenderer {
   /** @brief (Virtual) Called when resources have been recreated that require a
    * rebuild of the command buffers (e.g. frame buffer), to be implemented by
    * the sample application */
-  virtual void buildCommandBuffers();
+  virtual void buildCommandBuffer();
   /** @brief (Virtual) Setup default depth and stencil views */
   virtual void setupDepthStencil();
   /** @brief (Virtual) Setup default framebuffers for all requested swapchain
