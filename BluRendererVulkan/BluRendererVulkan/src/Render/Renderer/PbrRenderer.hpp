@@ -11,11 +11,10 @@ struct UISettings {
   bool displayLevel = true;
   bool cerberus = true;
   bool displaySkybox = true;
-  bool animateLight = false;
-  float lightSpeed = 0.25f;
+  bool useSampleShading = false;
+  int msaaSamples;
   std::array<float, 50> frameTimes{};
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
-  float lightTimer = 0.0f;
 } uiSettings;
 
 class ImGUI {
@@ -117,10 +116,9 @@ class ImGUI {
   }
 
   // Initialize all Vulkan resources used by the ui
-  void initResources(VkRenderPass renderPass, VkQueue copyQueue,
-                     const std::string& shadersPath) {
+  void initResources(BaseRenderer* br, VkRenderPass renderPass,
+                     VkQueue copyQueue, const std::string& shadersPath) {
     ImGuiIO& io = ImGui::GetIO();
-
     // Create font texture
     unsigned char* fontData;
     int texWidth, texHeight;
@@ -331,7 +329,7 @@ class ImGUI {
 
     VkPipelineMultisampleStateCreateInfo multisampleState =
         vks::initializers::pipelineMultisampleStateCreateInfo(
-            VK_SAMPLE_COUNT_1_BIT);
+            VK_SAMPLE_COUNT_4_BIT);
 
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
@@ -443,12 +441,11 @@ class ImGUI {
                                     200 * renderer->UIOverlay.scale),
                              ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Settings");
-    ImGui::Checkbox("Render Level", &uiSettings.displayLevel);
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
-    ImGui::Checkbox("Animate light", &uiSettings.animateLight);
-    ImGui::SliderFloat("Light speed", &uiSettings.lightSpeed, 0.1f, 1.0f);
-    // ImGui::ShowStyleSelector("UI style");
+    if (ImGui::CollapsingHeader("Rendering Settings")) {
+      ImGui::Checkbox("use Sample Skybox", &uiSettings.useSampleShading);
+    }
 
     if (ImGui::Combo("UI style", &selectedStyle,
                      "Vulkan\0Classic\0Dark\0Light\0")) {
@@ -579,6 +576,7 @@ class PbrRenderer : public BaseRenderer {
  public:
   ImGUI* imGui = nullptr;
 
+  // Asset Resources
   struct PBRTextures {
     vks::Texture2D albedoMap;
     vks::Texture2D normalMap;
@@ -589,11 +587,11 @@ class PbrRenderer : public BaseRenderer {
 
   struct Textures {
     vks::TextureCubeMap environmentCube;
+    PBRTextures pbrTextures;
     // Generated at runtime
     vks::Texture2D lutBrdf;
     vks::TextureCubeMap irradianceCube;
     vks::TextureCubeMap prefilteredCube;
-    PBRTextures pbrTextures;
   } textures;
 
   struct Models {
@@ -602,12 +600,14 @@ class PbrRenderer : public BaseRenderer {
     vkglTF::Model level;
   } models;
 
+  // Render Resources
   struct {
     vks::Buffer object;
     vks::Buffer skybox;
     vks::Buffer params;
   } uniformBuffers;
 
+  // Should (M?)VP be precomputed
   struct UBOMatrices {
     glm::mat4 projection;
     glm::mat4 model;
@@ -615,8 +615,9 @@ class PbrRenderer : public BaseRenderer {
     glm::vec3 camPos;
   } uboMatrices;
 
+  // TODO: More Detailed Lights
   struct UBOParams {
-    glm::vec4 lights[4];
+    glm::vec4 lights[4];  // XYZ pos, W unused
     float exposure = 4.5f;
     float gamma = 2.2f;
   } uboParams;
@@ -624,6 +625,7 @@ class PbrRenderer : public BaseRenderer {
   struct {
     VkPipeline skybox{VK_NULL_HANDLE};
     VkPipeline pbr{VK_NULL_HANDLE};
+    VkPipeline pbrWithSS{VK_NULL_HANDLE};
   } pipelines;
 
   struct {
@@ -631,21 +633,43 @@ class PbrRenderer : public BaseRenderer {
     VkDescriptorSet skybox{VK_NULL_HANDLE};
   } descriptorSets;
 
+  struct MultiSampleTarget {
+    struct {
+      VkImage image{VK_NULL_HANDLE};
+      VkImageView view{VK_NULL_HANDLE};
+      VkDeviceMemory memory{VK_NULL_HANDLE};
+    } color;
+    struct {
+      VkImage image{VK_NULL_HANDLE};
+      VkImageView view{VK_NULL_HANDLE};
+      VkDeviceMemory memory{VK_NULL_HANDLE};
+    } depth;
+  } multisampleTarget;
+
   VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
   VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
+  VkExtent2D attachmentSize{};
+
+  VkFence renderFence{VK_NULL_HANDLE};
+  std::vector<VkSemaphore> imageAvailableSemaphores;
+  std::vector<VkSemaphore> renderFinishedSemaphores;
+  std::vector<VkFence> inFlightFences;
 
   PbrRenderer(std::vector<const char*> args) : BaseRenderer(args) {
-    title = "PBR with IBL - Blu Renderer";
+    title = "PBR with IBL, Multi Threading & MSAA - Blu Renderer";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
-
     camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
     camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
     camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 5000.0f);
 
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+
+    auto numThreads = std::thread::hardware_concurrency();
+    assert(numThreads > 0);
+    std::cout << "numThreads = " << numThreads << std::endl;
 
     settings.overlay = false;
   }
@@ -656,6 +680,13 @@ class PbrRenderer : public BaseRenderer {
 
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+    vkDestroyImage(device, multisampleTarget.color.image, nullptr);
+    vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
+    vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
+    vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
+    vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
+    vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
 
     uniformBuffers.object.destroy();
     uniformBuffers.skybox.destroy();
@@ -675,21 +706,278 @@ class PbrRenderer : public BaseRenderer {
   }
 
   virtual void getEnabledFeatures() {
+    if (deviceFeatures.sampleRateShading) {
+      enabledFeatures.sampleRateShading = VK_TRUE;
+    }
     if (deviceFeatures.samplerAnisotropy) {
       enabledFeatures.samplerAnisotropy = VK_TRUE;
     }
   }
 
-  // TODO
-  //  What needs to be done:
-  //  Multi threaded
-  void buildCommandBuffers() {
+  void setupMultisampleTarget() {
+    assert(
+        (deviceProperties.limits.framebufferColorSampleCounts & sampleCount) &&
+        (deviceProperties.limits.framebufferDepthSampleCounts & sampleCount));
+
+    // Color Target
+    VkImageCreateInfo info = vks::initializers::imageCreateInfo();
+    info.imageType = VK_IMAGE_TYPE_2D;
+    info.format = swapChain.colorFormat;
+    info.extent.width = width;
+    info.extent.height = height;
+    info.extent.depth = 1;
+    info.mipLevels = 1;
+    info.arrayLayers = 1;
+    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.samples = sampleCount;
+    info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VK_CHECK_RESULT(
+        vkCreateImage(device, &info, nullptr, &multisampleTarget.color.image));
+
+    VkMemoryRequirements memReqs;
+    vkGetImageMemoryRequirements(device, multisampleTarget.color.image,
+                                 &memReqs);
+    VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
+    memAlloc.allocationSize = memReqs.size;
+    // We prefer a lazily allocated memory type
+    // This means that the memory gets allocated when the implementation sees
+    // fit, e.g. when first using the images
+    VkBool32 lazyMemTypePresent;
+    memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
+        &lazyMemTypePresent);
+    if (!lazyMemTypePresent) {
+      // If this is not available, fall back to device local memory
+      memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+          memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
+    VK_CHECK_RESULT(vkAllocateMemory(device, &memAlloc, nullptr,
+                                     &multisampleTarget.color.memory));
+    vkBindImageMemory(device, multisampleTarget.color.image,
+                      multisampleTarget.color.memory, 0);
+
+    // Create image view for the MSAA target
+    VkImageViewCreateInfo viewInfo = vks::initializers::imageViewCreateInfo();
+    viewInfo.image = multisampleTarget.color.image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = swapChain.colorFormat;
+    viewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+    viewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+    viewInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+    viewInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VK_CHECK_RESULT(vkCreateImageView(device, &viewInfo, nullptr,
+                                      &multisampleTarget.color.view));
+
+    // Depth target
+    info.imageType = VK_IMAGE_TYPE_2D;
+    info.format = depthFormat;
+    info.extent.width = width;
+    info.extent.height = height;
+    info.extent.depth = 1;
+    info.mipLevels = 1;
+    info.arrayLayers = 1;
+    info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.samples = sampleCount;
+    // Image will only be used as a transient target
+    info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VK_CHECK_RESULT(
+        vkCreateImage(device, &info, nullptr, &multisampleTarget.depth.image));
+
+    vkGetImageMemoryRequirements(device, multisampleTarget.depth.image,
+                                 &memReqs);
+    memAlloc = vks::initializers::memoryAllocateInfo();
+    memAlloc.allocationSize = memReqs.size;
+
+    memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
+        &lazyMemTypePresent);
+    if (!lazyMemTypePresent) {
+      memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+          memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
+
+    VK_CHECK_RESULT(vkAllocateMemory(device, &memAlloc, nullptr,
+                                     &multisampleTarget.depth.memory));
+    vkBindImageMemory(device, multisampleTarget.depth.image,
+                      multisampleTarget.depth.memory, 0);
+
+    // Create image view for the MSAA target
+    viewInfo.image = multisampleTarget.depth.image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = depthFormat;
+    viewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+    viewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+    viewInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+    viewInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (depthFormat >= VK_FORMAT_D16_UNORM_S8_UINT)
+      viewInfo.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.layerCount = 1;
+
+    VK_CHECK_RESULT(vkCreateImageView(device, &viewInfo, nullptr,
+                                      &multisampleTarget.depth.view));
+  }
+
+  void setupRenderPass() {
+    attachmentSize = {width, height};
+    std::array<VkAttachmentDescription, 3> attachments = {};
+
+    // Multisampled attachment that we render to
+    attachments[0].format = swapChain.colorFormat;
+    attachments[0].samples = sampleCount;
+    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    // This is the frame buffer attachment to where the multisampled image
+    // will be resolved to and which will be presented to the swapchain
+    attachments[1].format = swapChain.colorFormat;
+    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    // Multisampled depth attachment we render to
+    attachments[2].format = depthFormat;
+    attachments[2].samples = sampleCount;
+    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attachments[2].finalLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorReference = {};
+    colorReference.attachment = 0;
+    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference depthReference = {};
+    depthReference.attachment = 2;
+    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    // Resolve attachment reference for the color attachment
+    VkAttachmentReference resolveReference = {};
+    resolveReference.attachment = 1;
+    resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorReference;
+    // Pass our resolve attachments to the sub pass
+    subpass.pResolveAttachments = &resolveReference;
+    subpass.pDepthStencilAttachment = &depthReference;
+
+    std::array<VkSubpassDependency, 2> dependencies{};
+
+    // Depth attachment
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    dependencies[0].srcAccessMask =
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dstAccessMask =
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    dependencies[0].dependencyFlags = 0;
+    // Color attachment
+    dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].dstSubpass = 0;
+    dependencies[1].srcStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].srcAccessMask = 0;
+    dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    dependencies[1].dependencyFlags = 0;
+
+    VkRenderPassCreateInfo renderPassInfo =
+        vks::initializers::renderPassCreateInfo();
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.pDependencies = dependencies.data();
+
+    VK_CHECK_RESULT(
+        vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+  }
+
+  void setupFrameBuffer() {
+    // If the window has been resized, destroy resources
+    if (attachmentSize.width != width || attachmentSize.height != height) {
+      attachmentSize = {width, height};
+
+      // Destroy MSAA target
+      vkDestroyImage(device, multisampleTarget.color.image, nullptr);
+      vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
+      vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
+      vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
+      vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
+      vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+    }
+
+    std::array<VkImageView, 3> attachments;
+
+    setupMultisampleTarget();
+
+    attachments[0] = multisampleTarget.color.view;
+    // attachment[1] = swapchain image
+    attachments[2] = multisampleTarget.depth.view;
+
+    VkFramebufferCreateInfo frameBufferCreateInfo = {};
+    frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    frameBufferCreateInfo.pNext = NULL;
+    frameBufferCreateInfo.renderPass = renderPass;
+    frameBufferCreateInfo.attachmentCount =
+        static_cast<uint32_t>(attachments.size());
+    frameBufferCreateInfo.pAttachments = attachments.data();
+    frameBufferCreateInfo.width = width;
+    frameBufferCreateInfo.height = height;
+    frameBufferCreateInfo.layers = 1;
+
+    // Create frame buffers for every swap chain image
+    frameBuffers.resize(swapChain.imageCount);
+    for (uint32_t i = 0; i < frameBuffers.size(); i++) {
+      attachments[1] = swapChain.buffers[i].view;
+      VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
+                                          nullptr, &frameBuffers[i]));
+    }
+  }
+
+  void buildCommandBuffer() {
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
 
-    VkClearValue clearValues[2];
-    clearValues[0].color = {{0.2f, 0.2f, 0.2f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
+    VkClearValue clearValues[3];
+    clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+    clearValues[1].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+    clearValues[2].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassBeginInfo =
         vks::initializers::renderPassBeginInfo();
@@ -699,56 +987,53 @@ class PbrRenderer : public BaseRenderer {
     renderPassBeginInfo.renderArea.offset.y = 0;
     renderPassBeginInfo.renderArea.extent.width = width;
     renderPassBeginInfo.renderArea.extent.height = height;
-    renderPassBeginInfo.clearValueCount = 2;
+    renderPassBeginInfo.clearValueCount = 3;
     renderPassBeginInfo.pClearValues = clearValues;
 
     imGui->newFrame(this, (frameCounter == 0));
     imGui->updateBuffers();
 
-    for (int32_t i = 0; i < drawCmdBuffers.size(); ++i) {
-      renderPassBeginInfo.framebuffer = frameBuffers[i];
+    renderPassBeginInfo.framebuffer = frameBuffers[currentBuffer];
 
-      VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
+    VK_CHECK_RESULT(
+        vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
 
-      vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo,
-                           VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(drawCmdBuffers[currentBuffer], &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_INLINE);
 
-      VkViewport viewport =
-          vks::initializers::viewport((float)width, (float)height, 0.0f, 1.0f);
-      vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
-      VkRect2D scissor = vks::initializers::rect2D(width, height, 0, 0);
-      vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
+    VkViewport viewport =
+        vks::initializers::viewport((float)width, (float)height, 0.0f, 1.0f);
+    vkCmdSetViewport(drawCmdBuffers[currentBuffer], 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(width, height, 0, 0);
+    vkCmdSetScissor(drawCmdBuffers[currentBuffer], 0, 1, &scissor);
 
-      VkDeviceSize offsets[1] = {0};
+    VkDeviceSize offsets[1] = {0};
 
-      // Skybox
-      if (uiSettings.displaySkybox) {
-        vkCmdBindDescriptorSets(drawCmdBuffers[i],
-                                VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                                0, 1, &descriptorSets.skybox, 0, NULL);
-        vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          pipelines.skybox);
-        models.skybox.draw(drawCmdBuffers[i]);
-      }
-
-      // PBR Objects
-      if (uiSettings.cerberus) {
-        vkCmdBindDescriptorSets(drawCmdBuffers[i],
-                                VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                                0, 1, &descriptorSets.pbr, 0, NULL);
-        vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          pipelines.pbr);
-        models.cerberus.draw(drawCmdBuffers[i]);
-      }
-
-      if (UIOverlay.visible) {
-        imGui->drawFrame(drawCmdBuffers[i]);
-      }
-
-      vkCmdEndRenderPass(drawCmdBuffers[i]);
-
-      VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[i]));
+    // Skybox
+    if (uiSettings.displaySkybox) {
+      vkCmdBindDescriptorSets(drawCmdBuffers[currentBuffer],
+                              VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                              0, 1, &descriptorSets.skybox, 0, NULL);
+      vkCmdBindPipeline(drawCmdBuffers[currentBuffer],
+                        VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
+      models.skybox.draw(drawCmdBuffers[currentBuffer]);
     }
+
+    // PBR Objects
+    if (uiSettings.cerberus) {
+      vkCmdBindDescriptorSets(drawCmdBuffers[currentBuffer],
+                              VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                              0, 1, &descriptorSets.pbr, 0, NULL);
+      vkCmdBindPipeline(drawCmdBuffers[currentBuffer],
+                        VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbr);
+      models.cerberus.draw(drawCmdBuffers[currentBuffer]);
+    }
+
+    imGui->drawFrame(drawCmdBuffers[currentBuffer]);
+
+    vkCmdEndRenderPass(drawCmdBuffers[currentBuffer]);
+
+    VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
   }
 
   void setupDescriptors() {
@@ -795,6 +1080,7 @@ class PbrRenderer : public BaseRenderer {
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             VK_SHADER_STAGE_FRAGMENT_BIT, 9),
     };
+
     VkDescriptorSetLayoutCreateInfo descriptorLayout =
         vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
     VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout,
@@ -882,8 +1168,7 @@ class PbrRenderer : public BaseRenderer {
     VkPipelineViewportStateCreateInfo viewportState =
         vks::initializers::pipelineViewportStateCreateInfo(1, 1);
     VkPipelineMultisampleStateCreateInfo multisampleState =
-        vks::initializers::pipelineMultisampleStateCreateInfo(
-            VK_SAMPLE_COUNT_1_BIT);
+        vks::initializers::pipelineMultisampleStateCreateInfo(sampleCount);
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState =
@@ -929,6 +1214,20 @@ class PbrRenderer : public BaseRenderer {
 
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
         device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.pbr));
+
+    // MSAA with sample shading pipeline
+    // Sample shading enables per-sample shading to avoid shader aliasing and
+    // smooth out e.g. high frequency texture maps Note: This will trade
+    // performance for a more stable image
+    if (vulkanDevice->features.sampleRateShading) {
+      // Enable per - sample shading(instead of per - fragment)
+      multisampleState.sampleShadingEnable = VK_TRUE;
+      // Minimum fraction for sample shading
+      multisampleState.minSampleShading = 0.25f;
+      VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1,
+                                                &pipelineCI, nullptr,
+                                                &pipelines.pbrWithSS));
+    }
   }
 
   // Generate a BRDF integration map used as a look-up-table (stores roughness /
@@ -1490,8 +1789,6 @@ class PbrRenderer : public BaseRenderer {
     VkPipeline pipeline;
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1,
                                               &pipelineCI, nullptr, &pipeline));
-
-    // Render
 
     VkClearValue clearValues[1];
     clearValues[0].color = {{0.0f, 0.0f, 0.2f, 0.0f}};
@@ -2181,7 +2478,7 @@ class PbrRenderer : public BaseRenderer {
   void prepareImGui() {
     imGui = new ImGUI(this);
     imGui->init((float)width, (float)height);
-    imGui->initResources(renderPass, queue, "Shaders/");  // TODO
+    imGui->initResources(this, renderPass, queue, "Shaders/");  // TODO
   }
 
   void prepare() {
@@ -2194,13 +2491,13 @@ class PbrRenderer : public BaseRenderer {
     setupDescriptors();
     preparePipelines();
     prepareImGui();
-    buildCommandBuffers();
+    buildCommandBuffer();
     prepared = true;
   }
 
   void draw() {
     BaseRenderer::prepareFrame();
-    buildCommandBuffers();
+    buildCommandBuffer();
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &drawCmdBuffers[currentBuffer];
     VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));

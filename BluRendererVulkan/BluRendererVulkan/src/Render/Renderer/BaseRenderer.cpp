@@ -302,7 +302,7 @@ void BaseRenderer::updateOverlay() {
   ImGui::Render();
 
   if (UIOverlay.update() || UIOverlay.updated) {
-    buildCommandBuffers();
+    buildCommandBuffer();
     UIOverlay.updated = false;
   }
 }
@@ -719,7 +719,7 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   }
 }
 
-void BaseRenderer::buildCommandBuffers() {}
+void BaseRenderer::buildCommandBuffer() {}
 
 void BaseRenderer::createSynchronizationPrimitives() {
   // Wait fences to sync command buffer access
@@ -926,7 +926,7 @@ void BaseRenderer::windowResize() {
   // references to the recreated frame buffer
   destroyCommandBuffers();
   createCommandBuffers();
-  buildCommandBuffers();
+  buildCommandBuffer();
 
   // SRS - Recreate fences in case number of swapchain images has changed on
   // resize
