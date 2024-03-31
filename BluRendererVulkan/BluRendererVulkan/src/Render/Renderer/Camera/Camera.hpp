@@ -63,11 +63,16 @@ class Camera {
   struct {
     bool left = false;
     bool right = false;
+    bool forward = false;
+    bool backward = false;
     bool up = false;
     bool down = false;
   } keys;
 
-  bool moving() { return keys.left || keys.right || keys.up || keys.down; }
+  bool moving() {
+    return keys.left || keys.right || keys.forward || keys.backward ||
+           keys.up || keys.down;
+  }
 
   float getNearClip() { return znear; }
 
@@ -147,8 +152,8 @@ class Camera {
 
         float moveSpeed = deltaTime * movementSpeed;
 
-        if (keys.up) position += camFront * moveSpeed;
-        if (keys.down) position -= camFront * moveSpeed;
+        if (keys.forward) position += camFront * moveSpeed;
+        if (keys.backward) position -= camFront * moveSpeed;
         if (keys.left)
           position -= glm::normalize(
                           glm::cross(camFront, glm::vec3(0.0f, 1.0f, 0.0f))) *
@@ -157,6 +162,8 @@ class Camera {
           position += glm::normalize(
                           glm::cross(camFront, glm::vec3(0.0f, 1.0f, 0.0f))) *
                       moveSpeed;
+        if (keys.up) position += glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed;
+        if (keys.down) position -= glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed;
       }
     }
     updateViewMatrix();

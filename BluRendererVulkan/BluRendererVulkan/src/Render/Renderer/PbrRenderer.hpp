@@ -2007,7 +2007,6 @@ class PbrRenderer : public BaseRenderer {
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     textures.prefilteredCube.device = vulkanDevice;
 
-    // FB, Att, RP, Pipe, etc.
     VkAttachmentDescription attDesc = {};
     // Color attachment
     attDesc.format = format;

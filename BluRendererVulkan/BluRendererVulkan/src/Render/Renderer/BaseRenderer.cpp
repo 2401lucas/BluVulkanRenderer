@@ -698,14 +698,14 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
     PostQuitMessage(0);
   }
   if (glfwGetKey(window, GLFW_KEY_W)) {
-    camera.keys.up = true;
+    camera.keys.forward = true;
   } else {
-    camera.keys.up = false;
+    camera.keys.forward = false;
   }
   if (glfwGetKey(window, GLFW_KEY_S)) {
-    camera.keys.down = true;
+    camera.keys.backward = true;
   } else {
-    camera.keys.down = false;
+    camera.keys.backward = false;
   }
   if (glfwGetKey(window, GLFW_KEY_A)) {
     camera.keys.left = true;
@@ -716,6 +716,16 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
     camera.keys.right = true;
   } else {
     camera.keys.right = false;
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) {
+    camera.keys.down = true;
+  } else {
+    camera.keys.down = false;
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) {
+    camera.keys.up = true;
+  } else {
+    camera.keys.up = false;
   }
 }
 
