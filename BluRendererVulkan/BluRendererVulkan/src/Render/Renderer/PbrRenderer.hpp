@@ -8,6 +8,8 @@
 #include "BaseRenderer.h"
 
 struct UISettings {
+  bool visible = true;
+  float scale = 1;
   bool displayLevel = true;
   bool cerberus = true;
   bool displaySkybox = true;
@@ -49,9 +51,9 @@ class ImGUI {
     device = br->vulkanDevice;
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale = br->UIOverlay.scale;
+    io.FontGlobalScale = uiSettings.scale;
     ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(br->UIOverlay.scale);
+    style.ScaleAllSizes(uiSettings.scale);
   };
 
   ~ImGUI() {
@@ -391,17 +393,15 @@ class ImGUI {
   }
 
   // Starts a new imGui frame and sets up windows and ui elements
-  void newFrame(BaseRenderer* renderer, bool updateFrameGraph) {
+  void newFrame(BaseRenderer* br, bool updateFrameGraph) {
     ImGui::NewFrame();
 
     // Debug window
-    ImGui::SetWindowPos(
-        ImVec2(20 * renderer->UIOverlay.scale, 20 * renderer->UIOverlay.scale),
-        ImGuiCond_FirstUseEver);
-    ImGui::SetWindowSize(ImVec2(300 * renderer->UIOverlay.scale,
-                                300 * renderer->UIOverlay.scale),
+    ImGui::SetWindowPos(ImVec2(20 * uiSettings.scale, 20 * uiSettings.scale),
+                        ImGuiCond_FirstUseEver);
+    ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 300 * uiSettings.scale),
                          ImGuiCond_Always);
-    ImGui::TextUnformatted(renderer->title.c_str());
+    ImGui::TextUnformatted(br->getTitle());
     ImGui::TextUnformatted(device->properties.deviceName);
     ImGui::Text("Vulkan API %i.%i.%i",
                 VK_API_VERSION_MAJOR(device->properties.apiVersion),
@@ -415,7 +415,7 @@ class ImGUI {
       std::rotate(uiSettings.frameTimes.begin(),
                   uiSettings.frameTimes.begin() + 1,
                   uiSettings.frameTimes.end());
-      float frameTime = 1000.0f / (renderer->frameTimer * 1000.0f);
+      float frameTime = 1000.0f / (br->frameTimer * 1000.0f);
       uiSettings.frameTimes.back() = frameTime;
       if (frameTime < uiSettings.frameTimeMin) {
         uiSettings.frameTimeMin = frameTime;
@@ -430,16 +430,16 @@ class ImGUI {
                      ImVec2(0, 80));
 
     ImGui::Text("Camera");
-    ImGui::InputFloat3("position", &renderer->camera.position.x);
-    ImGui::InputFloat3("rotation", &renderer->camera.rotation.x);
+    ImGui::InputFloat3("position", &br->camera.position.x);
+    ImGui::InputFloat3("rotation", &br->camera.rotation.x);
 
     // Example settings window
     ImGui::SetNextWindowPos(
-        ImVec2(20 * renderer->UIOverlay.scale, 360 * renderer->UIOverlay.scale),
+        ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
         ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(300 * renderer->UIOverlay.scale,
-                                    200 * renderer->UIOverlay.scale),
-                             ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(
+        ImVec2(300 * uiSettings.scale, 200 * uiSettings.scale),
+        ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
@@ -474,6 +474,9 @@ class ImGUI {
 
     // Update buffers only if vertex or index count has been changed compared to
     // current buffer size
+    // 
+    // TODO!!! Throws validation error when updating because frames are in queue
+    // referencing these buffers
 
     // Vertex buffer
     if ((vertexBuffer.buffer == VK_NULL_HANDLE) ||
@@ -651,27 +654,21 @@ class PbrRenderer : public BaseRenderer {
   VkExtent2D attachmentSize{};
 
   VkFence renderFence{VK_NULL_HANDLE};
-  std::vector<VkSemaphore> imageAvailableSemaphores;
-  std::vector<VkSemaphore> renderFinishedSemaphores;
-  std::vector<VkFence> inFlightFences;
 
-  PbrRenderer(std::vector<const char*> args) : BaseRenderer(args) {
-    title = "PBR with IBL, Multi Threading & MSAA - Blu Renderer";
+  PbrRenderer() : BaseRenderer() {
+    name = "Blu Renderer: PBR";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
     camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
     camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
-    camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 5000.0f);
+    camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.1f,
+                          5000.0f);
 
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
-    auto numThreads = std::thread::hardware_concurrency();
-    assert(numThreads > 0);
-    std::cout << "numThreads = " << numThreads << std::endl;
-
-    settings.overlay = false;
+    settings.overlay = true;
   }
 
   ~PbrRenderer() {
@@ -715,22 +712,23 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void setupMultisampleTarget() {
-    assert(
-        (deviceProperties.limits.framebufferColorSampleCounts & sampleCount) &&
-        (deviceProperties.limits.framebufferDepthSampleCounts & sampleCount));
+    assert((deviceProperties.limits.framebufferColorSampleCounts &
+            getSampleCount()) &&
+           (deviceProperties.limits.framebufferDepthSampleCounts &
+            getSampleCount()));
 
     // Color Target
     VkImageCreateInfo info = vks::initializers::imageCreateInfo();
     info.imageType = VK_IMAGE_TYPE_2D;
     info.format = swapChain.colorFormat;
-    info.extent.width = width;
-    info.extent.height = height;
+    info.extent.width = getWidth();
+    info.extent.height = getHeight();
     info.extent.depth = 1;
     info.mipLevels = 1;
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = sampleCount;
+    info.samples = getSampleCount();
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -743,9 +741,9 @@ class PbrRenderer : public BaseRenderer {
                                  &memReqs);
     VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
     memAlloc.allocationSize = memReqs.size;
-    // We prefer a lazily allocated memory type
-    // This means that the memory gets allocated when the implementation sees
-    // fit, e.g. when first using the images
+    // We prefer a lazily allocated memory type as these images do not need to
+    // be persited into main memory therefore does not require physical backing
+    // storage
     VkBool32 lazyMemTypePresent;
     memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
         memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT,
@@ -779,14 +777,14 @@ class PbrRenderer : public BaseRenderer {
     // Depth target
     info.imageType = VK_IMAGE_TYPE_2D;
     info.format = depthFormat;
-    info.extent.width = width;
-    info.extent.height = height;
+    info.extent.width = getWidth();
+    info.extent.height = getHeight();
     info.extent.depth = 1;
     info.mipLevels = 1;
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = sampleCount;
+    info.samples = getSampleCount();
     // Image will only be used as a transient target
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -832,12 +830,12 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void setupRenderPass() {
-    attachmentSize = {width, height};
+    attachmentSize = {getWidth(), getHeight()};
     std::array<VkAttachmentDescription, 3> attachments = {};
 
     // Multisampled attachment that we render to
     attachments[0].format = swapChain.colorFormat;
-    attachments[0].samples = sampleCount;
+    attachments[0].samples = getSampleCount();
     attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -858,7 +856,7 @@ class PbrRenderer : public BaseRenderer {
 
     // Multisampled depth attachment we render to
     attachments[2].format = depthFormat;
-    attachments[2].samples = sampleCount;
+    attachments[2].samples = getSampleCount();
     attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -930,8 +928,9 @@ class PbrRenderer : public BaseRenderer {
 
   void setupFrameBuffer() {
     // If the window has been resized, destroy resources
-    if (attachmentSize.width != width || attachmentSize.height != height) {
-      attachmentSize = {width, height};
+    if (attachmentSize.width != getWidth() ||
+        attachmentSize.height != getHeight()) {
+      attachmentSize = {getWidth(), getHeight()};
 
       // Destroy MSAA target
       vkDestroyImage(device, multisampleTarget.color.image, nullptr);
@@ -957,8 +956,8 @@ class PbrRenderer : public BaseRenderer {
     frameBufferCreateInfo.attachmentCount =
         static_cast<uint32_t>(attachments.size());
     frameBufferCreateInfo.pAttachments = attachments.data();
-    frameBufferCreateInfo.width = width;
-    frameBufferCreateInfo.height = height;
+    frameBufferCreateInfo.width = getWidth();
+    frameBufferCreateInfo.height = getHeight();
     frameBufferCreateInfo.layers = 1;
 
     // Create frame buffers for every swap chain image
@@ -971,8 +970,10 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void buildCommandBuffer() {
+    BaseRenderer::buildCommandBuffer();
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
+    ;
 
     VkClearValue clearValues[3];
     clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
@@ -985,55 +986,56 @@ class PbrRenderer : public BaseRenderer {
     renderPassBeginInfo.renderPass = renderPass;
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
-    renderPassBeginInfo.renderArea.extent.width = width;
-    renderPassBeginInfo.renderArea.extent.height = height;
+    renderPassBeginInfo.renderArea.extent.width = getWidth();
+    renderPassBeginInfo.renderArea.extent.height = getHeight();
     renderPassBeginInfo.clearValueCount = 3;
     renderPassBeginInfo.pClearValues = clearValues;
 
     imGui->newFrame(this, (frameCounter == 0));
     imGui->updateBuffers();
 
-    renderPassBeginInfo.framebuffer = frameBuffers[currentBuffer];
+    renderPassBeginInfo.framebuffer = frameBuffers[currentImageIndex];
 
-    VK_CHECK_RESULT(
-        vkBeginCommandBuffer(drawCmdBuffers[currentBuffer], &cmdBufInfo));
+    VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
 
-    vkCmdBeginRenderPass(drawCmdBuffers[currentBuffer], &renderPassBeginInfo,
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+
+    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                          VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport =
-        vks::initializers::viewport((float)width, (float)height, 0.0f, 1.0f);
-    vkCmdSetViewport(drawCmdBuffers[currentBuffer], 0, 1, &viewport);
-    VkRect2D scissor = vks::initializers::rect2D(width, height, 0, 0);
-    vkCmdSetScissor(drawCmdBuffers[currentBuffer], 0, 1, &scissor);
+    VkViewport viewport = vks::initializers::viewport(
+        (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
 
     VkDeviceSize offsets[1] = {0};
 
     // Skybox
     if (uiSettings.displaySkybox) {
-      vkCmdBindDescriptorSets(drawCmdBuffers[currentBuffer],
+      vkCmdBindDescriptorSets(currentCommandBuffer,
                               VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                               0, 1, &descriptorSets.skybox, 0, NULL);
-      vkCmdBindPipeline(drawCmdBuffers[currentBuffer],
-                        VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.skybox);
-      models.skybox.draw(drawCmdBuffers[currentBuffer]);
+      vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        pipelines.skybox);
+      models.skybox.draw(currentCommandBuffer);
     }
 
     // PBR Objects
     if (uiSettings.cerberus) {
-      vkCmdBindDescriptorSets(drawCmdBuffers[currentBuffer],
+      vkCmdBindDescriptorSets(currentCommandBuffer,
                               VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                               0, 1, &descriptorSets.pbr, 0, NULL);
-      vkCmdBindPipeline(drawCmdBuffers[currentBuffer],
-                        VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.pbr);
-      models.cerberus.draw(drawCmdBuffers[currentBuffer]);
+      vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        pipelines.pbr);
+      models.cerberus.draw(currentCommandBuffer);
     }
 
-    imGui->drawFrame(drawCmdBuffers[currentBuffer]);
+    imGui->drawFrame(currentCommandBuffer);
 
-    vkCmdEndRenderPass(drawCmdBuffers[currentBuffer]);
+    vkCmdEndRenderPass(currentCommandBuffer);
 
-    VK_CHECK_RESULT(vkEndCommandBuffer(drawCmdBuffers[currentBuffer]));
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
   }
 
   void setupDescriptors() {
@@ -1168,7 +1170,7 @@ class PbrRenderer : public BaseRenderer {
     VkPipelineViewportStateCreateInfo viewportState =
         vks::initializers::pipelineViewportStateCreateInfo(1, 1);
     VkPipelineMultisampleStateCreateInfo multisampleState =
-        vks::initializers::pipelineMultisampleStateCreateInfo(sampleCount);
+        vks::initializers::pipelineMultisampleStateCreateInfo(getSampleCount());
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState =
@@ -2476,7 +2478,7 @@ class PbrRenderer : public BaseRenderer {
 
   void prepareImGui() {
     imGui = new ImGUI(this);
-    imGui->init((float)width, (float)height);
+    imGui->init((float)getWidth(), (float)getHeight());
     imGui->initResources(this, renderPass, queue, "Shaders/");  // TODO
   }
 
@@ -2490,16 +2492,12 @@ class PbrRenderer : public BaseRenderer {
     setupDescriptors();
     preparePipelines();
     prepareImGui();
-    buildCommandBuffer();
     prepared = true;
   }
 
   void draw() {
     BaseRenderer::prepareFrame();
     buildCommandBuffer();
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &drawCmdBuffers[currentBuffer];
-    VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
     BaseRenderer::submitFrame();
   }
 
@@ -2511,33 +2509,19 @@ class PbrRenderer : public BaseRenderer {
     // Update imGui
     ImGuiIO& io = ImGui::GetIO();
 
-    io.DisplaySize = ImVec2((float)width, (float)height);
+    io.DisplaySize = ImVec2((float)getWidth(), (float)getHeight());
     io.DeltaTime = frameTimer;
 
     io.MousePos = ImVec2(mouseState.position.x, mouseState.position.y);
-    io.MouseDown[0] = mouseState.buttons.left && UIOverlay.visible;
-    io.MouseDown[1] = mouseState.buttons.right && UIOverlay.visible;
-    io.MouseDown[2] = mouseState.buttons.middle && UIOverlay.visible;
+    io.MouseDown[0] = mouseState.buttons.left && uiSettings.visible;
+    io.MouseDown[1] = mouseState.buttons.right && uiSettings.visible;
+    io.MouseDown[2] = mouseState.buttons.middle && uiSettings.visible;
 
     draw();
   }
 
   virtual void mouseMoved(double x, double y, bool& handled) {
     ImGuiIO& io = ImGui::GetIO();
-    handled = io.WantCaptureMouse && UIOverlay.visible;
-  }
-
-  virtual void OnUpdateUIOverlay(vks::UIOverlay* overlay) {
-    /*if (overlay->header("Settings")) {
-      if (overlay->inputFloat("Exposure", &uboParams.exposure, 0.1f, 2)) {
-        updateParams();
-      }
-      if (overlay->inputFloat("Gamma", &uboParams.gamma, 0.1f, 2)) {
-        updateParams();
-      }
-      if (overlay->checkBox("Skybox", &displaySkybox)) {
-        buildCommandBuffers();
-      }
-    }*/
+    handled = io.WantCaptureMouse && uiSettings.visible;
   }
 };

@@ -34,6 +34,6 @@ class SwapChain {
   VkResult acquireNextImage(VkSemaphore presentCompleteSemaphore,
                             uint32_t* imageIndex);
   VkResult queuePresent(VkQueue queue, uint32_t imageIndex,
-                        VkSemaphore waitSemaphore = VK_NULL_HANDLE);
+                        VkSemaphore* waitSemaphore = VK_NULL_HANDLE);
   void cleanup();
 };

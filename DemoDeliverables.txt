@@ -1,6 +1,4 @@
 GOALS IN ORDER:
-
-:
-Start adding features: 
-
-:
+More Detailed Lighting settings
+GPU Particles/Compute Pipeline
+Multi-thread
