@@ -347,7 +347,9 @@ bool BaseRenderer::initVulkan() {
   return true;
 }
 
-void BaseRenderer::setupWindow() { window = new WindowManager(title.c_str()); }
+void BaseRenderer::setupWindow() {
+  window = new WindowManager(title.c_str(), width, height);
+}
 
 void BaseRenderer::prepare() {
   initSwapchain();
@@ -480,6 +482,17 @@ void BaseRenderer::submitFrame() {
   }
 }
 
+// ERROR: [1219306694][VUID-VkPresentInfoKHR-pImageIndices-01430] : Validation
+// Error: [ VUID-VkPresentInfoKHR-pImageIndices-01430 ] Object 0: handle =
+// 0x95ff2600000000b7, type = VK_OBJECT_TYPE_SWAPCHAIN_KHR; | MessageID =
+// 0x48ad24c6 | vkQueuePresentKHR: pSwapchains[0] image at index 1 was not
+// acquired from the swapchain. The Vulkan spec states: Each element of
+// pImageIndices must be the index of a presentable image acquired from the
+// swapchain specified by the corresponding element of the pSwapchains array,
+// and the presented image subresource must be in the
+// VK_IMAGE_LAYOUT_PRESENT_SRC_KHR or VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR layout
+// at the time the operation is executed on a VkDevice
+// (https://vulkan.lunarg.com/doc/view/1.3.261.1/windows/1.3-extensions/vkspec.html#VUID-VkPresentInfoKHR-pImageIndices-01430)
 void BaseRenderer::setSampleCount(VkSampleCountFlagBits sampleCount) {
   if ((deviceProperties.limits.framebufferColorSampleCounts & sampleCount) &&
       deviceProperties.limits.framebufferDepthSampleCounts & sampleCount) {

@@ -331,7 +331,7 @@ class ImGUI {
 
     VkPipelineMultisampleStateCreateInfo multisampleState =
         vks::initializers::pipelineMultisampleStateCreateInfo(
-            VK_SAMPLE_COUNT_4_BIT);
+            br->getSampleCount());
 
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
@@ -471,12 +471,6 @@ class ImGUI {
     if ((vertexBufferSize == 0) || (indexBufferSize == 0)) {
       return;
     }
-
-    // Update buffers only if vertex or index count has been changed compared to
-    // current buffer size
-    // 
-    // TODO!!! Throws validation error when updating because frames are in queue
-    // referencing these buffers
 
     // Vertex buffer
     if ((vertexBuffer.buffer == VK_NULL_HANDLE) ||
@@ -653,8 +647,6 @@ class PbrRenderer : public BaseRenderer {
   VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
   VkExtent2D attachmentSize{};
 
-  VkFence renderFence{VK_NULL_HANDLE};
-
   PbrRenderer() : BaseRenderer() {
     name = "Blu Renderer: PBR";
     camera.type = Camera::firstperson;
@@ -674,6 +666,7 @@ class PbrRenderer : public BaseRenderer {
   ~PbrRenderer() {
     vkDestroyPipeline(device, pipelines.skybox, nullptr);
     vkDestroyPipeline(device, pipelines.pbr, nullptr);
+    vkDestroyPipeline(device, pipelines.pbrWithSS, nullptr);
 
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
@@ -688,6 +681,9 @@ class PbrRenderer : public BaseRenderer {
     uniformBuffers.object.destroy();
     uniformBuffers.skybox.destroy();
     uniformBuffers.params.destroy();
+
+    models.skybox.destroy(device);
+    models.cerberus.destroy(device);
 
     textures.environmentCube.destroy();
     textures.irradianceCube.destroy();
@@ -973,7 +969,6 @@ class PbrRenderer : public BaseRenderer {
     BaseRenderer::buildCommandBuffer();
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
-    ;
 
     VkClearValue clearValues[3];
     clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
@@ -1027,7 +1022,7 @@ class PbrRenderer : public BaseRenderer {
                               VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                               0, 1, &descriptorSets.pbr, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        pipelines.pbr);
+                        pipelines.pbrWithSS);
       models.cerberus.draw(currentCommandBuffer);
     }
 

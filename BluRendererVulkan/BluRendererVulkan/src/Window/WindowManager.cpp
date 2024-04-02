@@ -2,10 +2,10 @@
 
 #include <stdexcept>
 
-WindowManager::WindowManager(const char* name) {
+WindowManager::WindowManager(const char* name, int width, int height) {
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  window = glfwCreateWindow(1280, 720, name, nullptr, nullptr);
+  window = glfwCreateWindow(width, height, name, nullptr, nullptr);
 
   // glfwSetWindowUserPointer(window, nullptr);
 
