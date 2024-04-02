@@ -22,10 +22,10 @@ struct UISettings {
 class ImGUI {
  private:
   VkSampler sampler;
-  vks::Buffer vertexBuffer;
-  vks::Buffer indexBuffer;
-  int32_t vertexCount = 0;
-  int32_t indexCount = 0;
+  std::vector<vks::Buffer> vertexBuffers;
+  std::vector<vks::Buffer> indexBuffers;
+  std::vector<int32_t> vertexCounts;
+  std::vector<int32_t> indexCounts;
   VkDeviceMemory fontMemory = VK_NULL_HANDLE;
   VkImage fontImage = VK_NULL_HANDLE;
   VkImageView fontView = VK_NULL_HANDLE;
@@ -58,8 +58,12 @@ class ImGUI {
 
   ~ImGUI() {
     ImGui::DestroyContext();
-    vertexBuffer.destroy();
-    indexBuffer.destroy();
+    for (auto& buf : vertexBuffers) {
+      buf.destroy();
+    }
+    for (auto& buf : indexBuffers) {
+      buf.destroy();
+    }
     vkDestroyImage(device->logicalDevice, fontImage, nullptr);
     vkDestroyImageView(device->logicalDevice, fontView, nullptr);
     vkFreeMemory(device->logicalDevice, fontMemory, nullptr);
@@ -126,7 +130,7 @@ class ImGUI {
     int texWidth, texHeight;
     io.Fonts->GetTexDataAsRGBA32(&fontData, &texWidth, &texHeight);
     VkDeviceSize uploadSize = texWidth * texHeight * 4 * sizeof(char);
-
+    
     if (device->extensionSupported(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME)) {
       VkPhysicalDeviceProperties2 deviceProperties2 = {};
       deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
@@ -136,6 +140,12 @@ class ImGUI {
       vkGetPhysicalDeviceProperties2(device->physicalDevice,
                                      &deviceProperties2);
     }
+
+    vertexBuffers.resize(br->swapChain.imageCount);
+    vertexCounts.resize(br->swapChain.imageCount);
+    indexBuffers.resize(br->swapChain.imageCount);
+    indexCounts.resize(br->swapChain.imageCount);
+
 
     // Create target image for copy
     VkImageCreateInfo imageInfo = vks::initializers::imageCreateInfo();
@@ -459,7 +469,7 @@ class ImGUI {
   }
 
   // Update vertex and index buffer containing the imGui elements when required
-  void updateBuffers() {
+  void updateBuffers(uint32_t frameIndex) {
     ImDrawData* imDrawData = ImGui::GetDrawData();
 
     // Note: Alignment is done inside buffer creation
@@ -473,32 +483,33 @@ class ImGUI {
     }
 
     // Vertex buffer
-    if ((vertexBuffer.buffer == VK_NULL_HANDLE) ||
-        (vertexCount != imDrawData->TotalVtxCount)) {
-      vertexBuffer.unmap();
-      vertexBuffer.destroy();
+    if ((vertexBuffers[frameIndex].buffer == VK_NULL_HANDLE) ||
+        (vertexCounts[frameIndex] != imDrawData->TotalVtxCount)) {
+      vertexBuffers[frameIndex].unmap();
+      vertexBuffers[frameIndex].destroy();
       VK_CHECK_RESULT(device->createBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                                           &vertexBuffer, vertexBufferSize));
-      vertexCount = imDrawData->TotalVtxCount;
-      vertexBuffer.map();
+                                           &vertexBuffers[frameIndex],
+                                           vertexBufferSize));
+      vertexCounts[frameIndex] = imDrawData->TotalVtxCount;
+      vertexBuffers[frameIndex].map();
     }
 
     // Index buffer
-    if ((indexBuffer.buffer == VK_NULL_HANDLE) ||
-        (indexCount < imDrawData->TotalIdxCount)) {
-      indexBuffer.unmap();
-      indexBuffer.destroy();
+    if ((indexBuffers[frameIndex].buffer == VK_NULL_HANDLE) ||
+        (indexCounts[frameIndex] < imDrawData->TotalIdxCount)) {
+      indexBuffers[frameIndex].unmap();
+      indexBuffers[frameIndex].destroy();
       VK_CHECK_RESULT(device->createBuffer(VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                                           &indexBuffer, indexBufferSize));
-      indexCount = imDrawData->TotalIdxCount;
-      indexBuffer.map();
+          &indexBuffers[frameIndex], indexBufferSize));
+      indexCounts[frameIndex] = imDrawData->TotalIdxCount;
+      indexBuffers[frameIndex].map();
     }
 
     // Upload data
-    ImDrawVert* vtxDst = (ImDrawVert*)vertexBuffer.mapped;
-    ImDrawIdx* idxDst = (ImDrawIdx*)indexBuffer.mapped;
+    ImDrawVert* vtxDst = (ImDrawVert*)vertexBuffers[frameIndex].mapped;
+    ImDrawIdx* idxDst = (ImDrawIdx*)indexBuffers[frameIndex].mapped;
 
     for (int n = 0; n < imDrawData->CmdListsCount; n++) {
       const ImDrawList* cmd_list = imDrawData->CmdLists[n];
@@ -511,12 +522,12 @@ class ImGUI {
     }
 
     // Flush to make writes visible to GPU
-    vertexBuffer.flush();
-    indexBuffer.flush();
+    vertexBuffers[frameIndex].flush();
+    indexBuffers[frameIndex].flush();
   }
 
   // Draw current imGui frame into a command buffer
-  void drawFrame(VkCommandBuffer commandBuffer) {
+  void drawFrame(VkCommandBuffer commandBuffer, uint32_t frameIndex) {
     ImGuiIO& io = ImGui::GetIO();
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -542,9 +553,10 @@ class ImGUI {
 
     if (imDrawData->CmdListsCount > 0) {
       VkDeviceSize offsets[1] = {0};
-      vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer.buffer,
+      vkCmdBindVertexBuffers(commandBuffer, 0, 1,
+                             &vertexBuffers[frameIndex].buffer,
                              offsets);
-      vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0,
+      vkCmdBindIndexBuffer(commandBuffer, indexBuffers[frameIndex].buffer, 0,
                            VK_INDEX_TYPE_UINT16);
 
       for (int32_t i = 0; i < imDrawData->CmdListsCount; i++) {
@@ -643,6 +655,11 @@ class PbrRenderer : public BaseRenderer {
     } depth;
   } multisampleTarget;
 
+  // Multi-threading
+  // 1 Command Pool per FiF?
+  std::vector<VkCommandBuffer> uiDrawCmdBuffers;
+  std::vector<VkCommandBuffer> pbrDrawCmdBuffers;
+
   VkPipelineLayout pipelineLayout{VK_NULL_HANDLE};
   VkDescriptorSetLayout descriptorSetLayout{VK_NULL_HANDLE};
   VkExtent2D attachmentSize{};
@@ -698,7 +715,7 @@ class PbrRenderer : public BaseRenderer {
     delete imGui;
   }
 
-  virtual void getEnabledFeatures() {
+  virtual void getEnabledFeatures() override {
     if (deviceFeatures.sampleRateShading) {
       enabledFeatures.sampleRateShading = VK_TRUE;
     }
@@ -825,7 +842,7 @@ class PbrRenderer : public BaseRenderer {
                                       &multisampleTarget.depth.view));
   }
 
-  void setupRenderPass() {
+  void setupRenderPass() override {
     attachmentSize = {getWidth(), getHeight()};
     std::array<VkAttachmentDescription, 3> attachments = {};
 
@@ -922,7 +939,7 @@ class PbrRenderer : public BaseRenderer {
         vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
   }
 
-  void setupFrameBuffer() {
+  void setupFrameBuffer() override {
     // If the window has been resized, destroy resources
     if (attachmentSize.width != getWidth() ||
         attachmentSize.height != getHeight()) {
@@ -965,38 +982,66 @@ class PbrRenderer : public BaseRenderer {
     }
   }
 
-  void buildCommandBuffer() {
-    BaseRenderer::buildCommandBuffer();
+  void createCommandBuffers() override {
+    BaseRenderer::createCommandBuffers();
+    uiDrawCmdBuffers.resize(swapChain.imageCount);
+    pbrDrawCmdBuffers.resize(swapChain.imageCount);
+
+    VkCommandBufferAllocateInfo secondaryCmdBufAllocateInfo =
+        vks::initializers::commandBufferAllocateInfo(
+            cmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            static_cast<uint32_t>(uiDrawCmdBuffers.size()));
+
+    VK_CHECK_RESULT(vkAllocateCommandBuffers(
+        device, &secondaryCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+    VK_CHECK_RESULT(vkAllocateCommandBuffers(
+        device, &secondaryCmdBufAllocateInfo, pbrDrawCmdBuffers.data()));
+  }
+
+  void destroyCommandBuffers() override {
+    BaseRenderer::destroyCommandBuffers();
+
+    vkFreeCommandBuffers(device, cmdPool,
+                         static_cast<uint32_t>(uiDrawCmdBuffers.size()),
+                         uiDrawCmdBuffers.data());
+  }
+
+  void buildUICommandBuffer() {
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderPass;
+    inheritanceInfo.framebuffer = frameBuffers[currentImageIndex];
+
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
-    VkClearValue clearValues[3];
-    clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
-    clearValues[1].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
-    clearValues[2].depthStencil = {1.0f, 0};
+    VkCommandBuffer currentCommandBuffer = uiDrawCmdBuffers[currentFrameIndex];
 
-    VkRenderPassBeginInfo renderPassBeginInfo =
-        vks::initializers::renderPassBeginInfo();
-
-    renderPassBeginInfo.renderPass = renderPass;
-    renderPassBeginInfo.renderArea.offset.x = 0;
-    renderPassBeginInfo.renderArea.offset.y = 0;
-    renderPassBeginInfo.renderArea.extent.width = getWidth();
-    renderPassBeginInfo.renderArea.extent.height = getHeight();
-    renderPassBeginInfo.clearValueCount = 3;
-    renderPassBeginInfo.pClearValues = clearValues;
-
-    imGui->newFrame(this, (frameCounter == 0));
-    imGui->updateBuffers();
-
-    renderPassBeginInfo.framebuffer = frameBuffers[currentImageIndex];
-
-    VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
-
+    vkResetCommandBuffer(currentCommandBuffer, 0);
     VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
 
-    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
-                         VK_SUBPASS_CONTENTS_INLINE);
+    imGui->drawFrame(currentCommandBuffer, currentFrameIndex);
+
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
+  }
+
+  void buildPbrCommandBuffer() {
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderPass;
+    inheritanceInfo.framebuffer = frameBuffers[currentImageIndex];
+
+    VkCommandBufferBeginInfo cmdBufInfo =
+        vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+    VkCommandBuffer currentCommandBuffer = pbrDrawCmdBuffers[currentFrameIndex];
+
+    vkResetCommandBuffer(currentCommandBuffer, 0);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
 
     VkViewport viewport = vks::initializers::viewport(
         (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
@@ -1026,7 +1071,55 @@ class PbrRenderer : public BaseRenderer {
       models.cerberus.draw(currentCommandBuffer);
     }
 
-    imGui->drawFrame(currentCommandBuffer);
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
+  }
+
+  void buildCommandBuffer() override {
+    // Contains the list of secondary command buffers to be submitted
+    std::vector<VkCommandBuffer> secondaryCmdBufs;
+
+    BaseRenderer::buildCommandBuffer();
+    VkCommandBufferBeginInfo cmdBufInfo =
+        vks::initializers::commandBufferBeginInfo();
+
+    VkClearValue clearValues[3];
+    clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+    clearValues[1].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+    clearValues[2].depthStencil = {1.0f, 0};
+
+    VkRenderPassBeginInfo renderPassBeginInfo =
+        vks::initializers::renderPassBeginInfo();
+
+    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.renderArea.offset.x = 0;
+    renderPassBeginInfo.renderArea.offset.y = 0;
+    renderPassBeginInfo.renderArea.extent.width = getWidth();
+    renderPassBeginInfo.renderArea.extent.height = getHeight();
+    renderPassBeginInfo.clearValueCount = 3;
+    renderPassBeginInfo.pClearValues = clearValues;
+
+    imGui->newFrame(this, (frameCounter == 0));
+    imGui->updateBuffers(currentFrameIndex);
+
+    renderPassBeginInfo.framebuffer = frameBuffers[currentImageIndex];
+
+    VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
+
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+
+    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    buildUICommandBuffer();
+    buildPbrCommandBuffer();
+
+    secondaryCmdBufs.push_back(pbrDrawCmdBuffers[currentFrameIndex]);
+    secondaryCmdBufs.push_back(uiDrawCmdBuffers[currentFrameIndex]);
+
+    // Execute render commands from the secondary command buffer
+    vkCmdExecuteCommands(currentCommandBuffer,
+                         static_cast<uint32_t>(secondaryCmdBufs.size()),
+                         secondaryCmdBufs.data());
 
     vkCmdEndRenderPass(currentCommandBuffer);
 
@@ -2477,7 +2570,7 @@ class PbrRenderer : public BaseRenderer {
     imGui->initResources(this, renderPass, queue, "Shaders/");  // TODO
   }
 
-  void prepare() {
+  void prepare() override {
     BaseRenderer::prepare();
     loadAssets();
     generateBRDFLUT();
@@ -2496,7 +2589,7 @@ class PbrRenderer : public BaseRenderer {
     BaseRenderer::submitFrame();
   }
 
-  virtual void render() {
+  void render() override {
     if (!prepared) return;
 
     updateUniformBuffers();
@@ -2513,10 +2606,5 @@ class PbrRenderer : public BaseRenderer {
     io.MouseDown[2] = mouseState.buttons.middle && uiSettings.visible;
 
     draw();
-  }
-
-  virtual void mouseMoved(double x, double y, bool& handled) {
-    ImGuiIO& io = ImGui::GetIO();
-    handled = io.WantCaptureMouse && uiSettings.visible;
   }
 };
