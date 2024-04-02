@@ -4,7 +4,7 @@
 
 class WindowManager {
  public:
-  WindowManager(const char*);
+  WindowManager(const char* name, int width, int height);
   ~WindowManager();
 
   void handleEvents();

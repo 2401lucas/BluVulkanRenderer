@@ -54,8 +54,6 @@ class BaseRenderer {
   WindowManager* window;
 
   void createCommandPool();
-  void createCommandBuffers();
-  void destroyCommandBuffers();
   void createSynchronizationPrimitives();
   void destroySynchronizationPrimitives();
   void initSwapchain();
@@ -144,8 +142,11 @@ class BaseRenderer {
   virtual void nextFrame();
   // (Virtual)
   virtual void createPipelineCache();
-
-  // @brief (Pure virtual) Render function to be implemented by the sample
+  // (Virtual)
+  virtual void createCommandBuffers();
+  // (Virtual)
+  virtual void destroyCommandBuffers();
+  // (Pure virtual) Render function to be implemented by the sample
   // application
   virtual void render() = 0;
   //(Virtual) Called after window events have been polled, used

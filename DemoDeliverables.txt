@@ -1,4 +1,4 @@
 GOALS IN ORDER:
+Multi-thread (Secondary Command Buffers for ImGui)
 More Detailed Lighting settings
 GPU Particles/Compute Pipeline
-Multi-thread
