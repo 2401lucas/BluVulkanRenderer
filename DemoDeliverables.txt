@@ -1,4 +1,14 @@
 GOALS IN ORDER:
-Multi-thread (Secondary Command Buffers for ImGui)
-More Detailed Lighting settings
+Multi-thread (Secondary Command Buffers for ImGui) (Secondary command buffers working, multi threading would be trivial but would probably slow down performance with the thread pool overhead being not worth the saving the small workload in command buffer recording)
 GPU Particles/Compute Pipeline
+-Particle System Holder (Self contained, taking parameters) -Draw commands & buffer recording
+More Detailed Lighting + settings + sponza
+AO
+SSAO
+GOOD LIGHTING!!!!!
+GOD RAYS
+DYNAMIC LIGHTING
+REIMPLEMENT INTO ENGINE!!!
+
+Challenges
+Compute Buffers allign with Double/Triple Buffering

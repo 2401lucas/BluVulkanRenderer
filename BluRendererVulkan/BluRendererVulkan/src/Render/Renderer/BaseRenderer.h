@@ -26,7 +26,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 
-#include "../ParticleSystem/ParticleSystemHolder.h"
 #include "../ResourceManagement/VulkanResources/SwapChain.h"
 #include "../ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "Camera/Camera.hpp"
