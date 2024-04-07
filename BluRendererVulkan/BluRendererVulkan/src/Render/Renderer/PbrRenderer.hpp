@@ -11,9 +11,9 @@
 struct UISettings {
   bool visible = true;
   float scale = 1;
-  bool displayLevel = true;
   bool cerberus = true;
   bool displaySkybox = true;
+  bool displaySponza = true;
   bool useSampleShading = false;
   int msaaSamples;
   std::array<float, 50> frameTimes{};
@@ -45,7 +45,7 @@ class PbrRenderer : public BaseRenderer {
   struct Models {
     vkglTF::Model skybox;
     vkglTF::Model cerberus;
-    vkglTF::Model level;
+    vkglTF::Model sponza;
   } models;
 
   // Render Resources
@@ -62,6 +62,20 @@ class PbrRenderer : public BaseRenderer {
     glm::mat4 view;
     glm::vec3 camPos;
   } uboMatrices;
+
+  struct Lights {
+    glm::vec4 lightColor;
+    glm::vec3 lightPosition;
+    glm::vec3 lightRotation;
+    float exposure;
+    float gamma;
+    float constant;
+    float linear;
+    float quad;
+    float innerCutoff;
+    float outerCutoff;
+    int lightType;
+  };
 
   // TODO: More Detailed Lights
   struct UBOParams {
@@ -136,6 +150,7 @@ class PbrRenderer : public BaseRenderer {
 
     vkDestroyPipelineLayout(device, pipelineLayouts.pbr, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.pbr, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPools.pbr, nullptr);
 
     vkDestroyImage(device, multisampleTarget.color.image, nullptr);
     vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
@@ -150,6 +165,7 @@ class PbrRenderer : public BaseRenderer {
 
     models.skybox.destroy(device);
     models.cerberus.destroy(device);
+    models.sponza.destroy(device);
 
     textures.environmentCube.destroy();
     textures.irradianceCube.destroy();
@@ -506,6 +522,7 @@ class PbrRenderer : public BaseRenderer {
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+    ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
       ImGui::Checkbox("use Sample Skybox", &uiSettings.useSampleShading);
     }

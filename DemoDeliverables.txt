@@ -3,12 +3,19 @@ Multi-thread (Secondary Command Buffers for ImGui) (Secondary command buffers wo
 GPU Particles/Compute Pipeline
 -Particle System Holder (Self contained, taking parameters) -Draw commands & buffer recording
 More Detailed Lighting + settings + sponza
+Returning to Asset Loading:
+-Preloading all assets at runtime is the way.
+-Dynamically Creating Pipelines is also the way
+-Need some sort of caching and preferably one pipeline per mesh, not one per material
+
+
 AO
 SSAO
 GOOD LIGHTING!!!!!
 GOD RAYS
 DYNAMIC LIGHTING
 REIMPLEMENT INTO ENGINE!!!
+Animations
 
 Challenges
-Compute Buffers allign with Double/Triple Buffering
+Compute Buffers allign with Double/Triple Buffering(Async)
