@@ -63,23 +63,15 @@ class PbrRenderer : public BaseRenderer {
     glm::vec3 camPos;
   } uboMatrices;
 
-  struct Lights {
-    glm::vec4 lightColor;
-    glm::vec3 lightPosition;
-    glm::vec3 lightRotation;
-    float exposure;
-    float gamma;
-    float constant;
-    float linear;
-    float quad;
-    float innerCutoff;
-    float outerCutoff;
-    int lightType;
+  struct LightInfo {
+    glm::vec4 pos;    // XYZ for position, W for light type
+    glm::vec4 rot;    // XYZ  for rotation
+    glm::vec4 color;  // XYZ for RGB, W for Intensity
   };
 
   // TODO: More Detailed Lights
   struct UBOParams {
-    glm::vec4 lights[4];  // XYZ pos, W unused
+    LightInfo light[1];
     float exposure = 4.5f;
     float gamma = 2.2f;
   } uboParams;
@@ -141,6 +133,11 @@ class PbrRenderer : public BaseRenderer {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
     settings.overlay = true;
+    settings.validation = true;
+
+    uboParams.light[0].pos = glm::vec4(0, 0, -2, 0);
+    uboParams.light[0].rot = glm::vec4(0, 0, 0, 0);
+    uboParams.light[0].color = glm::vec4(1, 0, 0, 1);
   }
 
   ~PbrRenderer() {
@@ -521,10 +518,17 @@ class PbrRenderer : public BaseRenderer {
         ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
-    ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      ImGui::Checkbox("use Sample Skybox", &uiSettings.useSampleShading);
+      ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+
+      if (ImGui::CollapsingHeader("Light Settings")) {
+        ImGui::InputFloat3("position", &uboParams.light[0].pos.x);
+        ImGui::InputFloat3("rotation", &uboParams.light[0].rot.x);
+        if (ImGui::ColorPicker4("Light Color", &uboParams.light[0].color.x)) {
+          updateParams();
+        }
+      }
     }
 
     if (ImGui::Combo("UI style", &imGui->selectedStyle,
@@ -854,8 +858,8 @@ class PbrRenderer : public BaseRenderer {
     }
   }
 
-  // Generate a BRDF integration map used as a look-up-table (stores roughness /
-  // NdotV)
+  // Generate a BRDF integration map used as a look-up-table (Roughness/NdotV)
+  // for Irradiance map (0..1 Scale/Bias)
   void generateBRDFLUT() {
     auto tStart = std::chrono::high_resolution_clock::now();
 
@@ -2057,12 +2061,6 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void updateParams() {
-    const float p = 150.0f;
-    uboParams.lights[0] = glm::vec4(-p, -p * 0.5f, -p, 1.0f);
-    uboParams.lights[1] = glm::vec4(-p, -p * 0.5f, p, 1.0f);
-    uboParams.lights[2] = glm::vec4(p, -p * 0.5f, p, 1.0f);
-    uboParams.lights[3] = glm::vec4(p, -p * 0.5f, -p, 1.0f);
-
     memcpy(uniformBuffers.params.mapped, &uboParams, sizeof(uboParams));
   }
 

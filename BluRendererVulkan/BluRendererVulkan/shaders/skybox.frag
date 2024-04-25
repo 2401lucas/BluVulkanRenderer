@@ -6,8 +6,14 @@ layout (location = 0) in vec3 inUVW;
 
 layout (location = 0) out vec4 outColor;
 
+struct LightInfo {
+	vec4 pos;	//XYZ for position, W for light type
+	vec4 rot;	//XYZ  for rotation
+	vec4 color;	//XYZ for RGB, W for Intensity
+};
+
 layout (binding = 1) uniform UBOParams {
-	vec4 lights[4];
+	LightInfo lights[1];
 	float exposure;
 	float gamma;
 } uboParams;
