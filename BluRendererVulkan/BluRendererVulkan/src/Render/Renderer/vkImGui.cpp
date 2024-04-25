@@ -44,15 +44,46 @@ void vkImGUI::init(float width, float height) {
   ImGuiIO& io = ImGui::GetIO();
   io.DisplaySize = ImVec2(width, height);
   io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-  io.KeyMap[ImGuiKey_Tab] = VK_TAB;
-  io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
-  io.KeyMap[ImGuiKey_RightArrow] = VK_RIGHT;
-  io.KeyMap[ImGuiKey_UpArrow] = VK_UP;
-  io.KeyMap[ImGuiKey_DownArrow] = VK_DOWN;
-  io.KeyMap[ImGuiKey_Backspace] = VK_BACK;
-  io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
-  io.KeyMap[ImGuiKey_Space] = VK_SPACE;
-  io.KeyMap[ImGuiKey_Delete] = VK_DELETE;
+  // io.KeyMap[ImGuiKey_Tab] = VK_TAB;
+  // io.KeyMap[ImGuiKey_LeftArrow] = VK_LEFT;
+  // io.KeyMap[ImGuiKey_RightArrow] = VK_RIGHT;
+  // io.KeyMap[ImGuiKey_UpArrow] = VK_UP;
+  // io.KeyMap[ImGuiKey_DownArrow] = VK_DOWN;
+  // io.KeyMap[ImGuiKey_Backspace] = VK_BACK;
+  // io.KeyMap[ImGuiKey_Enter] = VK_RETURN;
+  // io.KeyMap[ImGuiKey_Space] = VK_SPACE;
+  // io.KeyMap[ImGuiKey_Delete] = VK_DELETE;
+  // io.KeyMap[ImGuiKey_0] = GLFW_KEY_0;
+  // io.KeyMap[ImGuiKey_1] = GLFW_KEY_1;
+  // io.KeyMap[ImGuiKey_2] = GLFW_KEY_2;
+  // io.KeyMap[ImGuiKey_3] = GLFW_KEY_3;
+  // io.KeyMap[ImGuiKey_4] = GLFW_KEY_4;
+  // io.KeyMap[ImGuiKey_5] = GLFW_KEY_5;
+  // io.KeyMap[ImGuiKey_6] = GLFW_KEY_6;
+  // io.KeyMap[ImGuiKey_7] = GLFW_KEY_7;
+  // io.KeyMap[ImGuiKey_8] = GLFW_KEY_8;
+  // io.KeyMap[ImGuiKey_9] = GLFW_KEY_9;
+  // io.AddKeyEvent(GLFW_KEY_0);
+  // io.AddInputCharacter(GLFW_KEY_1);
+  // io.AddInputCharacter(GLFW_KEY_2);
+  // io.AddInputCharacter(GLFW_KEY_3);
+  // io.AddInputCharacter(GLFW_KEY_4);
+  // io.AddInputCharacter(GLFW_KEY_5);
+  // io.AddInputCharacter(GLFW_KEY_6);
+  // io.AddInputCharacter(GLFW_KEY_7);
+  // io.AddInputCharacter(GLFW_KEY_8);
+  // io.AddInputCharacter(GLFW_KEY_9);
+
+  io.AddKeyEvent(ImGuiKey_0, true);
+  io.AddKeyEvent(ImGuiKey_1, true);
+  io.AddKeyEvent(ImGuiKey_2, true);
+  io.AddKeyEvent(ImGuiKey_3, true);
+  io.AddKeyEvent(ImGuiKey_4, true);
+  io.AddKeyEvent(ImGuiKey_5, true);
+  io.AddKeyEvent(ImGuiKey_6, true);
+  io.AddKeyEvent(ImGuiKey_7, true);
+  io.AddKeyEvent(ImGuiKey_8, true);
+  io.AddKeyEvent(ImGuiKey_9, true);
 }
 
 void vkImGUI::setStyle(uint32_t index) {
