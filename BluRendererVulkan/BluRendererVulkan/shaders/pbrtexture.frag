@@ -19,9 +19,9 @@ struct LightInfo {
 };
 
 layout (binding = 1) uniform UBOParams {
-	LightInfo lights[1];
 	float exposure;
 	float gamma;
+	LightInfo lights[1];
 } uboParams;
 
 //Prebaked Scene Resources

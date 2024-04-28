@@ -266,3 +266,6 @@ void ParticleSystem::prepareStorageBuffer(VkQueue queue) {
 
   stagingBuffer.destroy();
 }
+
+
+void ParticleSystem::update() {}

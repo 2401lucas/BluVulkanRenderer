@@ -2,8 +2,6 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <glm/glm.hpp>
-
 #include "../Renderer/BaseRenderer.h"
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
 #include "../ResourceManagement/VulkanResources/VulkanDevice.h"

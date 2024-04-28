@@ -1,6 +1,10 @@
 #pragma once
 #define NOMINMAX
 
+#define SSAO_KERNEL_SIZE 64
+#define SSAO_RADIUS 0.3f
+#define SSAO_NOISE_DIM 4
+
 #include <corecrt_math_defines.h>
 
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
@@ -71,9 +75,9 @@ class PbrRenderer : public BaseRenderer {
 
   // TODO: More Detailed Lights
   struct UBOParams {
-    LightInfo light[1];
     float exposure = 4.5f;
     float gamma = 2.2f;
+    LightInfo light[1];
   } uboParams;
 
   struct {
@@ -520,6 +524,7 @@ class PbrRenderer : public BaseRenderer {
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
+      ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
 
       if (ImGui::CollapsingHeader("Light Settings")) {
@@ -603,7 +608,7 @@ class PbrRenderer : public BaseRenderer {
           currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
           pipelineLayouts.pbr, 0, 1, &descriptorSets.pbr, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        pipelines.pbrWithSS);
+                        (vulkanDevice->features.sampleRateShading && uiSettings.useSampleShading)? pipelines.pbrWithSS : pipelines.pbr);
       models.cerberus.draw(currentCommandBuffer);
     }
 
@@ -2098,7 +2103,7 @@ class PbrRenderer : public BaseRenderer {
   void prepareImGui() {
     imGui = new vkImGUI(this);
     imGui->init((float)getWidth(), (float)getHeight());
-    imGui->initResources(this, renderPass, queue, "Shaders/");  // TODO
+    imGui->initResources(this, renderPass, queue, getShaderBasePath());
   }
 
   void prepare() override {
