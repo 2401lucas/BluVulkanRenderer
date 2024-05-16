@@ -18,13 +18,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
 
-// ERROR is already defined in wingdi.h and collides with a define in the Draco
-// headers
-#if defined(_WIN32) && defined(ERROR) && defined(TINYGLTF_ENABLE_DRACO)
-#undef ERROR
-#pragma message("ERROR constant already defined, undefining")
-#endif
-
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 
 #include "../../../libraries/GLTF/tiny_gltf.h"
@@ -66,7 +59,7 @@ struct Texture {
   void updateDescriptor();
   void destroy();
   // Load a texture from a glTF image (stored as vector of chars loaded via
-  // stb_image) and generate a full mip chaing for it
+  // stb_image) and generate a full mip chain for it
   void fromglTfImage(tinygltf::Image& gltfimage, TextureSampler textureSampler,
                      vks::VulkanDevice* device, VkQueue copyQueue);
 };

@@ -1,6 +1,10 @@
 #pragma once
 #define NOMINMAX
 
+#define SSAO_KERNEL_SIZE 64
+#define SSAO_RADIUS 0.3f
+#define SSAO_NOISE_DIM 4
+
 #include <corecrt_math_defines.h>
 
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
@@ -11,9 +15,9 @@
 struct UISettings {
   bool visible = true;
   float scale = 1;
-  bool displayLevel = true;
   bool cerberus = true;
   bool displaySkybox = true;
+  bool displaySponza = true;
   bool useSampleShading = false;
   int msaaSamples;
   std::array<float, 50> frameTimes{};
@@ -45,7 +49,7 @@ class PbrRenderer : public BaseRenderer {
   struct Models {
     vkglTF::Model skybox;
     vkglTF::Model cerberus;
-    vkglTF::Model level;
+    vkglTF::Model sponza;
   } models;
 
   // Render Resources
@@ -63,11 +67,17 @@ class PbrRenderer : public BaseRenderer {
     glm::vec3 camPos;
   } uboMatrices;
 
+  struct LightInfo {
+    glm::vec4 pos;    // XYZ for position, W for light type
+    glm::vec4 rot;    // XYZ  for rotation
+    glm::vec4 color;  // XYZ for RGB, W for Intensity
+  };
+
   // TODO: More Detailed Lights
   struct UBOParams {
-    glm::vec4 lights[4];  // XYZ pos, W unused
     float exposure = 4.5f;
     float gamma = 2.2f;
+    LightInfo light[1];
   } uboParams;
 
   struct {
@@ -127,6 +137,11 @@ class PbrRenderer : public BaseRenderer {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
     settings.overlay = true;
+    settings.validation = true;
+
+    uboParams.light[0].pos = glm::vec4(0, 0, -2, 0);
+    uboParams.light[0].rot = glm::vec4(0, 0, 0, 0);
+    uboParams.light[0].color = glm::vec4(1, 0, 0, 1);
   }
 
   ~PbrRenderer() {
@@ -136,6 +151,7 @@ class PbrRenderer : public BaseRenderer {
 
     vkDestroyPipelineLayout(device, pipelineLayouts.pbr, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.pbr, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPools.pbr, nullptr);
 
     vkDestroyImage(device, multisampleTarget.color.image, nullptr);
     vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
@@ -150,6 +166,7 @@ class PbrRenderer : public BaseRenderer {
 
     models.skybox.destroy(device);
     models.cerberus.destroy(device);
+    models.sponza.destroy(device);
 
     textures.environmentCube.destroy();
     textures.irradianceCube.destroy();
@@ -505,9 +522,18 @@ class PbrRenderer : public BaseRenderer {
         ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
-    ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+    ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      ImGui::Checkbox("use Sample Skybox", &uiSettings.useSampleShading);
+      ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
+      ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+
+      if (ImGui::CollapsingHeader("Light Settings")) {
+        ImGui::InputFloat3("position", &uboParams.light[0].pos.x);
+        ImGui::InputFloat3("rotation", &uboParams.light[0].rot.x);
+        if (ImGui::ColorPicker4("Light Color", &uboParams.light[0].color.x)) {
+          updateParams();
+        }
+      }
     }
 
     if (ImGui::Combo("UI style", &imGui->selectedStyle,
@@ -582,7 +608,7 @@ class PbrRenderer : public BaseRenderer {
           currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
           pipelineLayouts.pbr, 0, 1, &descriptorSets.pbr, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        pipelines.pbrWithSS);
+                        (vulkanDevice->features.sampleRateShading && uiSettings.useSampleShading)? pipelines.pbrWithSS : pipelines.pbr);
       models.cerberus.draw(currentCommandBuffer);
     }
 
@@ -837,8 +863,8 @@ class PbrRenderer : public BaseRenderer {
     }
   }
 
-  // Generate a BRDF integration map used as a look-up-table (stores roughness /
-  // NdotV)
+  // Generate a BRDF integration map used as a look-up-table (Roughness/NdotV)
+  // for Irradiance map (0..1 Scale/Bias)
   void generateBRDFLUT() {
     auto tStart = std::chrono::high_resolution_clock::now();
 
@@ -2040,12 +2066,6 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void updateParams() {
-    const float p = 150.0f;
-    uboParams.lights[0] = glm::vec4(-p, -p * 0.5f, -p, 1.0f);
-    uboParams.lights[1] = glm::vec4(-p, -p * 0.5f, p, 1.0f);
-    uboParams.lights[2] = glm::vec4(p, -p * 0.5f, p, 1.0f);
-    uboParams.lights[3] = glm::vec4(p, -p * 0.5f, -p, 1.0f);
-
     memcpy(uniformBuffers.params.mapped, &uboParams, sizeof(uboParams));
   }
 
@@ -2083,7 +2103,7 @@ class PbrRenderer : public BaseRenderer {
   void prepareImGui() {
     imGui = new vkImGUI(this);
     imGui->init((float)getWidth(), (float)getHeight());
-    imGui->initResources(this, renderPass, queue, "Shaders/");  // TODO
+    imGui->initResources(this, renderPass, queue, getShaderBasePath());
   }
 
   void prepare() override {

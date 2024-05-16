@@ -525,6 +525,17 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
     mouseState.buttons.middle = false;
   }
   handleMouseMove(xpos, ypos);
+
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {
+    PostQuitMessage(0);
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+
+  if (io.WantCaptureKeyboard && settings.overlay) {
+    return;
+  }
+
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
@@ -534,9 +545,6 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
     } else {
       camera.type = Camera::CameraType::lookat;
     }
-  }
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {
-    PostQuitMessage(0);
   }
   if (glfwGetKey(window, GLFW_KEY_W)) {
     camera.keys.forward = true;

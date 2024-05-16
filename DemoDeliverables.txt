@@ -1,14 +1,39 @@
-GOALS IN ORDER:
+List of Goals:
+Scene loading (sponza)
+More Detailed Lighting + settings
+-Dynamic Light Settings -> Hierarchy for selecting & disabling lights
+[Reference BluEngine for pipeline create, so long as everything is preloaded] Returning to Asset Loading:
+-Preloading all assets at runtime is the way.
+-Dynamically Creating Pipelines is also the way
+-Need some sort of caching and preferably one pipeline per mesh, not one per material
+Reflection Probes -> Required for generating Irradiance maps different area's of the environment. They are selected by proximity
+Rewrite shader
+
+Environment Map->Reflection Texture (Generated from Reflection Probes)
+BRDF Map->Roughness/Dot(Light Dir, Normal) Lookup table for -> output(0.1) Scale & Bias
+Irradiance map->Diffuse lighting of environment (Generated from Environment Map)
+
+TBD/Needs more Research/Not Worth implementing
 Multi-thread (Secondary Command Buffers for ImGui) (Secondary command buffers working, multi threading would be trivial but would probably slow down performance with the thread pool overhead being not worth the saving the small workload in command buffer recording)
+
 GPU Particles/Compute Pipeline
 -Particle System Holder (Self contained, taking parameters) -Draw commands & buffer recording
-More Detailed Lighting + settings + sponza
-AO
-SSAO
-GOOD LIGHTING!!!!!
+
+
+AO (Baked Texture)
+GTAO? HBAO? (PBR SSAO)(Dynamic Calculation)
+GOOD LIGHTING!!!!! (Meaning: Supporting different light types with PBR)
 GOD RAYS
-DYNAMIC LIGHTING
+Hardware Path Tracing
 REIMPLEMENT INTO ENGINE!!!
+Animations
+Shadow Generation - Baking Shadows?
+SMAA
 
 Challenges
-Compute Buffers allign with Double/Triple Buffering
+Compute Buffers allign with Double/Triple Buffering(Async) (Currently to test, Dispatch the ComputeShader and updaet once they are done)
+Shader Cache
+
+https://www.gdcvault.com/play/1012351/Uncharted-2-HDR
+https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
+https://www.researchgate.net/publication/215506032_Image-space_horizon-based_ambient_occlusion
