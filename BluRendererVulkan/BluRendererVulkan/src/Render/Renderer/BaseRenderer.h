@@ -44,7 +44,7 @@ class BaseRenderer {
 
   uint32_t width = 1280;
   uint32_t height = 720;
-  VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_4_BIT;
+  VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
 
   uint32_t lastFPS = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp,
@@ -98,7 +98,6 @@ class BaseRenderer {
   VkPipelineStageFlags submitPipelineStages =
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   std::vector<VkCommandBuffer> drawCmdBuffers;
-  VkRenderPass renderPass{VK_NULL_HANDLE};
   std::vector<VkFramebuffer> frameBuffers;
   uint32_t currentFrameIndex = 0;
   uint32_t currentImageIndex = 0;
@@ -192,4 +191,5 @@ class BaseRenderer {
   vks::VulkanDevice* vulkanDevice;
   SwapChain swapChain;
   Camera camera;
+  VkRenderPass renderPass{VK_NULL_HANDLE};
 };

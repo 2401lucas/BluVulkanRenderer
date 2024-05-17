@@ -412,21 +412,30 @@ class PbrRenderer : public BaseRenderer {
       attachmentSize = {getWidth(), getHeight()};
 
       // Destroy MSAA target
+      if (getSampleCount() != VK_SAMPLE_COUNT_1_BIT) {
       vkDestroyImage(device, multisampleTarget.color.image, nullptr);
       vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
       vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
       vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
       vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
       vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+      }
     }
 
-    std::array<VkImageView, 3> attachments;
+    std::vector<VkImageView> attachments;
+    // If multisampling is to be used
+    if (getSampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+      setupMultisampleTarget();
 
-    setupMultisampleTarget();
-
-    attachments[0] = multisampleTarget.color.view;
-    // attachment[1] = swapchain image
-    attachments[2] = multisampleTarget.depth.view;
+      attachments.resize(3);
+      attachments[0] = multisampleTarget.color.view;
+      // attachment[1] = swapchain image
+      attachments[2] = multisampleTarget.depth.view;
+    } else {
+      attachments.resize(2);
+      // attachment[0]
+      attachments[1] = depthStencil.view;
+    }
 
     VkFramebufferCreateInfo frameBufferCreateInfo = {};
     frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -608,7 +617,10 @@ class PbrRenderer : public BaseRenderer {
           currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
           pipelineLayouts.pbr, 0, 1, &descriptorSets.pbr, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        (vulkanDevice->features.sampleRateShading && uiSettings.useSampleShading)? pipelines.pbrWithSS : pipelines.pbr);
+                        (vulkanDevice->features.sampleRateShading &&
+                         uiSettings.useSampleShading)
+                            ? pipelines.pbrWithSS
+                            : pipelines.pbr);
       models.cerberus.draw(currentCommandBuffer);
     }
 

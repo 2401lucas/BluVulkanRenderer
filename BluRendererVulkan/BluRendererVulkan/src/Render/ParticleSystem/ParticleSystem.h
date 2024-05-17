@@ -84,7 +84,7 @@ class ParticleSystem {
   void prepareStorageBuffer(VkQueue);
   void prepareUniformBuffer();
   void updateUniformBuffer(float frameTimer);
-  void prepareGraphics();
+  void prepareGraphics(BaseRenderer* br);
   void buildCommandBuffer();
   void prepareCompute(BaseRenderer* baseRenderer);
   void buildComputeBuffer();
