@@ -162,8 +162,8 @@ void ParticleSystem::prepareGraphics(BaseRenderer* br) {
                                    VK_SHADER_STAGE_FRAGMENT_BIT);
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo =
-      vks::initializers::graphicsPipelineCreateInfo(graphics.pipelineLayout, br->renderPass,
-                                            0);
+      vks::initializers::graphicsPipelineCreateInfo(graphics.pipelineLayout,
+                                                    br->renderPass, 0);
   pipelineCreateInfo.pVertexInputState = &vertexInputState;
   pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
   pipelineCreateInfo.pRasterizationState = &rasterizationState;

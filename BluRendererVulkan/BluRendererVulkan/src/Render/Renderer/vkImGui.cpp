@@ -317,7 +317,7 @@ void vkImGUI::initResources(BaseRenderer* br, VkRenderPass renderPass,
 
   VkPipelineMultisampleStateCreateInfo multisampleState =
       vks::initializers::pipelineMultisampleStateCreateInfo(
-          br->getSampleCount());
+          br->getMSAASampleCount());
 
   std::vector<VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
                                                      VK_DYNAMIC_STATE_SCISSOR};

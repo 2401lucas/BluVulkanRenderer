@@ -39,19 +39,23 @@
 
 class BaseRenderer {
  private:
-  std::string title = "Blu Renderer";
+  // Window Info
+  std::string title = "Blu Renderer: ";
   uint32_t apiVersion = VK_API_VERSION_1_0;
+  uint32_t width = 1920;
+  uint32_t height = 1080;
 
-  uint32_t width = 1280;
-  uint32_t height = 720;
-  VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
+  WindowManager* window;
 
+  // Rendering Settings
+  VkSampleCountFlagBits msaaSampleCount = VK_SAMPLE_COUNT_4_BIT;
+
+  // Debug
   uint32_t lastFPS = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp,
       tPrevEnd;
 
-  WindowManager* window;
-
+  // Core
   void createCommandPool();
   void createSynchronizationPrimitives();
   void destroySynchronizationPrimitives();
@@ -108,6 +112,12 @@ class BaseRenderer {
   // their own
   VkPipelineCache pipelineCache{VK_NULL_HANDLE};
 
+  struct {
+    VkImage image{VK_NULL_HANDLE};
+    VkImageView view{VK_NULL_HANDLE};
+    VkDeviceMemory memory{VK_NULL_HANDLE};
+  } depthStencil;
+
   // Synchronization semaphores
   struct {
     std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -157,6 +167,8 @@ class BaseRenderer {
   virtual void setupFrameBuffer();
   // (Virtual) Setup a default renderpass
   virtual void setupRenderPass();
+  // (Virtual) Setup a default Depth Stencil
+  virtual void setupDepthStencil();
   //(Virtual) Called after the physical device features have been read,
   //  can be used to set features to enable on the device
   virtual void getEnabledFeatures();
@@ -177,7 +189,7 @@ class BaseRenderer {
  public:
   BaseRenderer();
   virtual ~BaseRenderer();
-  VkSampleCountFlagBits getSampleCount();
+  VkSampleCountFlagBits getMSAASampleCount();
   // Loads a SPIR-V shader file for the given shader stage
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);

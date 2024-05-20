@@ -124,7 +124,7 @@ class PbrRenderer : public BaseRenderer {
   VkExtent2D attachmentSize{};
 
   PbrRenderer() : BaseRenderer() {
-    name = "Blu Renderer: PBR";
+    name = "PBR";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
@@ -190,11 +190,17 @@ class PbrRenderer : public BaseRenderer {
     }
   }
 
+  void setupDepthStencil() override {
+    if (getMSAASampleCount() == VK_SAMPLE_COUNT_1_BIT) {
+      BaseRenderer::setupDepthStencil();
+    }
+  }
+
   void setupMultisampleTarget() {
     assert((deviceProperties.limits.framebufferColorSampleCounts &
-            getSampleCount()) &&
+            getMSAASampleCount()) &&
            (deviceProperties.limits.framebufferDepthSampleCounts &
-            getSampleCount()));
+            getMSAASampleCount()));
 
     // Color Target
     VkImageCreateInfo info = vks::initializers::imageCreateInfo();
@@ -207,7 +213,7 @@ class PbrRenderer : public BaseRenderer {
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = getSampleCount();
+    info.samples = getMSAASampleCount();
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -263,7 +269,7 @@ class PbrRenderer : public BaseRenderer {
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = getSampleCount();
+    info.samples = getMSAASampleCount();
     // Image will only be used as a transient target
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -309,100 +315,106 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void setupRenderPass() override {
-    attachmentSize = {getWidth(), getHeight()};
-    std::array<VkAttachmentDescription, 3> attachments = {};
+    if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+      attachmentSize = {getWidth(), getHeight()};
+      std::array<VkAttachmentDescription, 3> attachments = {};
 
-    // Multisampled attachment that we render to
-    attachments[0].format = swapChain.colorFormat;
-    attachments[0].samples = getSampleCount();
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      // Multisampled attachment that we render to
+      attachments[0].format = swapChain.colorFormat;
+      attachments[0].samples = getMSAASampleCount();
+      attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    // This is the frame buffer attachment to where the multisampled image
-    // will be resolved to and which will be presented to the swapchain
-    attachments[1].format = swapChain.colorFormat;
-    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      // This is the frame buffer attachment to where the multisampled image
+      // will be resolved to and which will be presented to the swapchain
+      attachments[1].format = swapChain.colorFormat;
+      attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+      attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    // Multisampled depth attachment we render to
-    attachments[2].format = depthFormat;
-    attachments[2].samples = getSampleCount();
-    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[2].finalLayout =
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      // Multisampled depth attachment we render to
+      attachments[2].format = depthFormat;
+      attachments[2].samples = getMSAASampleCount();
+      attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[2].finalLayout =
+          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference colorReference = {};
-    colorReference.attachment = 0;
-    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      VkAttachmentReference colorReference = {};
+      colorReference.attachment = 0;
+      colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference depthReference = {};
-    depthReference.attachment = 2;
-    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      VkAttachmentReference depthReference = {};
+      depthReference.attachment = 2;
+      depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    // Resolve attachment reference for the color attachment
-    VkAttachmentReference resolveReference = {};
-    resolveReference.attachment = 1;
-    resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      // Resolve attachment reference for the color attachment
+      VkAttachmentReference resolveReference = {};
+      resolveReference.attachment = 1;
+      resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorReference;
-    // Pass our resolve attachments to the sub pass
-    subpass.pResolveAttachments = &resolveReference;
-    subpass.pDepthStencilAttachment = &depthReference;
+      VkSubpassDescription subpass = {};
+      subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+      subpass.colorAttachmentCount = 1;
+      subpass.pColorAttachments = &colorReference;
+      // Pass our resolve attachments to the sub pass
+      subpass.pResolveAttachments = &resolveReference;
+      subpass.pDepthStencilAttachment = &depthReference;
 
-    std::array<VkSubpassDependency, 2> dependencies{};
+      std::array<VkSubpassDependency, 2> dependencies{};
 
-    // Depth attachment
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].srcAccessMask =
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dependencies[0].dstAccessMask =
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    dependencies[0].dependencyFlags = 0;
-    // Color attachment
-    dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[1].dstSubpass = 0;
-    dependencies[1].srcStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].srcAccessMask = 0;
-    dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-                                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-    dependencies[1].dependencyFlags = 0;
+      // Depth attachment
+      dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+      dependencies[0].dstSubpass = 0;
+      dependencies[0].srcStageMask =
+          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      dependencies[0].dstStageMask =
+          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      dependencies[0].srcAccessMask =
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      dependencies[0].dstAccessMask =
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+      dependencies[0].dependencyFlags = 0;
+      // Color attachment
+      dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+      dependencies[1].dstSubpass = 0;
+      dependencies[1].srcStageMask =
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      dependencies[1].dstStageMask =
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      dependencies[1].srcAccessMask = 0;
+      dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                      VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+      dependencies[1].dependencyFlags = 0;
 
-    VkRenderPassCreateInfo renderPassInfo =
-        vks::initializers::renderPassCreateInfo();
-    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-    renderPassInfo.pAttachments = attachments.data();
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 2;
-    renderPassInfo.pDependencies = dependencies.data();
-
-    VK_CHECK_RESULT(
-        vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+      VkRenderPassCreateInfo renderPassInfo =
+          vks::initializers::renderPassCreateInfo();
+      renderPassInfo.attachmentCount =
+          static_cast<uint32_t>(attachments.size());
+      renderPassInfo.pAttachments = attachments.data();
+      renderPassInfo.subpassCount = 1;
+      renderPassInfo.pSubpasses = &subpass;
+      renderPassInfo.dependencyCount = 2;
+      renderPassInfo.pDependencies = dependencies.data();
+      VK_CHECK_RESULT(
+          vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+    } else {
+      BaseRenderer::setupRenderPass();
+    }
   }
 
   void setupFrameBuffer() override {
@@ -412,48 +424,45 @@ class PbrRenderer : public BaseRenderer {
       attachmentSize = {getWidth(), getHeight()};
 
       // Destroy MSAA target
-      if (getSampleCount() != VK_SAMPLE_COUNT_1_BIT) {
-      vkDestroyImage(device, multisampleTarget.color.image, nullptr);
-      vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
-      vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
-      vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
-      vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
-      vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+      if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+        vkDestroyImage(device, multisampleTarget.color.image, nullptr);
+        vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
+        vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
+        vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
+        vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
+        vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
       }
     }
 
-    std::vector<VkImageView> attachments;
+    std::array<VkImageView, 3> attachments = {};
     // If multisampling is to be used
-    if (getSampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+    if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
       setupMultisampleTarget();
 
-      attachments.resize(3);
       attachments[0] = multisampleTarget.color.view;
       // attachment[1] = swapchain image
       attachments[2] = multisampleTarget.depth.view;
+
+      VkFramebufferCreateInfo frameBufferCreateInfo = {};
+      frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+      frameBufferCreateInfo.pNext = NULL;
+      frameBufferCreateInfo.renderPass = renderPass;
+      frameBufferCreateInfo.attachmentCount =
+          static_cast<uint32_t>(attachments.size());
+      frameBufferCreateInfo.pAttachments = attachments.data();
+      frameBufferCreateInfo.width = getWidth();
+      frameBufferCreateInfo.height = getHeight();
+      frameBufferCreateInfo.layers = 1;
+
+      // Create frame buffers for every swap chain image
+      frameBuffers.resize(swapChain.imageCount);
+      for (uint32_t i = 0; i < frameBuffers.size(); i++) {
+        attachments[1] = swapChain.buffers[i].view;
+        VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
+                                            nullptr, &frameBuffers[i]));
+      }
     } else {
-      attachments.resize(2);
-      // attachment[0]
-      attachments[1] = depthStencil.view;
-    }
-
-    VkFramebufferCreateInfo frameBufferCreateInfo = {};
-    frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    frameBufferCreateInfo.pNext = NULL;
-    frameBufferCreateInfo.renderPass = renderPass;
-    frameBufferCreateInfo.attachmentCount =
-        static_cast<uint32_t>(attachments.size());
-    frameBufferCreateInfo.pAttachments = attachments.data();
-    frameBufferCreateInfo.width = getWidth();
-    frameBufferCreateInfo.height = getHeight();
-    frameBufferCreateInfo.layers = 1;
-
-    // Create frame buffers for every swap chain image
-    frameBuffers.resize(swapChain.imageCount);
-    for (uint32_t i = 0; i < frameBuffers.size(); i++) {
-      attachments[1] = swapChain.buffers[i].view;
-      VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
-                                          nullptr, &frameBuffers[i]));
+      BaseRenderer::setupFrameBuffer();
     }
   }
 
@@ -811,7 +820,8 @@ class PbrRenderer : public BaseRenderer {
     VkPipelineViewportStateCreateInfo viewportState =
         vks::initializers::pipelineViewportStateCreateInfo(1, 1);
     VkPipelineMultisampleStateCreateInfo multisampleState =
-        vks::initializers::pipelineMultisampleStateCreateInfo(getSampleCount());
+        vks::initializers::pipelineMultisampleStateCreateInfo(
+            getMSAASampleCount());
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState =
