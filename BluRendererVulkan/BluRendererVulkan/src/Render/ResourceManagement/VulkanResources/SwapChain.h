@@ -25,7 +25,8 @@ class SwapChain {
   uint32_t imageCount;
   std::vector<VkImage> images;
   std::vector<SwapChainBuffer> buffers;
-  uint32_t queueNodeIndex = UINT32_MAX;
+  uint32_t graphicsQueueNodeIndex = UINT32_MAX;
+  uint32_t computeQueueNodeIndex = UINT32_MAX;
 
   void initSurface(GLFWwindow*);
   void connect(VkInstance, VkPhysicalDevice, VkDevice);

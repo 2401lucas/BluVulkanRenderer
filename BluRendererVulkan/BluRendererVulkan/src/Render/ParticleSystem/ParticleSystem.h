@@ -27,44 +27,38 @@ class ParticleSystem {
 
   vks::Buffer storageBuffer;
 
-  // Potentially Shared Resources
+  // Potentially Shared Resources (to be moved to manager)
   struct {
     vks::Texture2D particle;
     vks::Texture2D gradient;
   } textures;
 
   VkPipelineCache pipelineCache;
+  // Particle rendering pipeline
+  VkPipelineLayout graphicsPipelineLayout;
+  VkPipeline graphicsPipeline;
+  // Compute pipeline for updating particle positions
+  VkPipelineLayout computePipelineLayout;
+  VkPipeline computePipeline;
   VkDescriptorPool descriptorPool;
-  struct Graphics {
-    VkDescriptorSetLayout
-        descriptorSetLayout;  // Particle system rendering shader binding layout
-    VkDescriptorSet descriptorSet;  // Particle system rendering shader bindings
-    VkPipelineLayout pipelineLayout;  // Layout of the graphics pipeline
-    VkPipeline pipeline;              // Particle rendering pipeline
-    VkSemaphore
-        semaphore;  // Execution dependency between compute & graphic submission
-  } graphics;
+  VkDescriptorSetLayout graphicsDescriptorSetLayout;
+  VkDescriptorSet graphicsDescriptorSet;
+  VkDescriptorSetLayout computeDescriptorSetLayout;
+  VkDescriptorSet computeDescriptorSet;
 
-  struct Compute {
-    VkQueue queue;  // Separate queue for compute commands (queue family may
-                    // differ from the one used for graphics)
-    VkCommandPool commandPool;  // Use a separate command pool (queue family may
-                                // differ from the one used for graphics)
-    VkCommandBuffer commandBuffer;  // Command buffer storing the dispatch
-                                    // commands and barriers
-    VkSemaphore
-        semaphore;  // Execution dependency between compute & graphic submission
-    VkDescriptorSetLayout descriptorSetLayout;  // Compute shader binding layout
-    VkDescriptorSet descriptorSet;              // Compute shader bindings
-    VkPipelineLayout pipelineLayout;  // Layout of the compute pipeline
-    VkPipeline pipeline;  // Compute pipeline for updating particle positions
-    vks::Buffer uniformBuffer;  // Uniform buffer object containing particle
-                                // system parameters
-    struct UniformData {        // Compute shader uniform block object
-      float deltaT;             //		Frame delta time
-      int32_t particleCount;
-    } uniformData;
-  } compute;
+  VkSemaphore graphicsSemaphore;
+  VkSemaphore computeSemaphore;
+
+  // UBO containing particle system parameters
+  vks::Buffer computeUniformBuffer;
+
+  struct UniformData {  // Compute shader uniform block object
+    float deltaT;       //		Frame delta time
+    int32_t particleCount;
+  };
+
+  std::vector<UniformData> uniformDatas;
+
   // End of Shared Resources
 
   // Physics calculations can use velocity vector of particle to calculate
@@ -84,10 +78,10 @@ class ParticleSystem {
   void prepareStorageBuffer(VkQueue);
   void prepareUniformBuffer();
   void updateUniformBuffer(float frameTimer);
-  void prepareGraphics();
-  void buildCommandBuffer();
+  void prepareGraphics(BaseRenderer* br);
+  void prepareCommandBuffer();
   void prepareCompute(BaseRenderer* baseRenderer);
-  void buildComputeBuffer();
+  void buildComputeBuffer(VkCommandBuffer cmdBuf, VkQueue queue);
   void draw(VkCommandBuffer);
   void update();
 };

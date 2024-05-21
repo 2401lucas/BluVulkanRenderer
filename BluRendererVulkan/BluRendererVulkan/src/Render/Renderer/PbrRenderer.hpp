@@ -1,10 +1,6 @@
 #pragma once
 #define NOMINMAX
 
-#define SSAO_KERNEL_SIZE 64
-#define SSAO_RADIUS 0.3f
-#define SSAO_NOISE_DIM 4
-
 #include <corecrt_math_defines.h>
 
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
@@ -124,7 +120,7 @@ class PbrRenderer : public BaseRenderer {
   VkExtent2D attachmentSize{};
 
   PbrRenderer() : BaseRenderer() {
-    name = "Blu Renderer: PBR";
+    name = "PBR";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
@@ -190,11 +186,17 @@ class PbrRenderer : public BaseRenderer {
     }
   }
 
+  void setupDepthStencil() override {
+    if (getMSAASampleCount() == VK_SAMPLE_COUNT_1_BIT) {
+      BaseRenderer::setupDepthStencil();
+    }
+  }
+
   void setupMultisampleTarget() {
     assert((deviceProperties.limits.framebufferColorSampleCounts &
-            getSampleCount()) &&
+            getMSAASampleCount()) &&
            (deviceProperties.limits.framebufferDepthSampleCounts &
-            getSampleCount()));
+            getMSAASampleCount()));
 
     // Color Target
     VkImageCreateInfo info = vks::initializers::imageCreateInfo();
@@ -207,7 +209,7 @@ class PbrRenderer : public BaseRenderer {
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = getSampleCount();
+    info.samples = getMSAASampleCount();
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -263,7 +265,7 @@ class PbrRenderer : public BaseRenderer {
     info.arrayLayers = 1;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    info.samples = getSampleCount();
+    info.samples = getMSAASampleCount();
     // Image will only be used as a transient target
     info.usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -309,100 +311,106 @@ class PbrRenderer : public BaseRenderer {
   }
 
   void setupRenderPass() override {
-    attachmentSize = {getWidth(), getHeight()};
-    std::array<VkAttachmentDescription, 3> attachments = {};
+    if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+      attachmentSize = {getWidth(), getHeight()};
+      std::array<VkAttachmentDescription, 3> attachments = {};
 
-    // Multisampled attachment that we render to
-    attachments[0].format = swapChain.colorFormat;
-    attachments[0].samples = getSampleCount();
-    attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      // Multisampled attachment that we render to
+      attachments[0].format = swapChain.colorFormat;
+      attachments[0].samples = getMSAASampleCount();
+      attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    // This is the frame buffer attachment to where the multisampled image
-    // will be resolved to and which will be presented to the swapchain
-    attachments[1].format = swapChain.colorFormat;
-    attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      // This is the frame buffer attachment to where the multisampled image
+      // will be resolved to and which will be presented to the swapchain
+      attachments[1].format = swapChain.colorFormat;
+      attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
+      attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+      attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    // Multisampled depth attachment we render to
-    attachments[2].format = depthFormat;
-    attachments[2].samples = getSampleCount();
-    attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachments[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachments[2].finalLayout =
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      // Multisampled depth attachment we render to
+      attachments[2].format = depthFormat;
+      attachments[2].samples = getMSAASampleCount();
+      attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+      attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+      attachments[2].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+      attachments[2].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      attachments[2].finalLayout =
+          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference colorReference = {};
-    colorReference.attachment = 0;
-    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      VkAttachmentReference colorReference = {};
+      colorReference.attachment = 0;
+      colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkAttachmentReference depthReference = {};
-    depthReference.attachment = 2;
-    depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      VkAttachmentReference depthReference = {};
+      depthReference.attachment = 2;
+      depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    // Resolve attachment reference for the color attachment
-    VkAttachmentReference resolveReference = {};
-    resolveReference.attachment = 1;
-    resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+      // Resolve attachment reference for the color attachment
+      VkAttachmentReference resolveReference = {};
+      resolveReference.attachment = 1;
+      resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorReference;
-    // Pass our resolve attachments to the sub pass
-    subpass.pResolveAttachments = &resolveReference;
-    subpass.pDepthStencilAttachment = &depthReference;
+      VkSubpassDescription subpass = {};
+      subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+      subpass.colorAttachmentCount = 1;
+      subpass.pColorAttachments = &colorReference;
+      // Pass our resolve attachments to the sub pass
+      subpass.pResolveAttachments = &resolveReference;
+      subpass.pDepthStencilAttachment = &depthReference;
 
-    std::array<VkSubpassDependency, 2> dependencies{};
+      std::array<VkSubpassDependency, 2> dependencies{};
 
-    // Depth attachment
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                   VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    dependencies[0].srcAccessMask =
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    dependencies[0].dstAccessMask =
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    dependencies[0].dependencyFlags = 0;
-    // Color attachment
-    dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[1].dstSubpass = 0;
-    dependencies[1].srcStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].srcAccessMask = 0;
-    dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-                                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-    dependencies[1].dependencyFlags = 0;
+      // Depth attachment
+      dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+      dependencies[0].dstSubpass = 0;
+      dependencies[0].srcStageMask =
+          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      dependencies[0].dstStageMask =
+          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      dependencies[0].srcAccessMask =
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      dependencies[0].dstAccessMask =
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+          VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+      dependencies[0].dependencyFlags = 0;
+      // Color attachment
+      dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+      dependencies[1].dstSubpass = 0;
+      dependencies[1].srcStageMask =
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      dependencies[1].dstStageMask =
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      dependencies[1].srcAccessMask = 0;
+      dependencies[1].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                      VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+      dependencies[1].dependencyFlags = 0;
 
-    VkRenderPassCreateInfo renderPassInfo =
-        vks::initializers::renderPassCreateInfo();
-    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-    renderPassInfo.pAttachments = attachments.data();
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 2;
-    renderPassInfo.pDependencies = dependencies.data();
-
-    VK_CHECK_RESULT(
-        vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+      VkRenderPassCreateInfo renderPassInfo =
+          vks::initializers::renderPassCreateInfo();
+      renderPassInfo.attachmentCount =
+          static_cast<uint32_t>(attachments.size());
+      renderPassInfo.pAttachments = attachments.data();
+      renderPassInfo.subpassCount = 1;
+      renderPassInfo.pSubpasses = &subpass;
+      renderPassInfo.dependencyCount = 2;
+      renderPassInfo.pDependencies = dependencies.data();
+      VK_CHECK_RESULT(
+          vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
+    } else {
+      BaseRenderer::setupRenderPass();
+    }
   }
 
   void setupFrameBuffer() override {
@@ -412,39 +420,45 @@ class PbrRenderer : public BaseRenderer {
       attachmentSize = {getWidth(), getHeight()};
 
       // Destroy MSAA target
-      vkDestroyImage(device, multisampleTarget.color.image, nullptr);
-      vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
-      vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
-      vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
-      vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
-      vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+      if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+        vkDestroyImage(device, multisampleTarget.color.image, nullptr);
+        vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
+        vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
+        vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
+        vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
+        vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+      }
     }
 
-    std::array<VkImageView, 3> attachments;
+    std::array<VkImageView, 3> attachments = {};
+    // If multisampling is to be used
+    if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+      setupMultisampleTarget();
 
-    setupMultisampleTarget();
+      attachments[0] = multisampleTarget.color.view;
+      // attachment[1] = swapchain image
+      attachments[2] = multisampleTarget.depth.view;
 
-    attachments[0] = multisampleTarget.color.view;
-    // attachment[1] = swapchain image
-    attachments[2] = multisampleTarget.depth.view;
+      VkFramebufferCreateInfo frameBufferCreateInfo = {};
+      frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+      frameBufferCreateInfo.pNext = NULL;
+      frameBufferCreateInfo.renderPass = renderPass;
+      frameBufferCreateInfo.attachmentCount =
+          static_cast<uint32_t>(attachments.size());
+      frameBufferCreateInfo.pAttachments = attachments.data();
+      frameBufferCreateInfo.width = getWidth();
+      frameBufferCreateInfo.height = getHeight();
+      frameBufferCreateInfo.layers = 1;
 
-    VkFramebufferCreateInfo frameBufferCreateInfo = {};
-    frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    frameBufferCreateInfo.pNext = NULL;
-    frameBufferCreateInfo.renderPass = renderPass;
-    frameBufferCreateInfo.attachmentCount =
-        static_cast<uint32_t>(attachments.size());
-    frameBufferCreateInfo.pAttachments = attachments.data();
-    frameBufferCreateInfo.width = getWidth();
-    frameBufferCreateInfo.height = getHeight();
-    frameBufferCreateInfo.layers = 1;
-
-    // Create frame buffers for every swap chain image
-    frameBuffers.resize(swapChain.imageCount);
-    for (uint32_t i = 0; i < frameBuffers.size(); i++) {
-      attachments[1] = swapChain.buffers[i].view;
-      VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
-                                          nullptr, &frameBuffers[i]));
+      // Create frame buffers for every swap chain image
+      frameBuffers.resize(swapChain.imageCount);
+      for (uint32_t i = 0; i < frameBuffers.size(); i++) {
+        attachments[1] = swapChain.buffers[i].view;
+        VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
+                                            nullptr, &frameBuffers[i]));
+      }
+    } else {
+      BaseRenderer::setupFrameBuffer();
     }
   }
 
@@ -452,22 +466,32 @@ class PbrRenderer : public BaseRenderer {
     BaseRenderer::createCommandBuffers();
     uiDrawCmdBuffers.resize(swapChain.imageCount);
     pbrDrawCmdBuffers.resize(swapChain.imageCount);
+    computeCmdBuffers.resize(swapChain.imageCount);
 
-    VkCommandBufferAllocateInfo secondaryCmdBufAllocateInfo =
+    VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
         vks::initializers::commandBufferAllocateInfo(
-            cmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
             static_cast<uint32_t>(uiDrawCmdBuffers.size()));
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
-        device, &secondaryCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+        device, &secondaryGraphicsCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 pbrDrawCmdBuffers.data()));
+
+    VkCommandBufferAllocateInfo secondaryComputeCmdBufAllocateInfo =
+        vks::initializers::commandBufferAllocateInfo(
+            computeCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            static_cast<uint32_t>(computeCmdBuffers.size()));
+
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
-        device, &secondaryCmdBufAllocateInfo, pbrDrawCmdBuffers.data()));
+        device, &secondaryComputeCmdBufAllocateInfo, computeCmdBuffers.data()));
   }
 
   void destroyCommandBuffers() override {
     BaseRenderer::destroyCommandBuffers();
 
-    vkFreeCommandBuffers(device, cmdPool,
+    vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(uiDrawCmdBuffers.size()),
                          uiDrawCmdBuffers.data());
   }
@@ -608,7 +632,10 @@ class PbrRenderer : public BaseRenderer {
           currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
           pipelineLayouts.pbr, 0, 1, &descriptorSets.pbr, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        (vulkanDevice->features.sampleRateShading && uiSettings.useSampleShading)? pipelines.pbrWithSS : pipelines.pbr);
+                        (vulkanDevice->features.sampleRateShading &&
+                         uiSettings.useSampleShading)
+                            ? pipelines.pbrWithSS
+                            : pipelines.pbr);
       models.cerberus.draw(currentCommandBuffer);
     }
 
@@ -799,7 +826,8 @@ class PbrRenderer : public BaseRenderer {
     VkPipelineViewportStateCreateInfo viewportState =
         vks::initializers::pipelineViewportStateCreateInfo(1, 1);
     VkPipelineMultisampleStateCreateInfo multisampleState =
-        vks::initializers::pipelineMultisampleStateCreateInfo(getSampleCount());
+        vks::initializers::pipelineMultisampleStateCreateInfo(
+            getMSAASampleCount());
     std::vector<VkDynamicState> dynamicStateEnables = {
         VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState =
@@ -1105,9 +1133,9 @@ class PbrRenderer : public BaseRenderer {
     vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     vkCmdEndRenderPass(cmdBuf);
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
-    vkQueueWaitIdle(queue);
+    vkQueueWaitIdle(graphicsQueue);
 
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelinelayout, nullptr);
@@ -1312,7 +1340,7 @@ class PbrRenderer : public BaseRenderer {
       vks::tools::setImageLayout(
           layoutCmd, offscreen.image, VK_IMAGE_ASPECT_COLOR_BIT,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-      vulkanDevice->flushCommandBuffer(layoutCmd, queue, true);
+      vulkanDevice->flushCommandBuffer(layoutCmd, graphicsQueue, true);
     }
 
     // Descriptors
@@ -1550,7 +1578,7 @@ class PbrRenderer : public BaseRenderer {
                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                subresourceRange);
 
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
     vkDestroyRenderPass(device, renderpass, nullptr);
     vkDestroyFramebuffer(device, offscreen.framebuffer, nullptr);
@@ -1760,7 +1788,7 @@ class PbrRenderer : public BaseRenderer {
       vks::tools::setImageLayout(
           layoutCmd, offscreen.image, VK_IMAGE_ASPECT_COLOR_BIT,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-      vulkanDevice->flushCommandBuffer(layoutCmd, queue, true);
+      vulkanDevice->flushCommandBuffer(layoutCmd, graphicsQueue, true);
     }
 
     // Descriptors
@@ -2000,7 +2028,7 @@ class PbrRenderer : public BaseRenderer {
                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                subresourceRange);
 
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
     vkDestroyRenderPass(device, renderpass, nullptr);
     vkDestroyFramebuffer(device, offscreen.framebuffer, nullptr);
@@ -2076,34 +2104,34 @@ class PbrRenderer : public BaseRenderer {
         vkglTF::FileLoadingFlags::FlipY;
 
     models.skybox.loadFromFile(getAssetPath() + "models/cube.gltf",
-                               vulkanDevice, queue, glTFLoadingFlags);
+                               vulkanDevice, graphicsQueue, glTFLoadingFlags);
     models.cerberus.loadFromFile(
-        getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice, queue,
-        glTFLoadingFlags);
+        getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice,
+        graphicsQueue, glTFLoadingFlags);
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/gcanyon_cube.ktx",
-        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, queue);
+        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
     textures.pbrTextures.albedoMap.loadFromFile(
         getAssetPath() + "models/cerberus/albedo.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.normalMap.loadFromFile(
         getAssetPath() + "models/cerberus/normal.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.aoMap.loadFromFile(
         getAssetPath() + "models/cerberus/ao.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.metallicMap.loadFromFile(
         getAssetPath() + "models/cerberus/metallic.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.roughnessMap.loadFromFile(
         getAssetPath() + "models/cerberus/roughness.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
   }
 
   void prepareImGui() {
     imGui = new vkImGUI(this);
     imGui->init((float)getWidth(), (float)getHeight());
-    imGui->initResources(this, renderPass, queue, getShaderBasePath());
+    imGui->initResources(this, graphicsQueue, getShaderBasePath());
   }
 
   void prepare() override {
