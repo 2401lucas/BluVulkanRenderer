@@ -2,7 +2,7 @@
 
 #include <chrono>
 #include <thread>
-#include "Render/Renderer/PbrRenderer.hpp"
+#include "Render/Renderer/ForwardRenderer.hpp"
 
 const float MINFRAMETIME = 0.01666f;
 
@@ -14,9 +14,9 @@ int main(int argc, char** argv) {
 }
 
 int BluRendererVulkan::run(int argc, char** argv) {
-  BaseRenderer* pbrRenderer = new PbrRenderer();
-  pbrRenderer->start();
-  delete (pbrRenderer);	
+  BaseRenderer* forwardRenderer = new ForwardRenderer();
+  forwardRenderer->start();
+  delete (forwardRenderer);	
 
   return 0;
 }

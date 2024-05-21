@@ -37,3 +37,18 @@ Shader Cache
 https://www.gdcvault.com/play/1012351/Uncharted-2-HDR
 https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
 https://www.researchgate.net/publication/215506032_Image-space_horizon-based_ambient_occlusion
+
+
+Next build(~5 days) will have:
+Fixed Lighting
+Better UI(Currently doesn't capture Keyboard or scrollwheel input)
+More Settings in the UI
+GPU based Particle System
+AA Settings & new AA implementation
+
+Future features include:
+Scene loading(Sponza)
+Deferred Rendering
+Reflection Probes 
+Realtime Ambient Occlusion(GTAO or HBAO)
+Shadows 

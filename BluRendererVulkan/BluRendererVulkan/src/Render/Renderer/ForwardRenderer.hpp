@@ -20,7 +20,7 @@ struct UISettings {
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
 } uiSettings;
 
-class PbrRenderer : public BaseRenderer {
+class ForwardRenderer : public BaseRenderer {
  public:
   vkImGUI* imGui = nullptr;
 
@@ -71,9 +71,9 @@ class PbrRenderer : public BaseRenderer {
 
   // TODO: More Detailed Lights
   struct UBOParams {
+    LightInfo light[1];
     float exposure = 4.5f;
     float gamma = 2.2f;
-    LightInfo light[1];
   } uboParams;
 
   struct {
@@ -119,8 +119,8 @@ class PbrRenderer : public BaseRenderer {
 
   VkExtent2D attachmentSize{};
 
-  PbrRenderer() : BaseRenderer() {
-    name = "PBR";
+  ForwardRenderer() : BaseRenderer() {
+    name = "Forward Renderer with PBR";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
@@ -137,10 +137,10 @@ class PbrRenderer : public BaseRenderer {
 
     uboParams.light[0].pos = glm::vec4(0, 0, -2, 0);
     uboParams.light[0].rot = glm::vec4(0, 0, 0, 0);
-    uboParams.light[0].color = glm::vec4(1, 0, 0, 1);
+    uboParams.light[0].color = glm::vec4(1, 0, 1, 1);
   }
 
-  ~PbrRenderer() {
+  ~ForwardRenderer() {
     vkDestroyPipeline(device, pipelines.skybox, nullptr);
     vkDestroyPipeline(device, pipelines.pbr, nullptr);
     vkDestroyPipeline(device, pipelines.pbrWithSS, nullptr);
@@ -502,7 +502,7 @@ class PbrRenderer : public BaseRenderer {
 
     // Debug window
     ImGui::SetWindowPos(ImVec2(20 * uiSettings.scale, 20 * uiSettings.scale),
-                        ImGuiCond_FirstUseEver);
+                        ImGuiCond_Always);
     ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 300 * uiSettings.scale),
                          ImGuiCond_Always);
     ImGui::TextUnformatted(getTitle());
@@ -540,10 +540,10 @@ class PbrRenderer : public BaseRenderer {
     // Example settings window
     ImGui::SetNextWindowPos(
         ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
-        ImGuiCond_FirstUseEver);
+        ImGuiCond_Always);
     ImGui::SetNextWindowSize(
         ImVec2(300 * uiSettings.scale, 200 * uiSettings.scale),
-        ImGuiCond_FirstUseEver);
+        ImGuiCond_Always);
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
@@ -2109,7 +2109,7 @@ class PbrRenderer : public BaseRenderer {
         getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice,
         graphicsQueue, glTFLoadingFlags);
     textures.environmentCube.loadFromFile(
-        getAssetPath() + "textures/hdr/gcanyon_cube.ktx",
+        getAssetPath() + "textures/hdr/pisa_cube.ktx",
         VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
     textures.pbrTextures.albedoMap.loadFromFile(
         getAssetPath() + "models/cerberus/albedo.ktx", VK_FORMAT_R8G8B8A8_UNORM,

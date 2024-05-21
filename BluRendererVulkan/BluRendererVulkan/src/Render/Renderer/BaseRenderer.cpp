@@ -469,10 +469,7 @@ bool BaseRenderer::initVulkan() {
   }
 
   // GPU selection
-  // Defaults to the first device
-  uint32_t selectedDevice = 0;
-
-  physicalDevice = physicalDevices[selectedDevice];
+  physicalDevice = choosePhysicalDevice(physicalDevices);
 
   // Store properties (including limits), features and memory properties of the
   // physical device (so that examples can check against them)
