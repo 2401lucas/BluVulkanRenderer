@@ -56,12 +56,14 @@ class BaseRenderer {
       tPrevEnd;
 
   // Core
-  void createCommandPool();
+  void createCommandPools();
   void createSynchronizationPrimitives();
   void destroySynchronizationPrimitives();
   void initSwapchain();
   void setupSwapChain();
   bool initVulkan();
+  VkPhysicalDevice choosePhysicalDevice(std::vector<VkPhysicalDevice>);
+  int rateDeviceSuitability(VkPhysicalDevice);
   void setupWindow();
   void windowResize();
   VkResult createInstance();
@@ -96,12 +98,15 @@ class BaseRenderer {
   std::vector<const char*> enabledInstanceExtensions;
   void* deviceCreatepNextChain = nullptr;
   VkDevice device{VK_NULL_HANDLE};
-  VkQueue queue{VK_NULL_HANDLE};
+  VkQueue graphicsQueue{VK_NULL_HANDLE};
+  VkQueue computeQueue{VK_NULL_HANDLE};
   VkFormat depthFormat;
-  VkCommandPool cmdPool{VK_NULL_HANDLE};
+  VkCommandPool graphicsCmdPool{VK_NULL_HANDLE};
+  VkCommandPool computeCmdPool{VK_NULL_HANDLE};
   VkPipelineStageFlags submitPipelineStages =
       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
   std::vector<VkCommandBuffer> drawCmdBuffers;
+  std::vector<VkCommandBuffer> computeCmdBuffers;
   std::vector<VkFramebuffer> frameBuffers;
   uint32_t currentFrameIndex = 0;
   uint32_t currentImageIndex = 0;

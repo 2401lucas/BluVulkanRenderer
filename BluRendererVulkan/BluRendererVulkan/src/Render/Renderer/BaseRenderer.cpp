@@ -1,5 +1,7 @@
 #include "BaseRenderer.h"
 
+#include <map>
+
 #include "../Debug/VulkanDebug.h"
 #include "../ResourceManagement/VulkanResources/VulkanTools.h"
 
@@ -37,10 +39,15 @@ BaseRenderer::~BaseRenderer() {
 
   vkDestroyPipelineCache(device, pipelineCache, nullptr);
 
-  vkFreeCommandBuffers(device, cmdPool,
+  vkFreeCommandBuffers(device, graphicsCmdPool,
                        static_cast<uint32_t>(drawCmdBuffers.size()),
                        drawCmdBuffers.data());
-  vkDestroyCommandPool(device, cmdPool, nullptr);
+  vkDestroyCommandPool(device, graphicsCmdPool, nullptr);
+
+  vkFreeCommandBuffers(device, computeCmdPool,
+                       static_cast<uint32_t>(computeCmdBuffers.size()),
+                       computeCmdBuffers.data());
+  vkDestroyCommandPool(device, computeCmdPool, nullptr);
 
   destroySynchronizationPrimitives();
 
@@ -379,31 +386,51 @@ void BaseRenderer::destroySynchronizationPrimitives() {
   }
 }
 
-void BaseRenderer::createCommandPool() {
-  VkCommandPoolCreateInfo cmdPoolInfo = {};
-  cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cmdPoolInfo.queueFamilyIndex = swapChain.queueNodeIndex;
-  cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  VK_CHECK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &cmdPool));
+void BaseRenderer::createCommandPools() {
+  VkCommandPoolCreateInfo graphicsCmdPoolInfo = {};
+  graphicsCmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  graphicsCmdPoolInfo.queueFamilyIndex = swapChain.graphicsQueueNodeIndex;
+  graphicsCmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  VK_CHECK_RESULT(vkCreateCommandPool(device, &graphicsCmdPoolInfo, nullptr,
+                                      &graphicsCmdPool));
+
+  VkCommandPoolCreateInfo computeCmdPoolInfo = {};
+  computeCmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  computeCmdPoolInfo.queueFamilyIndex = swapChain.computeQueueNodeIndex;
+  computeCmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  VK_CHECK_RESULT(vkCreateCommandPool(device, &computeCmdPoolInfo, nullptr,
+                                      &computeCmdPool));
 }
 
 void BaseRenderer::createCommandBuffers() {
   // Create one command buffer for each swap chain image and reuse for rendering
   drawCmdBuffers.resize(swapChain.imageCount);
 
-  VkCommandBufferAllocateInfo cmdBufAllocateInfo =
+  VkCommandBufferAllocateInfo graphicsCmdBufAllocateInfo =
       vks::initializers::commandBufferAllocateInfo(
-          cmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY,
           static_cast<uint32_t>(drawCmdBuffers.size()));
 
-  VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cmdBufAllocateInfo,
+  VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &graphicsCmdBufAllocateInfo,
                                            drawCmdBuffers.data()));
+  computeCmdBuffers.resize(swapChain.imageCount);
+
+  VkCommandBufferAllocateInfo computeCmdBufAllocateInfo =
+      vks::initializers::commandBufferAllocateInfo(
+          computeCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          static_cast<uint32_t>(computeCmdBuffers.size()));
+
+  VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &computeCmdBufAllocateInfo,
+                                           computeCmdBuffers.data()));
 }
 
 void BaseRenderer::destroyCommandBuffers() {
-  vkFreeCommandBuffers(device, cmdPool,
+  vkFreeCommandBuffers(device, graphicsCmdPool,
                        static_cast<uint32_t>(drawCmdBuffers.size()),
                        drawCmdBuffers.data());
+  vkFreeCommandBuffers(device, computeCmdPool,
+                       static_cast<uint32_t>(computeCmdBuffers.size()),
+                       computeCmdBuffers.data());
 }
 
 bool BaseRenderer::initVulkan() {
@@ -442,9 +469,7 @@ bool BaseRenderer::initVulkan() {
   }
 
   // GPU selection
-
-  // Select physical device to be used for the Vulkan example
-  // Defaults to the first device unless specified by command line
+  // Defaults to the first device
   uint32_t selectedDevice = 0;
 
   physicalDevice = physicalDevices[selectedDevice];
@@ -478,9 +503,10 @@ bool BaseRenderer::initVulkan() {
   }
   device = vulkanDevice->logicalDevice;
 
-  // Get a graphics queue from the device
   vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.graphics, 0,
-                   &queue);
+                   &graphicsQueue);
+  vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.compute, 0,
+                   &computeQueue);
 
   // TODO
   // Find a suitable depth and/or stencil format
@@ -495,13 +521,49 @@ bool BaseRenderer::initVulkan() {
   return true;
 }
 
+VkPhysicalDevice BaseRenderer::choosePhysicalDevice(
+    std::vector<VkPhysicalDevice> devices) {
+  std::multimap<int, VkPhysicalDevice> candidates;
+
+  for (auto& device : devices) {
+    int score = rateDeviceSuitability(device);
+    candidates.insert(std::make_pair(score, device));
+  }
+
+  if (candidates.rbegin()->first > 0) {
+    return candidates.rbegin()->second;
+  } else {
+    throw std::runtime_error("failed to find a suitable GPU!");
+  }
+}
+
+int BaseRenderer::rateDeviceSuitability(VkPhysicalDevice device) {
+  vkGetPhysicalDeviceProperties(device, &deviceProperties);
+  vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+  // Required Features
+  /*if (deviceFeatures.geometryShader != VK_TRUE) {
+    return 0;
+  }*/
+
+  int score = 0;
+
+  if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+    score += 10000;
+  }
+  // Maximum possible size of textures affects graphics quality
+  score += deviceProperties.limits.maxImageDimension2D;
+
+  return score;
+}
+
 void BaseRenderer::setupWindow() {
   window = new WindowManager((title + name).c_str(), width, height);
 }
 
 void BaseRenderer::prepare() {
   initSwapchain();
-  createCommandPool();
+  createCommandPools();
   setupSwapChain();
   createCommandBuffers();
   createSynchronizationPrimitives();
@@ -614,11 +676,11 @@ void BaseRenderer::submitFrame() {
       semaphores.renderFinishedSemaphores[currentFrameIndex]};
   submitInfo.signalSemaphoreCount = 1;
   submitInfo.pSignalSemaphores = signalSemaphores;
-  VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo,
+  VK_CHECK_RESULT(vkQueueSubmit(graphicsQueue, 1, &submitInfo,
                                 semaphores.inFlightFences[currentFrameIndex]));
 
-  VkResult result =
-      swapChain.queuePresent(queue, currentFrameIndex, signalSemaphores);
+  VkResult result = swapChain.queuePresent(graphicsQueue, currentFrameIndex,
+                                           signalSemaphores);
   // Recreate the swapchain if it's no longer compatible with the surface
   // (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
   if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)) {

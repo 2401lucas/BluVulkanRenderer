@@ -24,6 +24,7 @@ void SwapChain::initSurface(GLFWwindow* window) {
   // Search for a graphics and a present queue in the array of queue
   // families, try to find one that supports both
   uint32_t graphicsQueueNodeIndex = UINT32_MAX;
+  uint32_t computeQueueNodeIndex = UINT32_MAX;
   uint32_t presentQueueNodeIndex = UINT32_MAX;
   for (uint32_t i = 0; i < queueCount; i++) {
     if ((queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
@@ -49,9 +50,19 @@ void SwapChain::initSurface(GLFWwindow* window) {
     }
   }
 
+  for (uint32_t i = 0; i < queueCount; i++) {
+    if ((queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0) {
+      if (computeQueueNodeIndex == UINT32_MAX) {
+        computeQueueNodeIndex = i;
+        break;
+      }
+    }
+  }
+
   // Exit if either a graphics or a presenting queue hasn't been found
   if (graphicsQueueNodeIndex == UINT32_MAX ||
-      presentQueueNodeIndex == UINT32_MAX) {
+      presentQueueNodeIndex == UINT32_MAX ||
+      computeQueueNodeIndex == UINT32_MAX) {
     vks::tools::exitFatal("Could not find a graphics and/or presenting queue!",
                           -1);
   }
@@ -61,7 +72,8 @@ void SwapChain::initSurface(GLFWwindow* window) {
         "Separate graphics and presenting queues are not supported yet!", -1);
   }
 
-  queueNodeIndex = graphicsQueueNodeIndex;
+  this->graphicsQueueNodeIndex = graphicsQueueNodeIndex;
+  this->computeQueueNodeIndex = computeQueueNodeIndex;
 
   // Get list of supported surface formats
   uint32_t formatCount;

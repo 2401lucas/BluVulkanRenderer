@@ -1,10 +1,6 @@
 #pragma once
 #define NOMINMAX
 
-#define SSAO_KERNEL_SIZE 64
-#define SSAO_RADIUS 0.3f
-#define SSAO_NOISE_DIM 4
-
 #include <corecrt_math_defines.h>
 
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
@@ -470,22 +466,32 @@ class PbrRenderer : public BaseRenderer {
     BaseRenderer::createCommandBuffers();
     uiDrawCmdBuffers.resize(swapChain.imageCount);
     pbrDrawCmdBuffers.resize(swapChain.imageCount);
+    computeCmdBuffers.resize(swapChain.imageCount);
 
-    VkCommandBufferAllocateInfo secondaryCmdBufAllocateInfo =
+    VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
         vks::initializers::commandBufferAllocateInfo(
-            cmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
             static_cast<uint32_t>(uiDrawCmdBuffers.size()));
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
-        device, &secondaryCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+        device, &secondaryGraphicsCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 pbrDrawCmdBuffers.data()));
+
+    VkCommandBufferAllocateInfo secondaryComputeCmdBufAllocateInfo =
+        vks::initializers::commandBufferAllocateInfo(
+            computeCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            static_cast<uint32_t>(computeCmdBuffers.size()));
+
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
-        device, &secondaryCmdBufAllocateInfo, pbrDrawCmdBuffers.data()));
+        device, &secondaryComputeCmdBufAllocateInfo, computeCmdBuffers.data()));
   }
 
   void destroyCommandBuffers() override {
     BaseRenderer::destroyCommandBuffers();
 
-    vkFreeCommandBuffers(device, cmdPool,
+    vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(uiDrawCmdBuffers.size()),
                          uiDrawCmdBuffers.data());
   }
@@ -1127,9 +1133,9 @@ class PbrRenderer : public BaseRenderer {
     vkCmdBindPipeline(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     vkCmdDraw(cmdBuf, 3, 1, 0, 0);
     vkCmdEndRenderPass(cmdBuf);
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
-    vkQueueWaitIdle(queue);
+    vkQueueWaitIdle(graphicsQueue);
 
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelinelayout, nullptr);
@@ -1334,7 +1340,7 @@ class PbrRenderer : public BaseRenderer {
       vks::tools::setImageLayout(
           layoutCmd, offscreen.image, VK_IMAGE_ASPECT_COLOR_BIT,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-      vulkanDevice->flushCommandBuffer(layoutCmd, queue, true);
+      vulkanDevice->flushCommandBuffer(layoutCmd, graphicsQueue, true);
     }
 
     // Descriptors
@@ -1572,7 +1578,7 @@ class PbrRenderer : public BaseRenderer {
                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                subresourceRange);
 
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
     vkDestroyRenderPass(device, renderpass, nullptr);
     vkDestroyFramebuffer(device, offscreen.framebuffer, nullptr);
@@ -1782,7 +1788,7 @@ class PbrRenderer : public BaseRenderer {
       vks::tools::setImageLayout(
           layoutCmd, offscreen.image, VK_IMAGE_ASPECT_COLOR_BIT,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-      vulkanDevice->flushCommandBuffer(layoutCmd, queue, true);
+      vulkanDevice->flushCommandBuffer(layoutCmd, graphicsQueue, true);
     }
 
     // Descriptors
@@ -2022,7 +2028,7 @@ class PbrRenderer : public BaseRenderer {
                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                                subresourceRange);
 
-    vulkanDevice->flushCommandBuffer(cmdBuf, queue);
+    vulkanDevice->flushCommandBuffer(cmdBuf, graphicsQueue);
 
     vkDestroyRenderPass(device, renderpass, nullptr);
     vkDestroyFramebuffer(device, offscreen.framebuffer, nullptr);
@@ -2098,34 +2104,34 @@ class PbrRenderer : public BaseRenderer {
         vkglTF::FileLoadingFlags::FlipY;
 
     models.skybox.loadFromFile(getAssetPath() + "models/cube.gltf",
-                               vulkanDevice, queue, glTFLoadingFlags);
+                               vulkanDevice, graphicsQueue, glTFLoadingFlags);
     models.cerberus.loadFromFile(
-        getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice, queue,
-        glTFLoadingFlags);
+        getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice,
+        graphicsQueue, glTFLoadingFlags);
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/gcanyon_cube.ktx",
-        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, queue);
+        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
     textures.pbrTextures.albedoMap.loadFromFile(
         getAssetPath() + "models/cerberus/albedo.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.normalMap.loadFromFile(
         getAssetPath() + "models/cerberus/normal.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.aoMap.loadFromFile(
         getAssetPath() + "models/cerberus/ao.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.metallicMap.loadFromFile(
         getAssetPath() + "models/cerberus/metallic.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
     textures.pbrTextures.roughnessMap.loadFromFile(
         getAssetPath() + "models/cerberus/roughness.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, queue);
+        vulkanDevice, graphicsQueue);
   }
 
   void prepareImGui() {
     imGui = new vkImGUI(this);
     imGui->init((float)getWidth(), (float)getHeight());
-    imGui->initResources(this, renderPass, queue, getShaderBasePath());
+    imGui->initResources(this, graphicsQueue, getShaderBasePath());
   }
 
   void prepare() override {

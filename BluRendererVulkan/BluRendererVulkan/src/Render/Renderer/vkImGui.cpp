@@ -105,8 +105,8 @@ void vkImGUI::setStyle(uint32_t index) {
   }
 }
 
-void vkImGUI::initResources(BaseRenderer* br, VkRenderPass renderPass,
-                            VkQueue copyQueue, const std::string& shadersPath) {
+void vkImGUI::initResources(BaseRenderer* br, VkQueue copyQueue,
+                            const std::string& shadersPath) {
   ImGuiIO& io = ImGui::GetIO();
   // Create font texture
   unsigned char* fontData;
@@ -327,7 +327,7 @@ void vkImGUI::initResources(BaseRenderer* br, VkRenderPass renderPass,
   std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{};
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo =
-      vks::initializers::graphicsPipelineCreateInfo(pipelineLayout, renderPass);
+      vks::initializers::graphicsPipelineCreateInfo(pipelineLayout, br->renderPass);
 
   pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
   pipelineCreateInfo.pRasterizationState = &rasterizationState;

@@ -38,7 +38,7 @@ class vkImGUI {
   vkImGUI(BaseRenderer* br);
   ~vkImGUI();
 
-  void initResources(BaseRenderer* br, VkRenderPass renderPass,
+  void initResources(BaseRenderer* br,
                      VkQueue copyQueue, const std::string& shadersPath);
   void init(float width, float height);
   void setStyle(uint32_t index);
