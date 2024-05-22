@@ -192,11 +192,21 @@ class ForwardRenderer : public BaseRenderer {
     }
   }
 
-  void setupMultisampleTarget() {
+  void setupMultisampleTarget(bool usePreviousResources = false) {
     assert((deviceProperties.limits.framebufferColorSampleCounts &
             getMSAASampleCount()) &&
            (deviceProperties.limits.framebufferDepthSampleCounts &
             getMSAASampleCount()));
+
+    // Destroy MSAA target
+    if (usePreviousResources) {
+      vkDestroyImage(device, multisampleTarget.color.image, nullptr);
+      vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
+      vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
+      vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
+      vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
+      vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
+    }
 
     // Color Target
     VkImageCreateInfo info = vks::initializers::imageCreateInfo();
@@ -418,16 +428,6 @@ class ForwardRenderer : public BaseRenderer {
     if (attachmentSize.width != getWidth() ||
         attachmentSize.height != getHeight()) {
       attachmentSize = {getWidth(), getHeight()};
-
-      // Destroy MSAA target
-      if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
-        vkDestroyImage(device, multisampleTarget.color.image, nullptr);
-        vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
-        vkFreeMemory(device, multisampleTarget.color.memory, nullptr);
-        vkDestroyImage(device, multisampleTarget.depth.image, nullptr);
-        vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
-        vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
-      }
     }
 
     std::array<VkImageView, 3> attachments = {};
@@ -502,7 +502,7 @@ class ForwardRenderer : public BaseRenderer {
 
     // Debug window
     ImGui::SetWindowPos(ImVec2(20 * uiSettings.scale, 20 * uiSettings.scale),
-                        ImGuiCond_Always);
+                        ImGuiCond_FirstUseEver);
     ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 300 * uiSettings.scale),
                          ImGuiCond_Always);
     ImGui::TextUnformatted(getTitle());
@@ -540,10 +540,10 @@ class ForwardRenderer : public BaseRenderer {
     // Example settings window
     ImGui::SetNextWindowPos(
         ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
-        ImGuiCond_Always);
+        ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(
         ImVec2(300 * uiSettings.scale, 200 * uiSettings.scale),
-        ImGuiCond_Always);
+        ImGuiCond_FirstUseEver);
     ImGui::Begin("Scene Settings");
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
@@ -552,9 +552,13 @@ class ForwardRenderer : public BaseRenderer {
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
 
       if (ImGui::CollapsingHeader("Light Settings")) {
-        ImGui::InputFloat3("position", &uboParams.light[0].pos.x);
-        ImGui::InputFloat3("rotation", &uboParams.light[0].rot.x);
-        if (ImGui::ColorPicker4("Light Color", &uboParams.light[0].color.x)) {
+        if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {
+          updateParams();
+        }
+        if (ImGui::InputFloat3("rotation", &uboParams.light[0].rot.x)) {
+          updateParams();
+        }
+        if (ImGui::ColorPicker4("Color", &uboParams.light[0].color.x)) {
           updateParams();
         }
       }

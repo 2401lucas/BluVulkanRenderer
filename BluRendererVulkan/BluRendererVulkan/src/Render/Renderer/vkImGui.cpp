@@ -315,6 +315,7 @@ void vkImGUI::initResources(BaseRenderer* br, VkQueue copyQueue,
   VkPipelineViewportStateCreateInfo viewportState =
       vks::initializers::pipelineViewportStateCreateInfo(1, 1, 0);
 
+  // TODO: Recreate Pipeline when multisample state changes
   VkPipelineMultisampleStateCreateInfo multisampleState =
       vks::initializers::pipelineMultisampleStateCreateInfo(
           br->getMSAASampleCount());
@@ -327,7 +328,8 @@ void vkImGUI::initResources(BaseRenderer* br, VkQueue copyQueue,
   std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages{};
 
   VkGraphicsPipelineCreateInfo pipelineCreateInfo =
-      vks::initializers::graphicsPipelineCreateInfo(pipelineLayout, br->renderPass);
+      vks::initializers::graphicsPipelineCreateInfo(pipelineLayout,
+                                                    br->renderPass);
 
   pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
   pipelineCreateInfo.pRasterizationState = &rasterizationState;

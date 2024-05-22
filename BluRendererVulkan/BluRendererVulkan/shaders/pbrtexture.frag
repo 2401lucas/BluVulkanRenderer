@@ -152,19 +152,19 @@ void main()
 	for(int i = 0; i < uboParams.lights.length(); i++) {
 		float distance    = length(uboParams.lights[i].pos.xyz - inWorldPos);
 		float attenuation = 1.0 / (distance * distance);
-		vec3 radiance     = uboParams.lights[i].color.xyz * attenuation; 
+		vec3 radiance     = uboParams.lights[i].color.xyz * attenuation;
 		
 		vec3 L = normalize(uboParams.lights[i].pos.xyz - inWorldPos);
 
 		Lo += specularContribution(L, V, N, F0, radiance, metallic, roughness);
-	}   
+	}
 	
 	vec2 brdf = texture(samplerBRDFLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
-	vec3 reflection = prefilteredReflection(R, roughness).rgb;	
+	vec3 reflection = prefilteredReflection(R, roughness).rgb;
 	vec3 irradiance = texture(samplerIrradiance, N).rgb;
 
 	// Diffuse based on irradiance
-	vec3 diffuse = irradiance * ALBEDO;	
+	vec3 diffuse = irradiance * ALBEDO;
 
 	vec3 F = FresnelSchlickR(max(dot(N, V), 0.0), F0, roughness);
 
@@ -173,14 +173,14 @@ void main()
 
 	// Ambient part
 	vec3 kD = 1.0 - F;
-	kD *= 1.0 - metallic;	  
+	kD *= 1.0 - metallic;
 	vec3 ambient = (kD * diffuse + specular) * texture(aoMap, inUV).rrr;
 	
 	vec3 color = ambient + Lo;
 
 	// Tone mapping
 	color = Uncharted2Tonemap(color * uboParams.exposure);
-	color = color * (1.0f / Uncharted2Tonemap(vec3(11.2f)));	
+	color = color * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
 	// Gamma correction
 	color = pow(color, vec3(1.0f / uboParams.gamma));
 

@@ -38,13 +38,15 @@ https://www.gdcvault.com/play/1012351/Uncharted-2-HDR
 https://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
 https://www.researchgate.net/publication/215506032_Image-space_horizon-based_ambient_occlusion
 
-
-Next build(~5 days) will have:
+Completed:
 Fixed Lighting
-Better UI(Currently doesn't capture Keyboard or scrollwheel input)
-More Settings in the UI
-GPU based Particle System
-AA Settings & new AA implementation
+
+Tomorrow: Priority-> GPU COMPUTE & Rendering Semaphores: GET IT WORKING FIRST, WORRY ABOUT PERFORMANCE AFTER (MULTIPLE DATA SETS?)
+
+Next build(May 24th) will have:
+More Settings in the UI & Fix UI(Currently doesn't capture Keyboard or scrollwheel input, also has strange window moving bug(check ImGUI_cond))
+GPU based Particle System(COMPUTE GRAPHICS SYNC)
+AA Settings & new AA implementation (Enable/Disable(clean/allocate required resources) Disabled, MSAA (4, 8 , 16?) & (FSAA?) + more in the future)
 
 Future features include:
 Scene loading(Sponza)
@@ -52,3 +54,4 @@ Deferred Rendering
 Reflection Probes 
 Realtime Ambient Occlusion(GTAO or HBAO)
 Shadows 
+GPU Focused Rendering
