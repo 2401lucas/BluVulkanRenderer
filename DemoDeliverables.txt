@@ -48,6 +48,23 @@ More Settings in the UI & Fix UI(Currently doesn't capture Keyboard or scrollwhe
 GPU based Particle System(COMPUTE GRAPHICS SYNC)
 AA Settings & new AA implementation (Enable/Disable(clean/allocate required resources) Disabled, MSAA (4, 8 , 16?) & (FSAA?) + more in the future)
 
+
+Post Processing, STAGES:
+SKYBOX------------
+MODELS------------
+SSAO? (EARLY)
+Tonemapping (LATE)
+FXAA (LAST, BEFORE UI) - Optimized Integration:
+Depending on the engine, there may be a performance advantage in merging FXAA
+into an existing post processing pass. For example, the following can be done in a
+single full screen pass: FXAA + composite bloom results + color grading + adding
+film noise.
+If the engine already has the ability to selectively apply post processing to only the
+regions which need a given effect, anti-aliasing, and thus FXAA, is likely not needed
+in areas under strong motion blur or depth of field
+UI----------------
+
+
 Future features include:
 Scene loading(Sponza)
 Deferred Rendering
