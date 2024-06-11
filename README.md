@@ -11,6 +11,26 @@
 - ImGUI
 - Tone mapping
 
+## Rendering Pipeline
+### Forward Renderer
+- Render Skybox
+- Render Models
+- AA
+- UI
+
+### An Optimized AA Integration
+Having AA integrated into an existing post processing pass can increase performance. As an example, in a single full screen pass: FXAA + composite bloom results + color grading. This could also allow AA to only be applied where nessicary, such as areas with a strong motion blur or Depth of Field
+
+
+## Features to implement
+- FXAA (In Progress)
+- SMAA
+- Culling
+- More Post Processing passes
+- More UI Features and information 
+- Shadows / Baking Shadows
+- SSAO/GTAO/HBAO
+- glTF scene loading
   
 ## Resources
 ### Tech
