@@ -1,7 +1,7 @@
 # BluRenderer - Vulkan
 
-## Features
 
+## Features
 - PBR
 - IBL w/ BRDFLUT & Irradiance cubemap
 - Multi-threaded command buffer recording
@@ -9,11 +9,10 @@
 - GPU Compute Particles
 - MSAA & FXAA
 - ImGUI
-- Tonemapping
+- Tone mapping
 
   
 ## Resources
-
 ### Tech
 - RenderDoc
 - NSight
