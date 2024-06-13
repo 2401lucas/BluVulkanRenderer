@@ -1,4 +1,5 @@
-# BluRenderer - Vulkan
+# BluRenderer - Vulkan (WIP)
+
 ![image](https://github.com/2401lucas/BluVulkanRenderer/assets/32739337/1b532a7f-6f4a-4723-98e9-e8b315b7ffe8)
 
 
@@ -11,16 +12,16 @@
 - MSAA & FXAA
 - ImGUI
 - Tone mapping
+- Instanced Rendering
 
 ## Rendering Pipeline
 ### Forward Renderer
-- Render Skybox
-- Render Models
-- AA
-- UI
 
 ### An Optimized AA Integration
 Having AA integrated into an existing post processing pass can increase performance. As an example, in a single full screen pass: FXAA + composite bloom results + color grading. This could also allow AA to only be applied where nessicary, such as areas with a strong motion blur or Depth of Field
+
+# What I learned
+It is hard to exactly explain all that I learned, this was by far the project that I learned the most about computer programming and hardware. This would include worrying about CPU cache efficiency, memory layouts, the entire render pipeline of which I have built a very solid foundation of knowledge on, differences in OS/hardware(Thank you Linux) to name a few, and way more experience in debugging and profiling hard to find issues. There is a lot ommited from this list too, or in the case of multi-threading/compute shaders that I was familiar with, but did not understand them as well as I do now.
 
 
 ## Features to implement
