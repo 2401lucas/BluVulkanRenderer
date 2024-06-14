@@ -115,6 +115,25 @@ class ForwardRenderer : public BaseRenderer {
     } depth;
   } multisampleTarget;
 
+  // Framebuffer for offscreen rendering
+  struct FrameBufferAttachment {
+    VkImage image;
+    VkDeviceMemory memory;
+    VkImageView view;
+  };
+
+  struct FrameBuffer {
+    VkFramebuffer framebuffer;
+    FrameBufferAttachment color, depth;
+    VkDescriptorImageInfo descriptor;
+  };
+
+  struct OffscreenPass {
+    VkRenderPass renderPass;
+    VkSampler sampler;
+    std::vector<FrameBuffer> framebuffers;
+  } offscreenPass;
+
   // Multi-threading
   // 1 Command Pool per FiF?
   std::vector<VkCommandBuffer> uiDrawCmdBuffers;
@@ -463,7 +482,133 @@ class ForwardRenderer : public BaseRenderer {
     }
     // If not setup additional offscreen framebuffer for post processing
     else {
-      
+      prepareOffscreen();
+      offscreenPass.framebuffers.resize(swapChain.imageCount);
+      std::array<VkImageView, 2> offscreenAttachments;
+      const VkFormat colFormat =
+          VK_FORMAT_R8G8B8A8_UNORM;
+      // Color attachment
+      VkImageCreateInfo image = vks::initializers::imageCreateInfo();
+      image.imageType = VK_IMAGE_TYPE_2D;
+      image.format = colFormat;
+      image.extent.width = getWidth();
+      image.extent.height = getHeight();
+      image.extent.depth = 1;
+      image.mipLevels = 1;
+      image.arrayLayers = 1;
+      image.samples = VK_SAMPLE_COUNT_1_BIT;
+      image.tiling = VK_IMAGE_TILING_OPTIMAL;
+      // We will sample directly from the color attachment
+      image.usage =
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+      VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
+      VkMemoryRequirements memReqs;
+
+      VkImageViewCreateInfo colorImageView =
+          vks::initializers::imageViewCreateInfo();
+      colorImageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      colorImageView.format = colFormat;
+      colorImageView.flags = 0;
+      colorImageView.subresourceRange = {};
+      colorImageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      colorImageView.subresourceRange.baseMipLevel = 0;
+      colorImageView.subresourceRange.levelCount = 1;
+      colorImageView.subresourceRange.baseArrayLayer = 0;
+      colorImageView.subresourceRange.layerCount = 1;
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VK_CHECK_RESULT(
+            vkCreateImage(device, &image, nullptr,
+                          &offscreenPass.framebuffers[i].color.image));
+        vkGetImageMemoryRequirements(
+            device, offscreenPass.framebuffers[i].color.image, &memReqs);
+        memAlloc.allocationSize = memReqs.size;
+        memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(
+            vkAllocateMemory(device, &memAlloc, nullptr,
+                             &offscreenPass.framebuffers[i].color.memory));
+        VK_CHECK_RESULT(
+            vkBindImageMemory(device, offscreenPass.framebuffers[i].color.image,
+                              offscreenPass.framebuffers[i].color.memory, 0));
+
+        colorImageView.image = offscreenPass.framebuffers[i].color.image;
+        VK_CHECK_RESULT(
+            vkCreateImageView(device, &colorImageView, nullptr,
+                              &offscreenPass.framebuffers[i].color.view));
+      }
+
+      // Depth stencil attachment
+      image.format = depthFormat;
+      image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+      VkImageViewCreateInfo depthStencilView =
+          vks::initializers::imageViewCreateInfo();
+      depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      depthStencilView.format = depthFormat;
+      depthStencilView.flags = 0;
+      depthStencilView.subresourceRange = {};
+      depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      if (vks::tools::formatHasStencil(depthFormat)) {
+        depthStencilView.subresourceRange.aspectMask |=
+            VK_IMAGE_ASPECT_STENCIL_BIT;
+      }
+      depthStencilView.subresourceRange.baseMipLevel = 0;
+      depthStencilView.subresourceRange.levelCount = 1;
+      depthStencilView.subresourceRange.baseArrayLayer = 0;
+      depthStencilView.subresourceRange.layerCount = 1;
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VK_CHECK_RESULT(
+            vkCreateImage(device, &image, nullptr,
+                          &offscreenPass.framebuffers[i].depth.image));
+        vkGetImageMemoryRequirements(
+            device, offscreenPass.framebuffers[i].depth.image, &memReqs);
+        memAlloc.allocationSize = memReqs.size;
+        memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(
+            vkAllocateMemory(device, &memAlloc, nullptr,
+                             &offscreenPass.framebuffers[i].depth.memory));
+        VK_CHECK_RESULT(
+            vkBindImageMemory(device, offscreenPass.framebuffers[i].depth.image,
+                              offscreenPass.framebuffers[i].depth.memory, 0));
+
+        depthStencilView.image = offscreenPass.framebuffers[i].depth.image;
+        VK_CHECK_RESULT(
+            vkCreateImageView(device, &depthStencilView, nullptr,
+                              &offscreenPass.framebuffers[i].depth.view));
+      }
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VkImageView attachments[2];
+        attachments[0] = offscreenPass.framebuffers[i].color.view;
+        attachments[1] = offscreenPass.framebuffers[i].depth.view;
+
+        VkFramebufferCreateInfo fbufCreateInfo =
+            vks::initializers::framebufferCreateInfo();
+        fbufCreateInfo.renderPass = offscreenPass.renderPass;
+        fbufCreateInfo.attachmentCount = 2;
+        fbufCreateInfo.pAttachments = attachments;
+        fbufCreateInfo.width = getWidth();
+        ;
+        fbufCreateInfo.height = getHeight();
+        fbufCreateInfo.layers = 1;
+
+        VK_CHECK_RESULT(
+            vkCreateFramebuffer(device, &fbufCreateInfo, nullptr,
+                                &offscreenPass.framebuffers[i].framebuffer));
+
+        // Fill a descriptor for later use in a descriptor set
+        offscreenPass.framebuffers[i].descriptor.imageLayout =
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        offscreenPass.framebuffers[i].descriptor.imageView =
+            offscreenPass.framebuffers[i].color.view;
+        offscreenPass.framebuffers[i].descriptor.sampler =
+            offscreenPass.sampler;
+      }
+    }
   }
 
   void prepareOffscreen() {
