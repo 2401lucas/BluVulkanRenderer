@@ -16,7 +16,6 @@ struct UISettings {
   bool displaySponza = true;
   bool useSampleShading = false;
   int msaaSamples;
-  bool useFXAA;
   std::array<float, 50> frameTimes{};
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
 } uiSettings;
@@ -79,7 +78,10 @@ class ForwardRenderer : public BaseRenderer {
   } uboParams;
 
   struct PostProcessingParams {
-    bool useFXAA;
+    bool useFXAA = true;
+    float fxaaEdgeThresholdMax = 0.031;
+    float fxaaEdgeThresholdMin = 0.062;
+    float pixelBlend = 0.5;
   } postProcessingParams;
 
   struct {
@@ -176,10 +178,15 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyPipeline(device, pipelines.skybox, nullptr);
     vkDestroyPipeline(device, pipelines.pbr, nullptr);
     vkDestroyPipeline(device, pipelines.pbrWithSS, nullptr);
+    vkDestroyPipeline(device, pipelines.postProcessing, nullptr);
 
     vkDestroyPipelineLayout(device, pipelineLayouts.pbr, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayouts.postProcessing, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.pbr, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.postProcessing,
+                                 nullptr);
     vkDestroyDescriptorPool(device, descriptorPools.pbr, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPools.postProcessing, nullptr);
 
     vkDestroyImage(device, multisampleTarget.color.image, nullptr);
     vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
@@ -188,9 +195,29 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
     vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
 
+    for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+      vkDestroyImage(device, offscreenPass.framebuffers[i].color.image,
+                     nullptr);
+      vkDestroyImageView(device, offscreenPass.framebuffers[i].color.view,
+                         nullptr);
+      vkFreeMemory(device, offscreenPass.framebuffers[i].color.memory, nullptr);
+      vkDestroyImage(device, offscreenPass.framebuffers[i].depth.image,
+                     nullptr);
+      vkDestroyImageView(device, offscreenPass.framebuffers[i].depth.view,
+                         nullptr);
+      vkFreeMemory(device, offscreenPass.framebuffers[i].depth.memory, nullptr);
+
+      vkDestroyFramebuffer(device, offscreenPass.framebuffers[i].framebuffer,
+                           nullptr);
+    }
+
+    vkDestroyRenderPass(device, offscreenPass.renderPass, nullptr);
+    vkDestroySampler(device, offscreenPass.sampler, nullptr);
+
     uniformBuffers.object.destroy();
     uniformBuffers.skybox.destroy();
     uniformBuffers.params.destroy();
+    uniformBuffers.postProcessing.destroy();
 
     models.skybox.destroy(device);
     models.cerberus.destroy(device);
@@ -802,9 +829,27 @@ class ForwardRenderer : public BaseRenderer {
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
-      ImGui::Checkbox("Use FXAA", &uiSettings.useFXAA);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+      // ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
+      /*if (ImGui::Checkbox("Use FXAA", &postProcessingParams.useFXAA)) {
+        updateParams();
+      }*/
+
+      if (ImGui::DragFloat("FXAA Blend Amount",
+                           &postProcessingParams.pixelBlend, 0.01f, 0, 1,
+                           "%.03f")) {
+        updateParams();
+      }
+      if (ImGui::DragFloat("fxaaEdgeThresholdMin",
+                           &postProcessingParams.fxaaEdgeThresholdMin, 0.0001f,
+                           0.0625, 0.25, "%.0003f")) {
+        updateParams();
+      }
+      if (ImGui::DragFloat("fxaaEdgeThresholdMax",
+                           &postProcessingParams.fxaaEdgeThresholdMax, 0.0001f,
+                           0.03125, 0.125, "%.0003f")) {
+        updateParams();
+      }
 
       if (ImGui::CollapsingHeader("Light Settings")) {
         if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {

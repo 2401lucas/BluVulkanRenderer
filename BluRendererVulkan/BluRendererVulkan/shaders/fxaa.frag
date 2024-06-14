@@ -1,15 +1,13 @@
 #version 450
 
-#define FXAA_EDGE_THRESHOLD_MAX 1/16
-#define FXAA_EDGE_THRESHOLD_MIN 1/32
-// RANGE 0 - 1
-#define PIXEL_BLEND 0.75
-
 layout(location = 0) in vec2 fragTexCord;
 
 layout (binding = 0) uniform UBO 
 {
 	bool useFXAA;
+    float fxaaEdgeThresholdMin;
+    float fxaaEdgeThresholdMax;
+    float pixelBlend;
 } ubo;
 
 layout(binding = 1) uniform sampler2D screenTexture;
@@ -26,6 +24,11 @@ float fxaaLuma(vec3 rgb) {
 // Sample Main & surrounding pixels, compare luminance and average 
 void main() {
     vec3 colorCenter =  texture(screenTexture, fragTexCord).rgb;
+    if(!ubo.useFXAA){
+        outColor = vec4(colorCenter, 1.0f);
+        return;
+    }
+
     vec3 rgbN =         textureOffset(screenTexture, fragTexCord, ivec2(0,1)).rgb;
     vec3 rgbS =         textureOffset(screenTexture, fragTexCord, ivec2(0,-1)).rgb;
     vec3 rgbE =         textureOffset(screenTexture, fragTexCord, ivec2(1,0)).rgb;
@@ -43,7 +46,7 @@ void main() {
     float lumaRange = lumaMax - lumaMin;
 
     //If variation is lower or in dark area, Skip AA (combine with other shaders)
-    if(lumaRange < max(FXAA_EDGE_THRESHOLD_MIN, lumaMax * FXAA_EDGE_THRESHOLD_MAX)) {
+    if(lumaRange < max(ubo.fxaaEdgeThresholdMin, lumaMax * ubo.fxaaEdgeThresholdMax)) {
         outColor = vec4(colorCenter, 1.0f);
         return;
     }
@@ -86,10 +89,10 @@ void main() {
     
     vec2 blurFragTexCord = fragTexCord;
     if (isHorizontal) {
-		blurFragTexCord.y += pixelStep * PIXEL_BLEND;
+		blurFragTexCord.y += pixelStep * ubo.pixelBlend;
 	}
 	else {
-		blurFragTexCord.x += pixelStep * PIXEL_BLEND;
+		blurFragTexCord.x += pixelStep * ubo.pixelBlend;
 	}
 	
     outColor = vec4(texture(screenTexture, blurFragTexCord).rgb, 1.0);
