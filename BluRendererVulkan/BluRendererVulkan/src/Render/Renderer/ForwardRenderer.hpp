@@ -54,6 +54,7 @@ class ForwardRenderer : public BaseRenderer {
     vks::Buffer object;
     vks::Buffer skybox;
     vks::Buffer params;
+    vks::Buffer postProcessing;
   } uniformBuffers;
 
   // Should (M?)VP be precomputed
@@ -77,6 +78,10 @@ class ForwardRenderer : public BaseRenderer {
     float gamma = 2.2f;
   } uboParams;
 
+  struct PostProcessingParams {
+    bool useFXAA;
+  } postProcessingParams;
+
   struct {
     VkPipelineLayout pbr{VK_NULL_HANDLE};
     VkPipelineLayout postProcessing{VK_NULL_HANDLE};
@@ -91,15 +96,18 @@ class ForwardRenderer : public BaseRenderer {
 
   struct {
     VkDescriptorPool pbr;
+    VkDescriptorPool postProcessing;
   } descriptorPools;
 
   struct {
     VkDescriptorSetLayout pbr{VK_NULL_HANDLE};
+    VkDescriptorSetLayout postProcessing{VK_NULL_HANDLE};
   } descriptorSetLayouts;
 
   struct {
     VkDescriptorSet pbr{VK_NULL_HANDLE};
     VkDescriptorSet skybox{VK_NULL_HANDLE};
+    VkDescriptorSet postProcessing{VK_NULL_HANDLE};
   } descriptorSets;
 
   struct MultiSampleTarget {
@@ -131,12 +139,14 @@ class ForwardRenderer : public BaseRenderer {
   struct OffscreenPass {
     VkRenderPass renderPass;
     VkSampler sampler;
+
     std::vector<FrameBuffer> framebuffers;
   } offscreenPass;
 
   // Multi-threading
   // 1 Command Pool per FiF?
   std::vector<VkCommandBuffer> uiDrawCmdBuffers;
+  std::vector<VkCommandBuffer> postProcessingDrawCmdBuffers;
   std::vector<VkCommandBuffer> pbrDrawCmdBuffers;
 
   VkExtent2D attachmentSize{};
@@ -482,15 +492,14 @@ class ForwardRenderer : public BaseRenderer {
     }
     // If not setup additional offscreen framebuffer for post processing
     else {
+      BaseRenderer::setupFrameBuffer();
       prepareOffscreen();
       offscreenPass.framebuffers.resize(swapChain.imageCount);
       std::array<VkImageView, 2> offscreenAttachments;
-      const VkFormat colFormat =
-          VK_FORMAT_R8G8B8A8_UNORM;
       // Color attachment
       VkImageCreateInfo image = vks::initializers::imageCreateInfo();
       image.imageType = VK_IMAGE_TYPE_2D;
-      image.format = colFormat;
+      image.format = swapChain.colorFormat;
       image.extent.width = getWidth();
       image.extent.height = getHeight();
       image.extent.depth = 1;
@@ -508,7 +517,7 @@ class ForwardRenderer : public BaseRenderer {
       VkImageViewCreateInfo colorImageView =
           vks::initializers::imageViewCreateInfo();
       colorImageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-      colorImageView.format = colFormat;
+      colorImageView.format = swapChain.colorFormat;
       colorImageView.flags = 0;
       colorImageView.subresourceRange = {};
       colorImageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -614,10 +623,9 @@ class ForwardRenderer : public BaseRenderer {
   void prepareOffscreen() {
     // Create a separate render pass for the offscreen rendering as it may
     // differ from the one used for scene rendering
-    const VkFormat colFormat = VK_FORMAT_R8G8B8A8_UNORM;
     std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
     // Color attachment
-    attchmentDescriptions[0].format = colFormat;
+    attchmentDescriptions[0].format = swapChain.colorFormat;
     attchmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
     attchmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attchmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -703,6 +711,7 @@ class ForwardRenderer : public BaseRenderer {
   void createCommandBuffers() override {
     BaseRenderer::createCommandBuffers();
     uiDrawCmdBuffers.resize(swapChain.imageCount);
+    postProcessingDrawCmdBuffers.resize(swapChain.imageCount);
     pbrDrawCmdBuffers.resize(swapChain.imageCount);
     computeCmdBuffers.resize(swapChain.imageCount);
 
@@ -713,6 +722,9 @@ class ForwardRenderer : public BaseRenderer {
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
         device, &secondaryGraphicsCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 postProcessingDrawCmdBuffers.data()));
     VK_CHECK_RESULT(
         vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
                                  pbrDrawCmdBuffers.data()));
@@ -732,6 +744,10 @@ class ForwardRenderer : public BaseRenderer {
     vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(uiDrawCmdBuffers.size()),
                          uiDrawCmdBuffers.data());
+    vkFreeCommandBuffers(
+        device, graphicsCmdPool,
+        static_cast<uint32_t>(postProcessingDrawCmdBuffers.size()),
+        postProcessingDrawCmdBuffers.data());
   }
 
   // Starts a new imGui frame and sets up windows and ui elements
@@ -814,6 +830,43 @@ class ForwardRenderer : public BaseRenderer {
     ImGui::Render();
   }
 
+  void buildPostProcessingCommandBuffer() {
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderPass;
+    inheritanceInfo.framebuffer = frameBuffers[currentFrameIndex];
+
+    VkCommandBufferBeginInfo cmdBufInfo =
+        vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+    VkCommandBuffer currentCommandBuffer =
+        postProcessingDrawCmdBuffers[currentFrameIndex];
+    vkResetCommandBuffer(currentCommandBuffer, 0);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+
+    VkViewport viewport = vks::initializers::viewport(
+        (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
+
+    VkDeviceSize offsets[1] = {0};
+
+    vkCmdBindDescriptorSets(currentCommandBuffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            pipelineLayouts.postProcessing, 0, 1,
+                            &descriptorSets.postProcessing, 0, NULL);
+    vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      pipelines.postProcessing);
+
+    // Draw triangle
+    vkCmdDraw(currentCommandBuffer, 3, 1, 0, 0);
+
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
+  }
+
   void buildUICommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
@@ -838,8 +891,9 @@ class ForwardRenderer : public BaseRenderer {
   void buildPbrCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = renderPass;
-    inheritanceInfo.framebuffer = frameBuffers[currentImageIndex];
+    inheritanceInfo.renderPass = offscreenPass.renderPass;
+    inheritanceInfo.framebuffer =
+        offscreenPass.framebuffers[currentImageIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -901,7 +955,7 @@ class ForwardRenderer : public BaseRenderer {
     VkRenderPassBeginInfo renderPassBeginInfo =
         vks::initializers::renderPassBeginInfo();
 
-    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.renderPass = offscreenPass.renderPass;
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
     renderPassBeginInfo.renderArea.extent.width = getWidth();
@@ -912,7 +966,8 @@ class ForwardRenderer : public BaseRenderer {
     newUIFrame((frameCounter == 0));
     imGui->updateBuffers(currentFrameIndex);
 
-    renderPassBeginInfo.framebuffer = frameBuffers[currentImageIndex];
+    renderPassBeginInfo.framebuffer =
+        offscreenPass.framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
 
@@ -922,9 +977,26 @@ class ForwardRenderer : public BaseRenderer {
                          VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
     buildPbrCommandBuffer();
-    buildUICommandBuffer();
 
     secondaryCmdBufs.push_back(pbrDrawCmdBuffers[currentFrameIndex]);
+
+    // Execute render commands from the secondary command buffer
+    vkCmdExecuteCommands(currentCommandBuffer,
+                         static_cast<uint32_t>(secondaryCmdBufs.size()),
+                         secondaryCmdBufs.data());
+    secondaryCmdBufs.clear();
+    vkCmdEndRenderPass(currentCommandBuffer);
+
+    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.framebuffer = frameBuffers[currentFrameIndex];
+
+    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    buildPostProcessingCommandBuffer();
+    buildUICommandBuffer();
+
+    secondaryCmdBufs.push_back(postProcessingDrawCmdBuffers[currentFrameIndex]);
     secondaryCmdBufs.push_back(uiDrawCmdBuffers[currentFrameIndex]);
 
     // Execute render commands from the secondary command buffer
@@ -1048,6 +1120,61 @@ class ForwardRenderer : public BaseRenderer {
     vkUpdateDescriptorSets(device,
                            static_cast<uint32_t>(writeDescriptorSets.size()),
                            writeDescriptorSets.data(), 0, NULL);
+    // Post Processing
+
+    // Descriptor Pool
+    std::vector<VkDescriptorPoolSize> postProcessingPoolSizes = {
+        vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                              1),
+        vks::initializers::descriptorPoolSize(
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3)};
+    descriptorPoolInfo =
+        vks::initializers::descriptorPoolCreateInfo(postProcessingPoolSizes, 2);
+    VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr,
+                                           &descriptorPools.postProcessing));
+
+    // Descriptor set layout
+    std::vector<VkDescriptorSetLayoutBinding> postProcessingSetLayoutBindings =
+        {
+            vks::initializers::descriptorSetLayoutBinding(
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0),
+            vks::initializers::descriptorSetLayoutBinding(
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+        };
+
+    descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(
+        postProcessingSetLayoutBindings);
+    VK_CHECK_RESULT(
+        vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr,
+                                    &descriptorSetLayouts.postProcessing));
+
+    allocInfo = vks::initializers::descriptorSetAllocateInfo(
+        descriptorPools.postProcessing, &descriptorSetLayouts.postProcessing,
+        1);
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo,
+                                             &descriptorSets.postProcessing));
+
+    writeDescriptorSets = {
+        // Binding 0: Vertex shader uniform buffer
+        vks::initializers::writeDescriptorSet(
+            descriptorSets.postProcessing, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+            &uniformBuffers.postProcessing.descriptor),
+    };
+
+    for (uint32_t i = 0; i < 1; i++) {
+      // Binding 1: Fragment shader texture sampler
+      VkWriteDescriptorSet wSet = vks::initializers::writeDescriptorSet(
+          descriptorSets.postProcessing,
+          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+          &offscreenPass.framebuffers[i].descriptor);
+      writeDescriptorSets.push_back(wSet);
+    }
+
+    vkUpdateDescriptorSets(device,
+                           static_cast<uint32_t>(writeDescriptorSets.size()),
+                           writeDescriptorSets.data(), 0, NULL);
   }
 
   void preparePipelines() {
@@ -1085,7 +1212,7 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr, &pipelineLayouts.pbr));
     VkGraphicsPipelineCreateInfo pipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(pipelineLayouts.pbr,
-                                                      renderPass);
+                                                      offscreenPass.renderPass);
 
     pipelineCI.pInputAssemblyState = &inputAssemblyState;
     pipelineCI.pRasterizationState = &rasterizationState;
@@ -1110,16 +1237,6 @@ class ForwardRenderer : public BaseRenderer {
         device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
 
     rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
-    
-    //Post Processing
-    shaderStages[0] =
-        loadShader("shaders/fxaa.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] =
-        loadShader("shaders/fxaa.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1,
-                                              &pipelineCI, nullptr,
-                                              &pipelines.postProcessing));
 
     // PBR pipeline
     shaderStages[0] =
@@ -1143,6 +1260,47 @@ class ForwardRenderer : public BaseRenderer {
                                                 &pipelineCI, nullptr,
                                                 &pipelines.pbrWithSS));
     }
+
+    pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+        &descriptorSetLayouts.postProcessing, 1);
+    VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo,
+                                           nullptr,
+                                           &pipelineLayouts.postProcessing));
+
+    VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
+        vks::initializers::graphicsPipelineCreateInfo(
+            pipelineLayouts.postProcessing, renderPass);
+
+    VkPipelineVertexInputStateCreateInfo emptyInputState{};
+    emptyInputState.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    emptyInputState.vertexAttributeDescriptionCount = 0;
+    emptyInputState.pVertexAttributeDescriptions = nullptr;
+    emptyInputState.vertexBindingDescriptionCount = 0;
+    emptyInputState.pVertexBindingDescriptions = nullptr;
+
+    rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
+    postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
+    postProcessingpipelineCI.pRasterizationState = &rasterizationState;
+    postProcessingpipelineCI.pColorBlendState = &colorBlendState;
+    postProcessingpipelineCI.pMultisampleState = &multisampleState;
+    postProcessingpipelineCI.pViewportState = &viewportState;
+    postProcessingpipelineCI.pDepthStencilState = &depthStencilState;
+    postProcessingpipelineCI.pDynamicState = &dynamicState;
+    postProcessingpipelineCI.stageCount =
+        static_cast<uint32_t>(shaderStages.size());
+    postProcessingpipelineCI.pStages = shaderStages.data();
+    postProcessingpipelineCI.pVertexInputState = &emptyInputState;
+
+    // Post Processing
+    shaderStages[0] =
+        loadShader("shaders/fxaa.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] =
+        loadShader("shaders/fxaa.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    VK_CHECK_RESULT(
+        vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
+                                  nullptr, &pipelines.postProcessing));
   }
 
   // Generate a BRDF integration map used as a look-up-table (Roughness/NdotV)
@@ -2323,10 +2481,19 @@ class ForwardRenderer : public BaseRenderer {
                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                    &uniformBuffers.params, sizeof(uboParams)));
 
+    // Post Processing Vertex Uniform buffer
+    VK_CHECK_RESULT(vulkanDevice->createBuffer(
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &uniformBuffers.postProcessing, sizeof(PostProcessingParams),
+        &postProcessingParams));
+
     // Map persistent
     VK_CHECK_RESULT(uniformBuffers.object.map());
     VK_CHECK_RESULT(uniformBuffers.skybox.map());
     VK_CHECK_RESULT(uniformBuffers.params.map());
+    VK_CHECK_RESULT(uniformBuffers.postProcessing.map());
 
     updateUniformBuffers();
     updateParams();
@@ -2349,6 +2516,8 @@ class ForwardRenderer : public BaseRenderer {
 
   void updateParams() {
     memcpy(uniformBuffers.params.mapped, &uboParams, sizeof(uboParams));
+    memcpy(uniformBuffers.postProcessing.mapped, &postProcessingParams,
+           sizeof(PostProcessingParams));
   }
 
   void loadAssets() {

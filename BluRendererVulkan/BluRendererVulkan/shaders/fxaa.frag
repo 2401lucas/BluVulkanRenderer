@@ -5,10 +5,14 @@
 // RANGE 0 - 1
 #define PIXEL_BLEND 0.75
 
-
 layout(location = 0) in vec2 fragTexCord;
 
-layout(set = 0, binding = 0) uniform sampler2D screenTexture;
+layout (binding = 0) uniform UBO 
+{
+	bool useFXAA;
+} ubo;
+
+layout(binding = 1) uniform sampler2D screenTexture;
 
 layout (location = 0) out vec4 outColor;
 
@@ -19,7 +23,7 @@ float fxaaLuma(vec3 rgb) {
     //return 0.2126*rgb.x + 0.7152*rgb.y + 0.0722*rgb.z;
 }
 
-//Sample Main & surrounding pixels, compare luminance and average 
+// Sample Main & surrounding pixels, compare luminance and average 
 void main() {
     vec3 colorCenter =  texture(screenTexture, fragTexCord).rgb;
     vec3 rgbN =         textureOffset(screenTexture, fragTexCord, ivec2(0,1)).rgb;
