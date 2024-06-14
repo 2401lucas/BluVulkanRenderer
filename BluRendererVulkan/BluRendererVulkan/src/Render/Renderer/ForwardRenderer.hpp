@@ -16,6 +16,7 @@ struct UISettings {
   bool displaySponza = true;
   bool useSampleShading = false;
   int msaaSamples;
+  bool useFXAA;
   std::array<float, 50> frameTimes{};
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
 } uiSettings;
@@ -78,12 +79,14 @@ class ForwardRenderer : public BaseRenderer {
 
   struct {
     VkPipelineLayout pbr{VK_NULL_HANDLE};
+    VkPipelineLayout postProcessing{VK_NULL_HANDLE};
   } pipelineLayouts;
 
   struct {
     VkPipeline skybox{VK_NULL_HANDLE};
     VkPipeline pbr{VK_NULL_HANDLE};
     VkPipeline pbrWithSS{VK_NULL_HANDLE};
+    VkPipeline postProcessing{VK_NULL_HANDLE};
   } pipelines;
 
   struct {
@@ -430,11 +433,11 @@ class ForwardRenderer : public BaseRenderer {
       attachmentSize = {getWidth(), getHeight()};
     }
 
-    std::array<VkImageView, 3> attachments = {};
     // If multisampling is to be used
     if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
       setupMultisampleTarget();
 
+      std::array<VkImageView, 3> attachments = {};
       attachments[0] = multisampleTarget.color.view;
       // attachment[1] = swapchain image
       attachments[2] = multisampleTarget.depth.view;
@@ -457,9 +460,99 @@ class ForwardRenderer : public BaseRenderer {
         VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
                                             nullptr, &frameBuffers[i]));
       }
-    } else {
-      BaseRenderer::setupFrameBuffer();
     }
+    // If not setup additional offscreen framebuffer for post processing
+    else {
+      
+  }
+
+  void prepareOffscreen() {
+    // Create a separate render pass for the offscreen rendering as it may
+    // differ from the one used for scene rendering
+    const VkFormat colFormat = VK_FORMAT_R8G8B8A8_UNORM;
+    std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
+    // Color attachment
+    attchmentDescriptions[0].format = colFormat;
+    attchmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attchmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attchmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attchmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attchmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attchmentDescriptions[0].finalLayout =
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    // Depth attachment
+    attchmentDescriptions[1].format = depthFormat;
+    attchmentDescriptions[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attchmentDescriptions[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attchmentDescriptions[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attchmentDescriptions[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attchmentDescriptions[1].finalLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorReference = {
+        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference depthReference = {
+        1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+
+    VkSubpassDescription subpassDescription = {};
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDescription.colorAttachmentCount = 1;
+    subpassDescription.pColorAttachments = &colorReference;
+    subpassDescription.pDepthStencilAttachment = &depthReference;
+
+    // Use subpass dependencies for layout transitions
+    std::array<VkSubpassDependency, 2> dependencies;
+
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[0].dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    // Create the actual renderpass
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount =
+        static_cast<uint32_t>(attchmentDescriptions.size());
+    renderPassInfo.pAttachments = attchmentDescriptions.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpassDescription;
+    renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+    renderPassInfo.pDependencies = dependencies.data();
+
+    VK_CHECK_RESULT(vkCreateRenderPass(device, &renderPassInfo, nullptr,
+                                       &offscreenPass.renderPass));
+
+    // Create sampler to sample from the color attachments
+    VkSamplerCreateInfo sampler = vks::initializers::samplerCreateInfo();
+    sampler.magFilter = VK_FILTER_LINEAR;
+    sampler.minFilter = VK_FILTER_LINEAR;
+    sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeV = sampler.addressModeU;
+    sampler.addressModeW = sampler.addressModeU;
+    sampler.mipLodBias = 0.0f;
+    sampler.maxAnisotropy = 1.0f;
+    sampler.minLod = 0.0f;
+    sampler.maxLod = 1.0f;
+    sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    VK_CHECK_RESULT(
+        vkCreateSampler(device, &sampler, nullptr, &offscreenPass.sampler));
   }
 
   void createCommandBuffers() override {
@@ -549,6 +642,7 @@ class ForwardRenderer : public BaseRenderer {
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
       ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
+      ImGui::Checkbox("Use FXAA", &uiSettings.useFXAA);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
 
       if (ImGui::CollapsingHeader("Light Settings")) {
@@ -682,8 +776,8 @@ class ForwardRenderer : public BaseRenderer {
     vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                          VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-    buildUICommandBuffer();
     buildPbrCommandBuffer();
+    buildUICommandBuffer();
 
     secondaryCmdBufs.push_back(pbrDrawCmdBuffers[currentFrameIndex]);
     secondaryCmdBufs.push_back(uiDrawCmdBuffers[currentFrameIndex]);
@@ -870,8 +964,19 @@ class ForwardRenderer : public BaseRenderer {
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
         device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
 
-    // PBR pipeline
     rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
+    
+    //Post Processing
+    shaderStages[0] =
+        loadShader("shaders/fxaa.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] =
+        loadShader("shaders/fxaa.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1,
+                                              &pipelineCI, nullptr,
+                                              &pipelines.postProcessing));
+
+    // PBR pipeline
     shaderStages[0] =
         loadShader("shaders/pbrtexture.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
     shaderStages[1] =

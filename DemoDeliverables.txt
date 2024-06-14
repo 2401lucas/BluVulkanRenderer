@@ -64,11 +64,12 @@ regions which need a given effect, anti-aliasing, and thus FXAA, is likely not n
 in areas under strong motion blur or depth of field
 UI----------------
 
+TODO: MOVE TONEMAPPING TO PP PASS
 
 Future features include:
-Scene loading(Sponza)
-Deferred Rendering
+Scene loading(Sponza)(Support non-ktx images)
 Reflection Probes 
 Realtime Ambient Occlusion(GTAO or HBAO)
 Shadows 
 GPU Focused Rendering
+Deferred Rendering
