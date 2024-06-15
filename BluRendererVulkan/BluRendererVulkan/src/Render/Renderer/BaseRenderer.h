@@ -48,7 +48,7 @@ class BaseRenderer {
   WindowManager* window;
 
   // Rendering Settings
-  VkSampleCountFlagBits msaaSampleCount = VK_SAMPLE_COUNT_4_BIT;
+  VkSampleCountFlagBits msaaSampleCount = VK_SAMPLE_COUNT_1_BIT;
 
   // Debug
   uint32_t lastFPS = 0;

@@ -53,6 +53,7 @@ class ForwardRenderer : public BaseRenderer {
     vks::Buffer object;
     vks::Buffer skybox;
     vks::Buffer params;
+    vks::Buffer postProcessing;
   } uniformBuffers;
 
   // Should (M?)VP be precomputed
@@ -76,27 +77,36 @@ class ForwardRenderer : public BaseRenderer {
     float gamma = 2.2f;
   } uboParams;
 
+  struct PostProcessingParams {
+    bool useFXAA = true;
+  } postProcessingParams;
+
   struct {
     VkPipelineLayout pbr{VK_NULL_HANDLE};
+    VkPipelineLayout postProcessing{VK_NULL_HANDLE};
   } pipelineLayouts;
 
   struct {
     VkPipeline skybox{VK_NULL_HANDLE};
     VkPipeline pbr{VK_NULL_HANDLE};
     VkPipeline pbrWithSS{VK_NULL_HANDLE};
+    VkPipeline postProcessing{VK_NULL_HANDLE};
   } pipelines;
 
   struct {
     VkDescriptorPool pbr;
+    VkDescriptorPool postProcessing;
   } descriptorPools;
 
   struct {
     VkDescriptorSetLayout pbr{VK_NULL_HANDLE};
+    VkDescriptorSetLayout postProcessing{VK_NULL_HANDLE};
   } descriptorSetLayouts;
 
   struct {
     VkDescriptorSet pbr{VK_NULL_HANDLE};
     VkDescriptorSet skybox{VK_NULL_HANDLE};
+    VkDescriptorSet postProcessing{VK_NULL_HANDLE};
   } descriptorSets;
 
   struct MultiSampleTarget {
@@ -112,9 +122,30 @@ class ForwardRenderer : public BaseRenderer {
     } depth;
   } multisampleTarget;
 
+  // Framebuffer for offscreen rendering
+  struct FrameBufferAttachment {
+    VkImage image;
+    VkDeviceMemory memory;
+    VkImageView view;
+  };
+
+  struct FrameBuffer {
+    VkFramebuffer framebuffer;
+    FrameBufferAttachment color, depth;
+    VkDescriptorImageInfo descriptor;
+  };
+
+  struct OffscreenPass {
+    VkRenderPass renderPass;
+    VkSampler sampler;
+
+    std::vector<FrameBuffer> framebuffers;
+  } offscreenPass;
+
   // Multi-threading
   // 1 Command Pool per FiF?
   std::vector<VkCommandBuffer> uiDrawCmdBuffers;
+  std::vector<VkCommandBuffer> postProcessingDrawCmdBuffers;
   std::vector<VkCommandBuffer> pbrDrawCmdBuffers;
 
   VkExtent2D attachmentSize{};
@@ -124,8 +155,8 @@ class ForwardRenderer : public BaseRenderer {
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
-    camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
-    camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
+    camera.setPosition(glm::vec3(-0.318f, 0.240f, -0.639f));
+    camera.setRotation(glm::vec3(4.5f, -300.25f, 0.0f));
     camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.1f,
                           5000.0f);
 
@@ -144,10 +175,15 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyPipeline(device, pipelines.skybox, nullptr);
     vkDestroyPipeline(device, pipelines.pbr, nullptr);
     vkDestroyPipeline(device, pipelines.pbrWithSS, nullptr);
+    vkDestroyPipeline(device, pipelines.postProcessing, nullptr);
 
     vkDestroyPipelineLayout(device, pipelineLayouts.pbr, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayouts.postProcessing, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.pbr, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.postProcessing,
+                                 nullptr);
     vkDestroyDescriptorPool(device, descriptorPools.pbr, nullptr);
+    vkDestroyDescriptorPool(device, descriptorPools.postProcessing, nullptr);
 
     vkDestroyImage(device, multisampleTarget.color.image, nullptr);
     vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
@@ -156,9 +192,29 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
     vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
 
+    for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+      vkDestroyImage(device, offscreenPass.framebuffers[i].color.image,
+                     nullptr);
+      vkDestroyImageView(device, offscreenPass.framebuffers[i].color.view,
+                         nullptr);
+      vkFreeMemory(device, offscreenPass.framebuffers[i].color.memory, nullptr);
+      vkDestroyImage(device, offscreenPass.framebuffers[i].depth.image,
+                     nullptr);
+      vkDestroyImageView(device, offscreenPass.framebuffers[i].depth.view,
+                         nullptr);
+      vkFreeMemory(device, offscreenPass.framebuffers[i].depth.memory, nullptr);
+
+      vkDestroyFramebuffer(device, offscreenPass.framebuffers[i].framebuffer,
+                           nullptr);
+    }
+
+    vkDestroyRenderPass(device, offscreenPass.renderPass, nullptr);
+    vkDestroySampler(device, offscreenPass.sampler, nullptr);
+
     uniformBuffers.object.destroy();
     uniformBuffers.skybox.destroy();
     uniformBuffers.params.destroy();
+    uniformBuffers.postProcessing.destroy();
 
     models.skybox.destroy(device);
     models.cerberus.destroy(device);
@@ -430,11 +486,11 @@ class ForwardRenderer : public BaseRenderer {
       attachmentSize = {getWidth(), getHeight()};
     }
 
-    std::array<VkImageView, 3> attachments = {};
     // If multisampling is to be used
     if (getMSAASampleCount() != VK_SAMPLE_COUNT_1_BIT) {
       setupMultisampleTarget();
 
+      std::array<VkImageView, 3> attachments = {};
       attachments[0] = multisampleTarget.color.view;
       // attachment[1] = swapchain image
       attachments[2] = multisampleTarget.depth.view;
@@ -457,14 +513,229 @@ class ForwardRenderer : public BaseRenderer {
         VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
                                             nullptr, &frameBuffers[i]));
       }
-    } else {
-      BaseRenderer::setupFrameBuffer();
     }
+    // If not setup additional offscreen framebuffer for post processing
+    else {
+      BaseRenderer::setupFrameBuffer();
+      prepareOffscreen();
+      offscreenPass.framebuffers.resize(swapChain.imageCount);
+      std::array<VkImageView, 2> offscreenAttachments;
+      // Color attachment
+      VkImageCreateInfo image = vks::initializers::imageCreateInfo();
+      image.imageType = VK_IMAGE_TYPE_2D;
+      image.format = swapChain.colorFormat;
+      image.extent.width = getWidth();
+      image.extent.height = getHeight();
+      image.extent.depth = 1;
+      image.mipLevels = 1;
+      image.arrayLayers = 1;
+      image.samples = VK_SAMPLE_COUNT_1_BIT;
+      image.tiling = VK_IMAGE_TILING_OPTIMAL;
+      // We will sample directly from the color attachment
+      image.usage =
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+      VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
+      VkMemoryRequirements memReqs;
+
+      VkImageViewCreateInfo colorImageView =
+          vks::initializers::imageViewCreateInfo();
+      colorImageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      colorImageView.format = swapChain.colorFormat;
+      colorImageView.flags = 0;
+      colorImageView.subresourceRange = {};
+      colorImageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      colorImageView.subresourceRange.baseMipLevel = 0;
+      colorImageView.subresourceRange.levelCount = 1;
+      colorImageView.subresourceRange.baseArrayLayer = 0;
+      colorImageView.subresourceRange.layerCount = 1;
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VK_CHECK_RESULT(
+            vkCreateImage(device, &image, nullptr,
+                          &offscreenPass.framebuffers[i].color.image));
+        vkGetImageMemoryRequirements(
+            device, offscreenPass.framebuffers[i].color.image, &memReqs);
+        memAlloc.allocationSize = memReqs.size;
+        memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(
+            vkAllocateMemory(device, &memAlloc, nullptr,
+                             &offscreenPass.framebuffers[i].color.memory));
+        VK_CHECK_RESULT(
+            vkBindImageMemory(device, offscreenPass.framebuffers[i].color.image,
+                              offscreenPass.framebuffers[i].color.memory, 0));
+
+        colorImageView.image = offscreenPass.framebuffers[i].color.image;
+        VK_CHECK_RESULT(
+            vkCreateImageView(device, &colorImageView, nullptr,
+                              &offscreenPass.framebuffers[i].color.view));
+      }
+
+      // Depth stencil attachment
+      image.format = depthFormat;
+      image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+      VkImageViewCreateInfo depthStencilView =
+          vks::initializers::imageViewCreateInfo();
+      depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+      depthStencilView.format = depthFormat;
+      depthStencilView.flags = 0;
+      depthStencilView.subresourceRange = {};
+      depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      if (vks::tools::formatHasStencil(depthFormat)) {
+        depthStencilView.subresourceRange.aspectMask |=
+            VK_IMAGE_ASPECT_STENCIL_BIT;
+      }
+      depthStencilView.subresourceRange.baseMipLevel = 0;
+      depthStencilView.subresourceRange.levelCount = 1;
+      depthStencilView.subresourceRange.baseArrayLayer = 0;
+      depthStencilView.subresourceRange.layerCount = 1;
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VK_CHECK_RESULT(
+            vkCreateImage(device, &image, nullptr,
+                          &offscreenPass.framebuffers[i].depth.image));
+        vkGetImageMemoryRequirements(
+            device, offscreenPass.framebuffers[i].depth.image, &memReqs);
+        memAlloc.allocationSize = memReqs.size;
+        memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(
+            vkAllocateMemory(device, &memAlloc, nullptr,
+                             &offscreenPass.framebuffers[i].depth.memory));
+        VK_CHECK_RESULT(
+            vkBindImageMemory(device, offscreenPass.framebuffers[i].depth.image,
+                              offscreenPass.framebuffers[i].depth.memory, 0));
+
+        depthStencilView.image = offscreenPass.framebuffers[i].depth.image;
+        VK_CHECK_RESULT(
+            vkCreateImageView(device, &depthStencilView, nullptr,
+                              &offscreenPass.framebuffers[i].depth.view));
+      }
+
+      for (uint32_t i = 0; i < swapChain.imageCount; i++) {
+        VkImageView attachments[2];
+        attachments[0] = offscreenPass.framebuffers[i].color.view;
+        attachments[1] = offscreenPass.framebuffers[i].depth.view;
+
+        VkFramebufferCreateInfo fbufCreateInfo =
+            vks::initializers::framebufferCreateInfo();
+        fbufCreateInfo.renderPass = offscreenPass.renderPass;
+        fbufCreateInfo.attachmentCount = 2;
+        fbufCreateInfo.pAttachments = attachments;
+        fbufCreateInfo.width = getWidth();
+        ;
+        fbufCreateInfo.height = getHeight();
+        fbufCreateInfo.layers = 1;
+
+        VK_CHECK_RESULT(
+            vkCreateFramebuffer(device, &fbufCreateInfo, nullptr,
+                                &offscreenPass.framebuffers[i].framebuffer));
+
+        // Fill a descriptor for later use in a descriptor set
+        offscreenPass.framebuffers[i].descriptor.imageLayout =
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        offscreenPass.framebuffers[i].descriptor.imageView =
+            offscreenPass.framebuffers[i].color.view;
+        offscreenPass.framebuffers[i].descriptor.sampler =
+            offscreenPass.sampler;
+      }
+    }
+  }
+
+  void prepareOffscreen() {
+    // Create a separate render pass for the offscreen rendering as it may
+    // differ from the one used for scene rendering
+    std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
+    // Color attachment
+    attchmentDescriptions[0].format = swapChain.colorFormat;
+    attchmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
+    attchmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attchmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attchmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attchmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attchmentDescriptions[0].finalLayout =
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    // Depth attachment
+    attchmentDescriptions[1].format = depthFormat;
+    attchmentDescriptions[1].samples = VK_SAMPLE_COUNT_1_BIT;
+    attchmentDescriptions[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attchmentDescriptions[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attchmentDescriptions[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attchmentDescriptions[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    attchmentDescriptions[1].finalLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorReference = {
+        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference depthReference = {
+        1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+
+    VkSubpassDescription subpassDescription = {};
+    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDescription.colorAttachmentCount = 1;
+    subpassDescription.pColorAttachments = &colorReference;
+    subpassDescription.pDepthStencilAttachment = &depthReference;
+
+    // Use subpass dependencies for layout transitions
+    std::array<VkSubpassDependency, 2> dependencies;
+
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[0].dstStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    // Create the actual renderpass
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount =
+        static_cast<uint32_t>(attchmentDescriptions.size());
+    renderPassInfo.pAttachments = attchmentDescriptions.data();
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpassDescription;
+    renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+    renderPassInfo.pDependencies = dependencies.data();
+
+    VK_CHECK_RESULT(vkCreateRenderPass(device, &renderPassInfo, nullptr,
+                                       &offscreenPass.renderPass));
+
+    // Create sampler to sample from the color attachments
+    VkSamplerCreateInfo sampler = vks::initializers::samplerCreateInfo();
+    sampler.magFilter = VK_FILTER_LINEAR;
+    sampler.minFilter = VK_FILTER_LINEAR;
+    sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler.addressModeV = sampler.addressModeU;
+    sampler.addressModeW = sampler.addressModeU;
+    sampler.mipLodBias = 0.0f;
+    sampler.maxAnisotropy = 1.0f;
+    sampler.minLod = 0.0f;
+    sampler.maxLod = 1.0f;
+    sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    VK_CHECK_RESULT(
+        vkCreateSampler(device, &sampler, nullptr, &offscreenPass.sampler));
   }
 
   void createCommandBuffers() override {
     BaseRenderer::createCommandBuffers();
     uiDrawCmdBuffers.resize(swapChain.imageCount);
+    postProcessingDrawCmdBuffers.resize(swapChain.imageCount);
     pbrDrawCmdBuffers.resize(swapChain.imageCount);
     computeCmdBuffers.resize(swapChain.imageCount);
 
@@ -475,6 +746,9 @@ class ForwardRenderer : public BaseRenderer {
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(
         device, &secondaryGraphicsCmdBufAllocateInfo, uiDrawCmdBuffers.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 postProcessingDrawCmdBuffers.data()));
     VK_CHECK_RESULT(
         vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
                                  pbrDrawCmdBuffers.data()));
@@ -494,6 +768,10 @@ class ForwardRenderer : public BaseRenderer {
     vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(uiDrawCmdBuffers.size()),
                          uiDrawCmdBuffers.data());
+    vkFreeCommandBuffers(
+        device, graphicsCmdPool,
+        static_cast<uint32_t>(postProcessingDrawCmdBuffers.size()),
+        postProcessingDrawCmdBuffers.data());
   }
 
   // Starts a new imGui frame and sets up windows and ui elements
@@ -548,8 +826,27 @@ class ForwardRenderer : public BaseRenderer {
     ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+      // ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
+      /*if (ImGui::Checkbox("Use FXAA", &postProcessingParams.useFXAA)) {
+        updateParams();
+      }*/
+
+      //if (ImGui::DragFloat("FXAA Blend Amount",
+      //                     &postProcessingParams.pixelBlend, 0.01f, 0, 5,
+      //                     "%.03f")) {
+      //  updateParams();
+      //}
+      //if (ImGui::DragFloat("fxaaEdgeThresholdMin",
+      //                     &postProcessingParams.fxaaEdgeThresholdMin, 0.0001f,
+      //                     0.0625, 0.25, "%.0003f")) {
+      //  updateParams();
+      //}
+      //if (ImGui::DragFloat("fxaaEdgeThresholdMax",
+      //                     &postProcessingParams.fxaaEdgeThresholdMax, 0.0001f,
+      //                     0.03125, 0.125, "%.0003f")) {
+      //  updateParams();
+      //}
 
       if (ImGui::CollapsingHeader("Light Settings")) {
         if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {
@@ -573,6 +870,43 @@ class ForwardRenderer : public BaseRenderer {
 
     // Render to generate draw buffers
     ImGui::Render();
+  }
+
+  void buildPostProcessingCommandBuffer() {
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderPass;
+    inheritanceInfo.framebuffer = frameBuffers[currentFrameIndex];
+
+    VkCommandBufferBeginInfo cmdBufInfo =
+        vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+    VkCommandBuffer currentCommandBuffer =
+        postProcessingDrawCmdBuffers[currentFrameIndex];
+    vkResetCommandBuffer(currentCommandBuffer, 0);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+
+    VkViewport viewport = vks::initializers::viewport(
+        (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
+
+    VkDeviceSize offsets[1] = {0};
+
+    vkCmdBindDescriptorSets(currentCommandBuffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            pipelineLayouts.postProcessing, 0, 1,
+                            &descriptorSets.postProcessing, 0, NULL);
+    vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      pipelines.postProcessing);
+
+    // Draw triangle
+    vkCmdDraw(currentCommandBuffer, 3, 1, 0, 0);
+
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
   }
 
   void buildUICommandBuffer() {
@@ -599,8 +933,9 @@ class ForwardRenderer : public BaseRenderer {
   void buildPbrCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = renderPass;
-    inheritanceInfo.framebuffer = frameBuffers[currentImageIndex];
+    inheritanceInfo.renderPass = offscreenPass.renderPass;
+    inheritanceInfo.framebuffer =
+        offscreenPass.framebuffers[currentImageIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -662,7 +997,7 @@ class ForwardRenderer : public BaseRenderer {
     VkRenderPassBeginInfo renderPassBeginInfo =
         vks::initializers::renderPassBeginInfo();
 
-    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.renderPass = offscreenPass.renderPass;
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
     renderPassBeginInfo.renderArea.extent.width = getWidth();
@@ -673,7 +1008,8 @@ class ForwardRenderer : public BaseRenderer {
     newUIFrame((frameCounter == 0));
     imGui->updateBuffers(currentFrameIndex);
 
-    renderPassBeginInfo.framebuffer = frameBuffers[currentImageIndex];
+    renderPassBeginInfo.framebuffer =
+        offscreenPass.framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
 
@@ -682,10 +1018,27 @@ class ForwardRenderer : public BaseRenderer {
     vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                          VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-    buildUICommandBuffer();
     buildPbrCommandBuffer();
 
     secondaryCmdBufs.push_back(pbrDrawCmdBuffers[currentFrameIndex]);
+
+    // Execute render commands from the secondary command buffer
+    vkCmdExecuteCommands(currentCommandBuffer,
+                         static_cast<uint32_t>(secondaryCmdBufs.size()),
+                         secondaryCmdBufs.data());
+    secondaryCmdBufs.clear();
+    vkCmdEndRenderPass(currentCommandBuffer);
+
+    renderPassBeginInfo.renderPass = renderPass;
+    renderPassBeginInfo.framebuffer = frameBuffers[currentFrameIndex];
+
+    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    buildPostProcessingCommandBuffer();
+    buildUICommandBuffer();
+
+    secondaryCmdBufs.push_back(postProcessingDrawCmdBuffers[currentFrameIndex]);
     secondaryCmdBufs.push_back(uiDrawCmdBuffers[currentFrameIndex]);
 
     // Execute render commands from the secondary command buffer
@@ -809,6 +1162,61 @@ class ForwardRenderer : public BaseRenderer {
     vkUpdateDescriptorSets(device,
                            static_cast<uint32_t>(writeDescriptorSets.size()),
                            writeDescriptorSets.data(), 0, NULL);
+    // Post Processing
+
+    // Descriptor Pool
+    std::vector<VkDescriptorPoolSize> postProcessingPoolSizes = {
+        vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                              1),
+        vks::initializers::descriptorPoolSize(
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3)};
+    descriptorPoolInfo =
+        vks::initializers::descriptorPoolCreateInfo(postProcessingPoolSizes, 2);
+    VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr,
+                                           &descriptorPools.postProcessing));
+
+    // Descriptor set layout
+    std::vector<VkDescriptorSetLayoutBinding> postProcessingSetLayoutBindings =
+        {
+            vks::initializers::descriptorSetLayoutBinding(
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0),
+            vks::initializers::descriptorSetLayoutBinding(
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+        };
+
+    descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(
+        postProcessingSetLayoutBindings);
+    VK_CHECK_RESULT(
+        vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr,
+                                    &descriptorSetLayouts.postProcessing));
+
+    allocInfo = vks::initializers::descriptorSetAllocateInfo(
+        descriptorPools.postProcessing, &descriptorSetLayouts.postProcessing,
+        1);
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo,
+                                             &descriptorSets.postProcessing));
+
+    writeDescriptorSets = {
+        // Binding 0: Vertex shader uniform buffer
+        vks::initializers::writeDescriptorSet(
+            descriptorSets.postProcessing, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+            &uniformBuffers.postProcessing.descriptor),
+    };
+
+    for (uint32_t i = 0; i < 1; i++) {
+      // Binding 1: Fragment shader texture sampler
+      VkWriteDescriptorSet wSet = vks::initializers::writeDescriptorSet(
+          descriptorSets.postProcessing,
+          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+          &offscreenPass.framebuffers[i].descriptor);
+      writeDescriptorSets.push_back(wSet);
+    }
+
+    vkUpdateDescriptorSets(device,
+                           static_cast<uint32_t>(writeDescriptorSets.size()),
+                           writeDescriptorSets.data(), 0, NULL);
   }
 
   void preparePipelines() {
@@ -846,7 +1254,7 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr, &pipelineLayouts.pbr));
     VkGraphicsPipelineCreateInfo pipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(pipelineLayouts.pbr,
-                                                      renderPass);
+                                                      offscreenPass.renderPass);
 
     pipelineCI.pInputAssemblyState = &inputAssemblyState;
     pipelineCI.pRasterizationState = &rasterizationState;
@@ -870,8 +1278,9 @@ class ForwardRenderer : public BaseRenderer {
     VK_CHECK_RESULT(vkCreateGraphicsPipelines(
         device, pipelineCache, 1, &pipelineCI, nullptr, &pipelines.skybox));
 
-    // PBR pipeline
     rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
+
+    // PBR pipeline
     shaderStages[0] =
         loadShader("shaders/pbrtexture.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
     shaderStages[1] =
@@ -893,6 +1302,47 @@ class ForwardRenderer : public BaseRenderer {
                                                 &pipelineCI, nullptr,
                                                 &pipelines.pbrWithSS));
     }
+
+    pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+        &descriptorSetLayouts.postProcessing, 1);
+    VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo,
+                                           nullptr,
+                                           &pipelineLayouts.postProcessing));
+
+    VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
+        vks::initializers::graphicsPipelineCreateInfo(
+            pipelineLayouts.postProcessing, renderPass);
+
+    VkPipelineVertexInputStateCreateInfo emptyInputState{};
+    emptyInputState.sType =
+        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    emptyInputState.vertexAttributeDescriptionCount = 0;
+    emptyInputState.pVertexAttributeDescriptions = nullptr;
+    emptyInputState.vertexBindingDescriptionCount = 0;
+    emptyInputState.pVertexBindingDescriptions = nullptr;
+
+    rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
+    postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
+    postProcessingpipelineCI.pRasterizationState = &rasterizationState;
+    postProcessingpipelineCI.pColorBlendState = &colorBlendState;
+    postProcessingpipelineCI.pMultisampleState = &multisampleState;
+    postProcessingpipelineCI.pViewportState = &viewportState;
+    postProcessingpipelineCI.pDepthStencilState = &depthStencilState;
+    postProcessingpipelineCI.pDynamicState = &dynamicState;
+    postProcessingpipelineCI.stageCount =
+        static_cast<uint32_t>(shaderStages.size());
+    postProcessingpipelineCI.pStages = shaderStages.data();
+    postProcessingpipelineCI.pVertexInputState = &emptyInputState;
+
+    // Post Processing
+    shaderStages[0] =
+        loadShader("shaders/fxaa.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] =
+        loadShader("shaders/fxaa.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    VK_CHECK_RESULT(
+        vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
+                                  nullptr, &pipelines.postProcessing));
   }
 
   // Generate a BRDF integration map used as a look-up-table (Roughness/NdotV)
@@ -2073,10 +2523,19 @@ class ForwardRenderer : public BaseRenderer {
                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                                    &uniformBuffers.params, sizeof(uboParams)));
 
+    // Post Processing Vertex Uniform buffer
+    VK_CHECK_RESULT(vulkanDevice->createBuffer(
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &uniformBuffers.postProcessing, sizeof(PostProcessingParams),
+        &postProcessingParams));
+
     // Map persistent
     VK_CHECK_RESULT(uniformBuffers.object.map());
     VK_CHECK_RESULT(uniformBuffers.skybox.map());
     VK_CHECK_RESULT(uniformBuffers.params.map());
+    VK_CHECK_RESULT(uniformBuffers.postProcessing.map());
 
     updateUniformBuffers();
     updateParams();
@@ -2099,6 +2558,8 @@ class ForwardRenderer : public BaseRenderer {
 
   void updateParams() {
     memcpy(uniformBuffers.params.mapped, &uboParams, sizeof(uboParams));
+    memcpy(uniformBuffers.postProcessing.mapped, &postProcessingParams,
+           sizeof(PostProcessingParams));
   }
 
   void loadAssets() {
