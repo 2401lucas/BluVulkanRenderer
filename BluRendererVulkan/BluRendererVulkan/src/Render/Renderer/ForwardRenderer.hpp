@@ -79,9 +79,6 @@ class ForwardRenderer : public BaseRenderer {
 
   struct PostProcessingParams {
     bool useFXAA = true;
-    float fxaaEdgeThresholdMax = 0.031;
-    float fxaaEdgeThresholdMin = 0.062;
-    float pixelBlend = 0.5;
   } postProcessingParams;
 
   struct {
@@ -158,8 +155,8 @@ class ForwardRenderer : public BaseRenderer {
     camera.type = Camera::firstperson;
     camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
-    camera.setPosition(glm::vec3(0.0f, 0.0f, -4.8f));
-    camera.setRotation(glm::vec3(4.5f, -380.0f, 0.0f));
+    camera.setPosition(glm::vec3(-0.318f, 0.240f, -0.639f));
+    camera.setRotation(glm::vec3(4.5f, -300.25f, 0.0f));
     camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.1f,
                           5000.0f);
 
@@ -835,21 +832,21 @@ class ForwardRenderer : public BaseRenderer {
         updateParams();
       }*/
 
-      if (ImGui::DragFloat("FXAA Blend Amount",
-                           &postProcessingParams.pixelBlend, 0.01f, 0, 1,
-                           "%.03f")) {
-        updateParams();
-      }
-      if (ImGui::DragFloat("fxaaEdgeThresholdMin",
-                           &postProcessingParams.fxaaEdgeThresholdMin, 0.0001f,
-                           0.0625, 0.25, "%.0003f")) {
-        updateParams();
-      }
-      if (ImGui::DragFloat("fxaaEdgeThresholdMax",
-                           &postProcessingParams.fxaaEdgeThresholdMax, 0.0001f,
-                           0.03125, 0.125, "%.0003f")) {
-        updateParams();
-      }
+      //if (ImGui::DragFloat("FXAA Blend Amount",
+      //                     &postProcessingParams.pixelBlend, 0.01f, 0, 5,
+      //                     "%.03f")) {
+      //  updateParams();
+      //}
+      //if (ImGui::DragFloat("fxaaEdgeThresholdMin",
+      //                     &postProcessingParams.fxaaEdgeThresholdMin, 0.0001f,
+      //                     0.0625, 0.25, "%.0003f")) {
+      //  updateParams();
+      //}
+      //if (ImGui::DragFloat("fxaaEdgeThresholdMax",
+      //                     &postProcessingParams.fxaaEdgeThresholdMax, 0.0001f,
+      //                     0.03125, 0.125, "%.0003f")) {
+      //  updateParams();
+      //}
 
       if (ImGui::CollapsingHeader("Light Settings")) {
         if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {
