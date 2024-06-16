@@ -46,18 +46,6 @@ layout (location = 0) out vec4 outColor;
 // Applies Gamma correction
 #define ALBEDO pow(texture(albedoMap, inUV).rgb, vec3(2.2))
 
-//Fast Filmic Tonemapping
-vec3 Uncharted2Tonemap(vec3 x)
-{
-	float A = 0.15; //Shoulder Strength
-	float B = 0.50; //Linear Strength
-	float C = 0.10; //Linear Angle
-	float D = 0.20; //Toe Strength
-	float E = 0.02; //Toe Numerator
-	float F = 0.30; //Toe Denominator
-	return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
-}
-
 // Normal Distribution function --------------------------------------
 float DistributionGGX(float dotNH, float roughness)
 {
@@ -176,13 +164,7 @@ void main()
 	kD *= 1.0 - metallic;
 	vec3 ambient = (kD * diffuse + specular) * texture(aoMap, inUV).rrr;
 	
-	vec3 color = ambient + Lo;
-
-	// Tone mapping
-	color = Uncharted2Tonemap(color * uboParams.exposure);
-	color = color * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
-	// Gamma correction
-	color = pow(color, vec3(1.0f / uboParams.gamma));
+	vec3 color = (ambient + Lo) * uboParams.exposure;
 
 	outColor = vec4(color, 1.0);
 }
