@@ -827,26 +827,6 @@ class ForwardRenderer : public BaseRenderer {
     ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
     if (ImGui::CollapsingHeader("Rendering Settings")) {
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
-      // ImGui::Checkbox("Use Sample Shading", &uiSettings.useSampleShading);
-      /*if (ImGui::Checkbox("Use FXAA", &postProcessingParams.useFXAA)) {
-        updateParams();
-      }*/
-
-      //if (ImGui::DragFloat("FXAA Blend Amount",
-      //                     &postProcessingParams.pixelBlend, 0.01f, 0, 5,
-      //                     "%.03f")) {
-      //  updateParams();
-      //}
-      //if (ImGui::DragFloat("fxaaEdgeThresholdMin",
-      //                     &postProcessingParams.fxaaEdgeThresholdMin, 0.0001f,
-      //                     0.0625, 0.25, "%.0003f")) {
-      //  updateParams();
-      //}
-      //if (ImGui::DragFloat("fxaaEdgeThresholdMax",
-      //                     &postProcessingParams.fxaaEdgeThresholdMax, 0.0001f,
-      //                     0.03125, 0.125, "%.0003f")) {
-      //  updateParams();
-      //}
 
       if (ImGui::CollapsingHeader("Light Settings")) {
         if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {
@@ -1336,9 +1316,9 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing
     shaderStages[0] =
-        loadShader("shaders/fxaa.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+        loadShader("shaders/postProcessing.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
     shaderStages[1] =
-        loadShader("shaders/fxaa.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+        loadShader("shaders/postProcessing.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
 
     VK_CHECK_RESULT(
         vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
@@ -2570,12 +2550,12 @@ class ForwardRenderer : public BaseRenderer {
 
     models.skybox.loadFromFile(getAssetPath() + "models/cube.gltf",
                                vulkanDevice, graphicsQueue, glTFLoadingFlags);
+    textures.environmentCube.loadFromFile(
+        getAssetPath() + "textures/hdr/gcanyon_cube.ktx",
+        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
     models.cerberus.loadFromFile(
         getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice,
         graphicsQueue, glTFLoadingFlags);
-    textures.environmentCube.loadFromFile(
-        getAssetPath() + "textures/hdr/pisa_cube.ktx",
-        VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
     textures.pbrTextures.albedoMap.loadFromFile(
         getAssetPath() + "models/cerberus/albedo.ktx", VK_FORMAT_R8G8B8A8_UNORM,
         vulkanDevice, graphicsQueue);
