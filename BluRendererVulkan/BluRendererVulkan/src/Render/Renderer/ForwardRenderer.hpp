@@ -999,6 +999,15 @@ class ForwardRenderer : public BaseRenderer {
 
     VkDeviceSize offsets[1] = {0};
 
+    if (uiSettings.displaySkybox) {
+      vkCmdBindDescriptorSets(
+          currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+          pipelineLayouts.skybox, 0, 1, &descriptorSets[currentFrameIndex].skybox, 0, NULL);
+      vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        pipelines.skybox);
+      models.skybox.draw(currentCommandBuffer);
+    }
+
     vkglTF::Model& model = models.scene;
 
     vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
@@ -3066,7 +3075,8 @@ class ForwardRenderer : public BaseRenderer {
     uboMatrices.projection = camera.matrices.perspective;
     uboMatrices.view = camera.matrices.view;
     uboMatrices.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
-                                    glm::vec3(0.0f, 1.0f, 0.0f));
+                                    glm::vec3(0.0f, 1.0f, 0.0f)) *
+                        glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
     uboMatrices.camPos = camera.position * -1.0f;
     memcpy(uniformBuffers[currentFrameIndex].scene.mapped, &uboMatrices,
            sizeof(uboMatrices));
@@ -3079,7 +3089,6 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updateParams() {
-
     memcpy(uniformBuffers[currentFrameIndex].params.mapped, &uboParams,
            sizeof(uboParams));
     memcpy(uniformBuffers[currentFrameIndex].postProcessing.mapped,
@@ -3113,13 +3122,13 @@ class ForwardRenderer : public BaseRenderer {
     }
   }
 
-  void loadScene(std::string filename, uint32_t glTFLoadingFlags = 0) {
+  void loadScene(std::string filename, uint32_t glTFLoadingFlags = 0, float scale = 1.0f) {
     std::cout << "Loading scene from " << filename << std::endl;
     models.scene.destroy();
     animationIndex = 0;
     animationTimer = 0.0f;
     auto tStart = std::chrono::high_resolution_clock::now();
-    models.scene.loadFromFile(filename, vulkanDevice, graphicsQueue);
+    models.scene.loadFromFile(filename, vulkanDevice, graphicsQueue, scale);
     createMaterialBuffer();
     auto tFileLoad = std::chrono::duration<double, std::milli>(
                          std::chrono::high_resolution_clock::now() - tStart)
@@ -3168,9 +3177,13 @@ class ForwardRenderer : public BaseRenderer {
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
 
+    // loadScene(getAssetPath() +
+    //               "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf",
+    //           glTFLoadingFlags);
+    //
     loadScene(getAssetPath() +
-                  "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf",
-              glTFLoadingFlags);
+                  "glTF-Sample-Models-main/assets/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf",
+              glTFLoadingFlags, 100.0f);
   }
 
   void prepareImGui() {
