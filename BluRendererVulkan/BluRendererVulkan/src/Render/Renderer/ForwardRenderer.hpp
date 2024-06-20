@@ -79,11 +79,11 @@ class ForwardRenderer : public BaseRenderer {
   };
 
   // TODO: More Detailed Lights
-  struct UBOParams {
-    LightInfo light[1];
-    float exposure = 4.5f;
-    float gamma = 2.2f;
-  } uboParams;
+  //struct UBOParams {
+  //  LightInfo light[1];
+  //  float exposure = 4.5f;
+  //  float gamma = 2.2f;
+  //} uboParams;
 
   struct shaderValuesParams {
     glm::vec4 lightDir;
@@ -93,7 +93,7 @@ class ForwardRenderer : public BaseRenderer {
     float scaleIBLAmbient = 1.0f;
     float debugViewInputs = 0;
     float debugViewEquation = 0;
-  } shaderValuesParams;
+  } uboParams;
 
   struct LightSource {
     glm::vec3 color = glm::vec3(1.0f);
@@ -217,11 +217,11 @@ class ForwardRenderer : public BaseRenderer {
   ForwardRenderer() : BaseRenderer() {
     name = "Forward Renderer with PBR";
     camera.type = Camera::firstperson;
-    camera.movementSpeed = 4.0f;
+    camera.movementSpeed = 1.0f;
     camera.rotationSpeed = 0.25f;
     camera.setPosition(glm::vec3(-0.318f, 0.240f, -0.639f));
     camera.setRotation(glm::vec3(4.5f, -300.25f, 0.0f));
-    camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.1f,
+    camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.01f,
                           5000.0f);
 
     enabledInstanceExtensions.push_back(
@@ -230,9 +230,7 @@ class ForwardRenderer : public BaseRenderer {
     settings.overlay = true;
     settings.validation = true;
 
-    uboParams.light[0].pos = glm::vec4(0, 0, -2, 0);
-    uboParams.light[0].rot = glm::vec4(0, 0, 0, 0);
-    uboParams.light[0].color = glm::vec4(1, 0, 1, 1);
+    uboParams.lightDir = glm::vec4(glm::radians(-90.0), glm::radians(0.0), glm::radians(0.0), 0);
   }
 
   ~ForwardRenderer() {
@@ -894,13 +892,7 @@ class ForwardRenderer : public BaseRenderer {
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
 
       if (ImGui::CollapsingHeader("Light Settings")) {
-        if (ImGui::InputFloat3("position", &uboParams.light[0].pos.x)) {
-          updateParams();
-        }
-        if (ImGui::InputFloat3("rotation", &uboParams.light[0].rot.x)) {
-          updateParams();
-        }
-        if (ImGui::ColorPicker4("Color", &uboParams.light[0].color.x)) {
+        if (ImGui::InputFloat3("position", &uboParams.lightDir.x)) {
           updateParams();
         }
       }
@@ -999,15 +991,6 @@ class ForwardRenderer : public BaseRenderer {
 
     VkDeviceSize offsets[1] = {0};
 
-    if (uiSettings.displaySkybox) {
-      vkCmdBindDescriptorSets(
-          currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-          pipelineLayouts.skybox, 0, 1, &descriptorSets[currentFrameIndex].skybox, 0, NULL);
-      vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        pipelines.skybox);
-      models.skybox.draw(currentCommandBuffer);
-    }
-
     vkglTF::Model& model = models.scene;
 
     vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
@@ -1034,6 +1017,17 @@ class ForwardRenderer : public BaseRenderer {
     for (auto node : model.nodes) {
       renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_BLEND,
                  currentCommandBuffer);
+    }
+
+    //Rendered last to use early Z buffer rejection
+    if (uiSettings.displaySkybox) {
+      vkCmdBindDescriptorSets(
+          currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+          pipelineLayouts.skybox, 0, 1,
+          &descriptorSets[currentFrameIndex].skybox, 0, NULL);
+      vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        pipelines.skybox);
+      models.skybox.draw(currentCommandBuffer);
     }
 
     VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
@@ -2945,7 +2939,7 @@ class ForwardRenderer : public BaseRenderer {
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          &uniformBuffer.scene, sizeof(uboMatrices)));
+          &uniformBuffer.scene, sizeof(shaderValuesParams)));
       VK_CHECK_RESULT(vulkanDevice->createBuffer(
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -3076,7 +3070,7 @@ class ForwardRenderer : public BaseRenderer {
     uboMatrices.view = camera.matrices.view;
     uboMatrices.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
                                     glm::vec3(0.0f, 1.0f, 0.0f)) *
-                        glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
+                        glm::scale(glm::mat4(1.0f), glm::vec3(10, 10, 10));
     uboMatrices.camPos = camera.position * -1.0f;
     memcpy(uniformBuffers[currentFrameIndex].scene.mapped, &uboMatrices,
            sizeof(uboMatrices));
@@ -3177,13 +3171,12 @@ class ForwardRenderer : public BaseRenderer {
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
 
-    // loadScene(getAssetPath() +
-    //               "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf",
-    //           glTFLoadingFlags);
-    //
-    loadScene(getAssetPath() +
-                  "glTF-Sample-Models-main/assets/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf",
-              glTFLoadingFlags, 100.0f);
+     loadScene(getAssetPath() +
+                   "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf",
+               glTFLoadingFlags);
+    //loadScene(getAssetPath() +
+    //              "glTF-Sample-Models-main/assets/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf",
+    //          glTFLoadingFlags);
   }
 
   void prepareImGui() {

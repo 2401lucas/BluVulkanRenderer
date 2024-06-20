@@ -6,17 +6,16 @@ layout (location = 0) in vec3 inUVW;
 
 layout (location = 0) out vec4 outColor;
 
-struct LightInfo {
-	vec4 pos;	//XYZ for position, W for light type
-	vec4 rot;	//XYZ  for rotation
-	vec4 color;	//XYZ for RGB, W for Intensity
-};
-
-layout (binding = 1) uniform UBOParams {
-	LightInfo lights[1];
+layout (set = 0, binding = 1) uniform UBOParams {
+	vec4 lightDir;
 	float exposure;
 	float gamma;
+	float prefilteredCubeMipLevels;
+	float scaleIBLAmbient;
+	float debugViewInputs;
+	float debugViewEquation;
 } uboParams;
+
 
 // From http://filmicworlds.com/blog/filmic-tonemapping-operators/
 vec3 Uncharted2Tonemap(vec3 color)

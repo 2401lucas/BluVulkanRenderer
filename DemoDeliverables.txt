@@ -29,6 +29,7 @@ REIMPLEMENT INTO ENGINE!!!
 Animations
 Shadow Generation - Baking Shadows?
 SMAA
+Replace FXAA/PP pass with compute pass
 
 Challenges
 Compute Buffers allign with Double/Triple Buffering(Async) (Currently to test, Dispatch the ComputeShader and updaet once they are done)
