@@ -29,18 +29,8 @@ class ForwardRenderer : public BaseRenderer {
     PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1
   };
 
-  // Asset Resources
-  struct PBRTextures {
-    vks::Texture2D albedoMap;
-    vks::Texture2D normalMap;
-    vks::Texture2D aoMap;
-    vks::Texture2D metallicMap;
-    vks::Texture2D roughnessMap;
-  };
-
   struct Textures {
     vks::TextureCubeMap environmentCube;
-    PBRTextures pbrTextures;
     vks::Texture2D empty;
     // Generated at runtime
     vks::Texture2D lutBrdf;
@@ -50,7 +40,6 @@ class ForwardRenderer : public BaseRenderer {
 
   struct Models {
     vkglTF::Model skybox;
-    vkglTF::Model cerberus;
     vkglTF::Model scene;
   } models;
 
@@ -118,12 +107,6 @@ class ForwardRenderer : public BaseRenderer {
 
   std::unordered_map<std::string, VkPipeline> genPipelines;
   VkPipeline boundPipeline{VK_NULL_HANDLE};
-
-  struct {
-    VkDescriptorPool scene;
-    VkDescriptorPool skybox;
-    VkDescriptorPool postProcessing;
-  } descriptorPools;
 
   struct {
     VkDescriptorSetLayout scene{VK_NULL_HANDLE};
@@ -234,6 +217,10 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   ~ForwardRenderer() {
+    for (auto& pipeline : genPipelines) {
+      vkDestroyPipeline(device, pipeline.second, nullptr);
+    }
+
     vkDestroyPipeline(device, pipelines.skybox, nullptr);
     vkDestroyPipeline(device, pipelines.scene, nullptr);
     vkDestroyPipeline(device, pipelines.postProcessing, nullptr);
@@ -242,12 +229,12 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyPipelineLayout(device, pipelineLayouts.skybox, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayouts.postProcessing, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.scene, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.material, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.materialBuffer, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.node, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.skybox, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.postProcessing,
                                  nullptr);
-    vkDestroyDescriptorPool(device, descriptorPools.skybox, nullptr);
-    vkDestroyDescriptorPool(device, descriptorPools.scene, nullptr);
-    vkDestroyDescriptorPool(device, descriptorPools.postProcessing, nullptr);
 
     vkDestroyImage(device, multisampleTarget.color.image, nullptr);
     vkDestroyImageView(device, multisampleTarget.color.view, nullptr);
@@ -279,19 +266,15 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyRenderPass(device, offscreenPass.renderPass, nullptr);
     vkDestroySampler(device, offscreenPass.sampler, nullptr);
 
+    shaderMaterialBuffer.destroy();
     models.skybox.destroy();
-    models.cerberus.destroy();
     models.scene.destroy();
 
+    textures.empty.destroy();
     textures.environmentCube.destroy();
     textures.irradianceCube.destroy();
     textures.prefilteredCube.destroy();
     textures.lutBrdf.destroy();
-    textures.pbrTextures.albedoMap.destroy();
-    textures.pbrTextures.normalMap.destroy();
-    textures.pbrTextures.aoMap.destroy();
-    textures.pbrTextures.metallicMap.destroy();
-    textures.pbrTextures.roughnessMap.destroy();
 
     delete imGui;
   }
@@ -1665,9 +1648,9 @@ class ForwardRenderer : public BaseRenderer {
                                               &pipelineCI, nullptr, &pipeline));
     genPipelines[prefix + "_alpha_blending"] = pipeline;
 
-    for (auto shaderStage : shaderStages) {
-      vkDestroyShaderModule(device, shaderStage.module, nullptr);
-    }
+    //for (auto shaderStage : shaderStages) {
+    //  vkDestroyShaderModule(device, shaderStage.module, nullptr);
+    //}
   }
 
   void preparePipelines() {
@@ -2924,6 +2907,7 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelinelayout, nullptr);
 
+    uboParams.prefilteredCubeMipLevels = static_cast<float>(numMips);
     auto tEnd = std::chrono::high_resolution_clock::now();
     auto tDiff =
         std::chrono::duration<double, std::milli>(tEnd - tStart).count();
@@ -3071,13 +3055,17 @@ class ForwardRenderer : public BaseRenderer {
     uboMatrices.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
                                     glm::vec3(0.0f, 1.0f, 0.0f)) *
                         glm::scale(glm::mat4(1.0f), glm::vec3(10, 10, 10));
-    uboMatrices.camPos = camera.position * -1.0f;
+    //uboMatrices.camPos = camera.position * -1.0f;
+    glm::mat4 cv = glm::inverse(camera.matrices.view);
+    uboMatrices.camPos = glm::vec3(cv[3]);
+
     memcpy(uniformBuffers[currentFrameIndex].scene.mapped, &uboMatrices,
            sizeof(uboMatrices));
 
     // Skybox
     glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f, 5.0f, 5.0f));
     uboMatrices.model = glm::mat4(glm::mat3(camera.matrices.view)) * scale;
+    uboMatrices.camPos = camera.position * -1.0f;
     memcpy(uniformBuffers[currentFrameIndex].skybox.mapped, &uboMatrices,
            sizeof(uboMatrices));
   }
@@ -3149,24 +3137,6 @@ class ForwardRenderer : public BaseRenderer {
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/gcanyon_cube.ktx",
         VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
-    models.cerberus.loadFromFile(
-        getAssetPath() + "models/cerberus/cerberus.gltf", vulkanDevice,
-        graphicsQueue, glTFLoadingFlags);
-    textures.pbrTextures.albedoMap.loadFromFile(
-        getAssetPath() + "models/cerberus/albedo.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, graphicsQueue);
-    textures.pbrTextures.normalMap.loadFromFile(
-        getAssetPath() + "models/cerberus/normal.ktx", VK_FORMAT_R8G8B8A8_UNORM,
-        vulkanDevice, graphicsQueue);
-    textures.pbrTextures.aoMap.loadFromFile(
-        getAssetPath() + "models/cerberus/ao.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, graphicsQueue);
-    textures.pbrTextures.metallicMap.loadFromFile(
-        getAssetPath() + "models/cerberus/metallic.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, graphicsQueue);
-    textures.pbrTextures.roughnessMap.loadFromFile(
-        getAssetPath() + "models/cerberus/roughness.ktx", VK_FORMAT_R8_UNORM,
-        vulkanDevice, graphicsQueue);
     textures.empty.loadFromFile(getAssetPath() + "models/sponza/white.ktx",
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
