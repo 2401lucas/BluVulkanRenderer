@@ -67,9 +67,34 @@ UI----------------
 TODO: MOVE TONEMAPPING TO PP PASS
 
 Future features include:
-Scene loading(Sponza)(Support non-ktx images)
 Reflection Probes 
-Realtime Ambient Occlusion(GTAO or HBAO)
-Shadows 
 GPU Focused Rendering
 Deferred Rendering
+
+
+Scene loading(Sponza)
+- Auto pipeline creation
+- New Shader*
+- autoloading textures?
+
+
+
+Setup: NON PBR
+
+SETUP: GLTF SCENE
+DONE:
+COMMAND BUFFER BUILDING
+TODO:
+
+Pipeline Layouts
+Pipelines
+Shader/s?
+
+STATIC?--------------
+Descriptor Layouts
+DYNAMIC?-------------
+
+
+Realtime Ambient Occlusion(GTAO or HBAO)
+Shadows 
+I CHANGED THE UV0/UV1 to UV & TANGENT

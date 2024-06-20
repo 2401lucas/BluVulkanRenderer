@@ -5,7 +5,20 @@
 #include "VulkanglTFModel.h"
 
 namespace vkglTF {
-// Bounding box
+bool loadImageDataFunc(tinygltf::Image *image, const int imageIndex,
+                       std::string *error, std::string *warning, int req_width,
+                       int req_height, const unsigned char *bytes, int size,
+                       void *userData) {
+  // KTX files will be handled by our own code
+  if (image->uri.find_last_of(".") != std::string::npos) {
+    if (image->uri.substr(image->uri.find_last_of(".") + 1) == "ktx") {
+      return true;
+    }
+  }
+
+  return tinygltf::LoadImageData(image, imageIndex, error, warning, req_width,
+                                 req_height, bytes, size, userData);
+}
 
 BoundingBox::BoundingBox(){};
 
@@ -51,7 +64,7 @@ void Texture::destroy() {
   vkDestroySampler(device->logicalDevice, sampler, nullptr);
 }
 
-void Texture::fromglTfImage(tinygltf::Image &gltfimage,
+void Texture::fromglTfImage(tinygltf::Image &gltfimage, std::string path,
                             TextureSampler textureSampler,
                             vks::VulkanDevice *device, VkQueue copyQueue) {
   this->device = device;
@@ -370,6 +383,7 @@ glm::mat4 Node::localMatrix() {
          glm::scale(glm::mat4(1.0f), scale) * matrix;
 }
 
+// Use Cached mat
 glm::mat4 Node::getMatrix() {
   glm::mat4 m = localMatrix();
   vkglTF::Node *p = parent;
@@ -420,15 +434,15 @@ Node::~Node() {
 
 // Model
 
-void Model::destroy(VkDevice device) {
+void Model::destroy() {
   if (vertices.buffer != VK_NULL_HANDLE) {
-    vkDestroyBuffer(device, vertices.buffer, nullptr);
-    vkFreeMemory(device, vertices.memory, nullptr);
+    vkDestroyBuffer(device->logicalDevice, vertices.buffer, nullptr);
+    vkFreeMemory(device->logicalDevice, vertices.memory, nullptr);
     vertices.buffer = VK_NULL_HANDLE;
   }
   if (indices.buffer != VK_NULL_HANDLE) {
-    vkDestroyBuffer(device, indices.buffer, nullptr);
-    vkFreeMemory(device, indices.memory, nullptr);
+    vkDestroyBuffer(device->logicalDevice, indices.buffer, nullptr);
+    vkFreeMemory(device->logicalDevice, indices.memory, nullptr);
     indices.buffer = VK_NULL_HANDLE;
   }
   for (auto texture : textures) {
@@ -506,6 +520,7 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
         const float *bufferPos = nullptr;
         const float *bufferNormals = nullptr;
         const float *bufferTexCoordSet0 = nullptr;
+        const float *bufferTexCoordSet1 = nullptr;
         const float *bufferTangent = nullptr;
         const float *bufferColorSet0 = nullptr;
         const void *bufferJoints = nullptr;
@@ -561,6 +576,20 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
             primitive.attributes.end()) {
           const tinygltf::Accessor &uvAccessor =
               model.accessors[primitive.attributes.find("TEXCOORD_0")->second];
+          const tinygltf::BufferView &uvView =
+              model.bufferViews[uvAccessor.bufferView];
+          bufferTexCoordSet0 = reinterpret_cast<const float *>(
+              &(model.buffers[uvView.buffer]
+                    .data[uvAccessor.byteOffset + uvView.byteOffset]));
+          uv0ByteStride =
+              uvAccessor.ByteStride(uvView)
+                  ? (uvAccessor.ByteStride(uvView) / sizeof(float))
+                  : tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC2);
+        }
+        if (primitive.attributes.find("TEXCOORD_1") !=
+            primitive.attributes.end()) {
+          const tinygltf::Accessor &uvAccessor =
+              model.accessors[primitive.attributes.find("TEXCOORD_1")->second];
           const tinygltf::BufferView &uvView =
               model.bufferViews[uvAccessor.bufferView];
           bufferTexCoordSet0 = reinterpret_cast<const float *>(
@@ -641,8 +670,11 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
           vert.normal = glm::normalize(glm::vec3(
               bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride])
                             : glm::vec3(0.0f)));
-          vert.uv = bufferTexCoordSet0
+          vert.uv0 = bufferTexCoordSet0
                         ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
+                        : glm::vec2(0.0f);
+          vert.uv1 = bufferTexCoordSet1
+                  ? glm::make_vec2(&bufferTexCoordSet1[v * uv0ByteStride])
                         : glm::vec2(0.0f);
           vert.tangent = bufferTangent
                              ? glm::vec4(glm::make_vec4(&bufferTangent[v * 4]))
@@ -816,8 +848,7 @@ void Model::loadSkins(tinygltf::Model &gltfModel) {
   }
 }
 
-void Model::loadTextures(tinygltf::Model &gltfModel, vks::VulkanDevice *device,
-                         VkQueue transferQueue) {
+void Model::loadTextures(tinygltf::Model &gltfModel, VkQueue transferQueue) {
   for (tinygltf::Texture &tex : gltfModel.textures) {
     tinygltf::Image image = gltfModel.images[tex.source];
     vkglTF::TextureSampler textureSampler;
@@ -832,7 +863,8 @@ void Model::loadTextures(tinygltf::Model &gltfModel, vks::VulkanDevice *device,
       textureSampler = textureSamplers[tex.sampler];
     }
     vkglTF::Texture texture;
-    texture.fromglTfImage(image, textureSampler, device, transferQueue);
+    texture.fromglTfImage(image, filePath, textureSampler, device,
+                          transferQueue);
     textures.push_back(texture);
   }
 }
@@ -1138,8 +1170,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   tinygltf::Model gltfModel;
   tinygltf::TinyGLTF gltfContext;
 
-  std::string error;
-  std::string warning;
+  std::string error, warning;
 
   this->device = device;
 
@@ -1159,9 +1190,12 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   size_t vertexCount = 0;
   size_t indexCount = 0;
 
+  size_t pos = filename.find_last_of('/');
+  filePath = filename.substr(0, pos);
+
   if (fileLoaded) {
     loadTextureSamplers(gltfModel);
-    loadTextures(gltfModel, device, transferQueue);
+    loadTextures(gltfModel, transferQueue);
     loadMaterials(gltfModel);
 
     const tinygltf::Scene &scene =
@@ -1496,9 +1530,12 @@ VkVertexInputAttributeDescription vkglTF::Vertex::inputAttributeDescription(
       return VkVertexInputAttributeDescription({location, binding,
                                                 VK_FORMAT_R32G32B32_SFLOAT,
                                                 offsetof(Vertex, normal)});
-    case VertexComponent::UV:
+    case VertexComponent::UV0:
       return VkVertexInputAttributeDescription(
-          {location, binding, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv)});
+          {location, binding, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv0)});
+    case VertexComponent::UV1:
+      return VkVertexInputAttributeDescription(
+          {location, binding, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv0)});
     case VertexComponent::Color:
       return VkVertexInputAttributeDescription({location, binding,
                                                 VK_FORMAT_R32G32B32A32_SFLOAT,

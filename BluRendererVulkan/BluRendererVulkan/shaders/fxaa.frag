@@ -118,9 +118,7 @@ vec3 ApplyFilter(vec3 rgb){
 }
 
 // Sample center & surrounding pixels, compare luminance and average 
-vec3 applyFXAA() {
-    vec3 rgbC =  ApplyFilter(texture(screenTexture, fragTexCord).rgb);
-    
+vec3 ApplyFXAA(vec3 rgbC) {
     #if FXAA_DISABLE
         return rgbC;
     #endif

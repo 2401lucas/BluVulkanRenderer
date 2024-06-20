@@ -23,6 +23,4 @@ void vkglTF::Scene::loadFromFile(std::string filename,
                               &gltfModel, &error, &warning, filename.c_str())
                         : gltfContext.LoadASCIIFromFile(
                               &gltfModel, &error, &warning, filename.c_str());
-
-
 }

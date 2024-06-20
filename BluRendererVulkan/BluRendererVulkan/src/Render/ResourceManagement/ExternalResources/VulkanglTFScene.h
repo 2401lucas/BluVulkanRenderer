@@ -12,5 +12,4 @@ class Scene {
                     uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None,
                     float scale = 1.0f);
 };
-
 }  // namespace vkglTF
