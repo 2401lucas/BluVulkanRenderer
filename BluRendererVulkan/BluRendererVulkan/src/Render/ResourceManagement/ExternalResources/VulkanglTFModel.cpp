@@ -670,12 +670,14 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
           vert.normal = glm::normalize(glm::vec3(
               bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride])
                             : glm::vec3(0.0f)));
-          vert.uv0 = bufferTexCoordSet0
-                        ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
-                        : glm::vec2(0.0f);
-          vert.uv1 = bufferTexCoordSet1
+          vert.uv0 =
+              bufferTexCoordSet0
+                  ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
+                  : glm::vec2(0.0f);
+          vert.uv1 =
+              bufferTexCoordSet1
                   ? glm::make_vec2(&bufferTexCoordSet1[v * uv0ByteStride])
-                        : glm::vec2(0.0f);
+                  : glm::vec2(0.0f);
           vert.tangent = bufferTangent
                              ? glm::vec4(glm::make_vec4(&bufferTangent[v * 4]))
                              : glm::vec4(0.0f);
@@ -1194,10 +1196,15 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   filePath = filename.substr(0, pos);
 
   if (fileLoaded) {
+    
+    
+    // TODO: PRIO 5
+    // Maybe dispatch this into 3 threads?
     loadTextureSamplers(gltfModel);
     loadTextures(gltfModel, transferQueue);
     loadMaterials(gltfModel);
 
+    // Rejoin threads
     const tinygltf::Scene &scene =
         gltfModel
             .scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];
@@ -1210,6 +1217,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     loaderInfo.vertexBuffer = new Vertex[vertexCount];
     loaderInfo.indexBuffer = new uint32_t[indexCount];
 
+    // TODO: PRIO 3
     // TODO: scene handling with no default scene
     for (size_t i = 0; i < scene.nodes.size(); i++) {
       const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
@@ -1235,7 +1243,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     std::cerr << "Could not load gltf file: " << error << std::endl;
     return;
   }
-
+  //TODO: PRIO 4
   // Pre-Calculations for requested features
   if ((fileLoadingFlags & FileLoadingFlags::PreTransformVertices) ||
       (fileLoadingFlags & FileLoadingFlags::PreMultiplyVertexColors) ||

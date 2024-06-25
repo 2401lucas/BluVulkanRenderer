@@ -22,9 +22,18 @@ vec3 Uncharted2Tonemap(vec3 x)
 
 vec3 ApplyTonemap(vec3 rbg) {
 	// Tone mapping
-	//vec3 color = Uncharted2Tonemap(rbg * TONEMAP_EXPOSURE);
-	//color = color * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
+	vec3 outColor = Uncharted2Tonemap(rbg * TONEMAP_EXPOSURE);
+	outColor = outColor * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
 	// Gamma correction
-	vec3 color = pow(rbg, vec3(1.0f / TONEMAP_GAMMA));
-	return color;
+	outColor = pow(outColor, vec3(1.0f / TONEMAP_GAMMA));
+	return outColor;
+}
+
+vec4 ApplyTonemap(vec4 color) {
+	// Tone mapping
+	vec3 outColor = Uncharted2Tonemap(color.rbg * TONEMAP_EXPOSURE);
+	outColor = outColor * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
+	// Gamma correction
+	outColor = pow(color.rbg, vec3(1.0f / TONEMAP_GAMMA));
+	return vec4(outColor, color.a);
 }

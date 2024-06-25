@@ -96,6 +96,29 @@ Descriptor Layouts
 DYNAMIC?-------------
 
 
+KNOWN PROBLEMS:
+INDEXING SHADOWMAP NOT WORKING
+ImGui implementation is bad
+// TODO ORDER?
+LIGHTS
+Shadows --------------------------------------------------------------
 Realtime Ambient Occlusion(GTAO or HBAO)
-Shadows 
-I CHANGED THE UV0/UV1 to UV & TANGENT
+MULTI THREADING
+
+
+
+
+
+
+LIGHTS->
+	COLOR
+	zNear(Range? not sure) & zFar(Falloff)
+
+GetIntensity()
+	IF(length(LIGHTPOS - PIXELPOS) >  zFar) -> 0
+	ELSE IF (length(LIGHTPOS - PIXELPOS) - 0.005 > shadowMap(xy)) NO SHADOW, CALC LIGHT FALLOFF?
+	ELSE -> 0
+
+ambient 
+
+

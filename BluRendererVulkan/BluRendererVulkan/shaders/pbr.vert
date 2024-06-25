@@ -13,6 +13,7 @@ layout (set = 0, binding = 0) uniform UBO
 	mat4 projection;
 	mat4 model;
 	mat4 view;
+	mat4 lightSpace;
 	vec3 camPos;
 } ubo;
 
@@ -29,6 +30,13 @@ layout (location = 1) out vec3 outNormal;
 layout (location = 2) out vec2 outUV0;
 layout (location = 3) out vec2 outUV1;
 layout (location = 4) out vec4 outColor0;
+layout (location = 5) out vec4 outShadowCoord;
+
+const mat4 biasMat = mat4( 
+	0.5, 0.0, 0.0, 0.0,
+	0.0, 0.5, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.5, 0.5, 0.0, 1.0 );
 
 void main() 
 {
@@ -54,4 +62,8 @@ void main()
 	outUV0 = inUV0;
 	outUV1 = inUV1;
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
+
+	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model * node.matrix) ) * vec4(inPos, 1.0);
+	//outShadowCoord = ( ubo.lightSpace ) * vec4(outWorldPos, 1.0);
+	//bias * lightMVP.Matrix * Model.ModelMat * vec4(a_Position, 1.0);
 }
