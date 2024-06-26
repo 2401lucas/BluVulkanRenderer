@@ -279,7 +279,7 @@ class Model {
   void destroy();
   void loadNode(vkglTF::Node* parent, const tinygltf::Node& node,
                 uint32_t nodeIndex, const tinygltf::Model& model,
-                LoaderInfo& loaderInfo, float globalscale);
+                LoaderInfo& loaderInfo);
   void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model,
                     size_t& vertexCount, size_t& indexCount);
   void loadSkins(tinygltf::Model& gltfModel);
@@ -291,8 +291,7 @@ class Model {
   void loadAnimations(tinygltf::Model& gltfModel);
   void loadFromFile(std::string filename, vks::VulkanDevice* device,
                     VkQueue transferQueue,
-                    uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None,
-                    float scale = 1.0f);
+                    uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None);
   void drawNode(Node* node, VkCommandBuffer commandBuffer);
   void draw(VkCommandBuffer commandBuffer);
   void calculateBoundingBox(Node* node, Node* parent);

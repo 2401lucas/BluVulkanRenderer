@@ -6,7 +6,7 @@
 
 vec4 SRGBtoLINEAR(vec4 srgbIn)
 {
-	#define MANUAL_SRGB 
+	#define MANUAL_SRGB 1
 	#ifdef MANUAL_SRGB
 	#ifdef SRGB_FAST_APPROXIMATION
 	vec3 linOut = pow(srgbIn.xyz,vec3(2.2));

@@ -466,7 +466,7 @@ void Model::destroy() {
 
 void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
                      uint32_t nodeIndex, const tinygltf::Model &model,
-                     LoaderInfo &loaderInfo, float globalscale) {
+                     LoaderInfo &loaderInfo) {
   vkglTF::Node *newNode = new Node{};
   newNode->index = nodeIndex;
   newNode->parent = parent;
@@ -497,7 +497,7 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
   if (node.children.size() > 0) {
     for (size_t i = 0; i < node.children.size(); i++) {
       loadNode(newNode, model.nodes[node.children[i]], node.children[i], model,
-               loaderInfo, globalscale);
+               loaderInfo);
     }
   }
 
@@ -1167,11 +1167,9 @@ void Model::loadAnimations(tinygltf::Model &gltfModel) {
 }
 
 void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
-                         VkQueue transferQueue, uint32_t fileLoadingFlags,
-                         float scale) {
+                         VkQueue transferQueue, uint32_t fileLoadingFlags) {
   tinygltf::Model gltfModel;
   tinygltf::TinyGLTF gltfContext;
-
   std::string error, warning;
 
   this->device = device;
@@ -1196,8 +1194,6 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   filePath = filename.substr(0, pos);
 
   if (fileLoaded) {
-    
-    
     // TODO: PRIO 5
     // Maybe dispatch this into 3 threads?
     loadTextureSamplers(gltfModel);
@@ -1221,7 +1217,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     // TODO: scene handling with no default scene
     for (size_t i = 0; i < scene.nodes.size(); i++) {
       const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
-      loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
+      loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo);
     }
     if (gltfModel.animations.size() > 0) {
       loadAnimations(gltfModel);

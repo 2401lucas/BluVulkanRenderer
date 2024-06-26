@@ -591,9 +591,9 @@ void BaseRenderer::nextFrame() {
   // Convert to clamped timer value
   if (!paused) {
     timer += timerSpeed * frameTimer;
-    if (timer > 1.0) {
-      timer -= 1.0f;
-    }
+    //if (timer > 1.0) {
+    //  timer -= 1.0f;
+    //}
   }
   float fpsTimer =
       (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp)

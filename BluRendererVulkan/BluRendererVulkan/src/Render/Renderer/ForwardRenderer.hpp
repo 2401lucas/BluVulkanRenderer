@@ -3,6 +3,7 @@
 
 #include <corecrt_math_defines.h>
 
+#include "../ResourceManagement/ExternalResources/ThreadPool.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanglTFModel.h"
 #include "BaseRenderer.h"
@@ -11,13 +12,17 @@
 struct UISettings {
   bool visible = true;
   float scale = 1;
-  bool cerberus = true;
+  ;
   bool displaySkybox = true;
   bool displaySponza = true;
-  bool useSampleShading = false;
   bool usePcfFiltering = false;
   int msaaSamples;
-  int aaMode;
+  int aaMode = 0;
+  float IBLstrength = 1;
+  int debugInput = 0;
+  int debugEquations = 0;
+  int debugLight = 0;
+  bool animateLight = true;
   std::array<float, 50> frameTimes{};
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
 } uiSettings;
@@ -27,6 +32,8 @@ class ForwardRenderer : public BaseRenderer {
   vkImGUI* imGui = nullptr;
 
 #ifndef SceneResources 1
+  std::string defaultScenePath =
+      "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf";
   enum PBRWorkflows {
     PBR_WORKFLOW_METALLIC_ROUGHNESS = 0,
     PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1
@@ -84,7 +91,6 @@ class ForwardRenderer : public BaseRenderer {
     vks::Buffer scene;
     vks::Buffer skybox;
     vks::Buffer params;
-    vks::Buffer postProcessing;
     vks::Buffer shadow;
   };
 
@@ -97,6 +103,7 @@ class ForwardRenderer : public BaseRenderer {
 
   struct StaticUniformBuffers {
     vks::Buffer shaderMaterialBuffer;
+    vks::Buffer postProcessing;
   } staticUniformBuffers;
 
   struct FrameBufferAttachment {
@@ -171,6 +178,9 @@ class ForwardRenderer : public BaseRenderer {
   const std::vector<std::string> supportedExtensions = {
       "KHR_texture_basisu", "KHR_materials_pbrSpecularGlossiness",
       "KHR_materials_unlit", "KHR_materials_emissive_strength"};
+
+  uint32_t numThreads;
+  vks::ThreadPool* threadPool;
 #endif
 
 #ifndef RenderSettings 1
@@ -179,13 +189,10 @@ class ForwardRenderer : public BaseRenderer {
   const float depthBiasConstant = 1.25f;
   const float depthBiasSlope = 1.75f;
 
-  enum AntiAliasingSettings {
-    ANTI_ALIASING_OFF = 0,
-    ANTI_ALIASING_FXAA = 1,
-    ANTI_ALIASING_TAA = 2,
-  };
+  const char* antiAliasingSettings[3] = {"Off", "FXAA", "TAA"};
   // NOTE FOR THE BUFFERS, NOT ALL BUFFERS NEED TO BE UPDATE PER FRAME, BUT ALL
-  // THE BUFFERS NEED INITIAL UPDATE, FOR EVERY FRAME
+  // THE BUFFERS NEED INITIAL UPDATE, FOR EVERY FRAME: THIS SHOULD BE CHANGED TO
+  // 1 SHARED BUFFER AS UPDATES ARE RARE AND SHARED BETWEEN FRAMES
   struct PostProcessingParams {
     float aaType = 0;
   } postProcessingParams;
@@ -203,6 +210,8 @@ class ForwardRenderer : public BaseRenderer {
     glm::vec3 camPos;
   } uboMatrices;
 
+  const char* debugLights[2] = {"Image Baked Light", "Area Light"};
+
   struct LightSource {
     glm::vec4 color = glm::vec4(1.0f);
     glm::vec4 position = glm::vec4(0.0f, 20.0f, 0.0f, 0.0f);
@@ -211,18 +220,29 @@ class ForwardRenderer : public BaseRenderer {
     float zNear = 20.0f;
     float zFar = 70.0f;
     float lightFOV = 45.0f;
+    float placeholderSpace;
   };
 
+  const char* debugInputs[7] = {"None",         "Color Map",    "Normals",
+                                "AO Map",       "Emissive Map", "Metallic Map",
+                                "Roughness Map"};
+
+  const char* debugEquations[6] = {"None",
+                                   "F",
+                                   "G",
+                                   "D",
+                                   "IBL Contribution",
+                                   "Light Contribution" /*, "Diffuse Contribution",
+                                   "Specular Contribution"*/};
   struct SceneParams {
-    LightSource lights[1];
-    glm::vec4 iblDir;
+    LightSource lights[2];
     float prefilteredCubeMipLevels;
-    float scaleIBLAmbient = 1.0f;
-    float debugViewInputs = 0;
-    float debugViewEquation = 0;
+    float debugViewInputs = 0.0f;
+    float debugViewEquation = 0.0f;
+    float debugViewLight = 0.0f;
   } sceneParams;
 
-  glm::vec3 iblDir = glm::vec3(-50.0f, -40.0f, 0.0f);
+  glm::vec3 iblDir = glm::vec3(0.0f, -40.0f, 0.0f);
 #endif
 
   ForwardRenderer() : BaseRenderer() {
@@ -240,6 +260,13 @@ class ForwardRenderer : public BaseRenderer {
 
     settings.overlay = true;
     settings.validation = true;
+
+    threadPool = new vks::ThreadPool();
+    // Get number of max. concurrent threads
+    numThreads = std::thread::hardware_concurrency();
+    assert(numThreads > 0);
+    std::cout << "Number of Threads: " << numThreads << std::endl;
+    threadPool->setThreadCount(numThreads);
   }
 
   ~ForwardRenderer() {
@@ -301,7 +328,6 @@ class ForwardRenderer : public BaseRenderer {
       dynamicUniformBuffers[i].scene.destroy();
       dynamicUniformBuffers[i].skybox.destroy();
       dynamicUniformBuffers[i].params.destroy();
-      dynamicUniformBuffers[i].postProcessing.destroy();
       dynamicUniformBuffers[i].shadow.destroy();
     }
 
@@ -311,6 +337,7 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyRenderPass(device, offscreenShadowPass.renderPass, nullptr);
     vkDestroySampler(device, offscreenShadowPass.sampler, nullptr);
 
+    staticUniformBuffers.postProcessing.destroy();
     staticUniformBuffers.shaderMaterialBuffer.destroy();
     models.skybox.destroy();
     models.scene.destroy();
@@ -1037,7 +1064,7 @@ class ForwardRenderer : public BaseRenderer {
     // Debug window
     ImGui::SetWindowPos(ImVec2(20 * uiSettings.scale, 20 * uiSettings.scale),
                         ImGuiCond_FirstUseEver);
-    ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 300 * uiSettings.scale),
+    ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 185 * uiSettings.scale),
                          ImGuiCond_Always);
     ImGui::TextUnformatted(getTitle());
     ImGui::TextUnformatted(deviceProperties.deviceName);
@@ -1067,33 +1094,116 @@ class ForwardRenderer : public BaseRenderer {
                      uiSettings.frameTimeMin, uiSettings.frameTimeMax,
                      ImVec2(0, 80));
 
-    ImGui::Text("Camera");
-    ImGui::InputFloat3("position", &camera.position.x);
-    ImGui::InputFloat3("rotation", &camera.rotation.x);
-
-    // Example settings window
     ImGui::SetNextWindowPos(
         ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
         ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(
         ImVec2(300 * uiSettings.scale, 200 * uiSettings.scale),
         ImGuiCond_FirstUseEver);
-    ImGui::Begin("Scene Settings");
-    ImGui::Checkbox("Display Cerberus", &uiSettings.cerberus);
-    ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
-    ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+    ImGui::Begin("Settings");
+    if (ImGui::CollapsingHeader("Scene Settings")) {
+      ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
+      ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+    }
 
     if (ImGui::CollapsingHeader("Light Settings")) {
+      if (ImGui::BeginCombo("Target Light to Debug",
+                            debugLights[uiSettings.debugLight])) {
+        const char* currentItem = debugLights[uiSettings.debugLight];
+        for (int n = 0; n < sizeof(debugLights) / sizeof(debugLights[0]); n++) {
+          bool is_selected = (currentItem == debugLights[n]);
+          if (ImGui::Selectable(debugLights[n], is_selected)) {
+            uiSettings.debugLight = n;
+          }
+          if (is_selected)
+            ImGui::SetItemDefaultFocus();  // You may set the initial focus
+                                           // when opening the combo
+                                           // (scrolling + for keyboard
+                                           // navigation support)
+        }
+        ImGui::EndCombo();
+      }
+      ImGui::DragFloat("IBL Strength", &uiSettings.IBLstrength, 0.1f, 0.0f,
+                       2.0f);
+
+      ImGui::Checkbox("Animate Light", &uiSettings.animateLight);
     }
 
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      if (ImGui::Combo("UI style", &uiSettings.aaMode, "Off\0FXAA\0TAA\0")) {
+      if (ImGui::BeginCombo("Debug View Inputs",
+                            debugInputs[uiSettings.debugInput])) {
+        const char* currentItem = debugInputs[uiSettings.debugInput];
+        for (int n = 0; n < sizeof(debugInputs) / sizeof(debugInputs[0]); n++) {
+          bool is_selected = (currentItem == debugInputs[n]);
+          if (ImGui::Selectable(debugInputs[n], is_selected)) {
+            uiSettings.debugInput = n;
+          }
+          if (is_selected)
+            ImGui::SetItemDefaultFocus();  // You may set the initial focus
+                                           // when opening the combo
+                                           // (scrolling + for keyboard
+                                           // navigation support)
+        }
+        ImGui::EndCombo();
+      }
+
+      if (ImGui::BeginCombo("Debug View Equations",
+                            debugEquations[uiSettings.debugEquations])) {
+        const char* currentItem = debugEquations[uiSettings.debugEquations];
+        for (int n = 0; n < sizeof(debugEquations) / sizeof(debugEquations[0]);
+             n++) {
+          bool is_selected = (currentItem == debugEquations[n]);
+          if (ImGui::Selectable(debugEquations[n], is_selected)) {
+            uiSettings.debugEquations = n;
+          }
+          if (is_selected)
+            ImGui::SetItemDefaultFocus();  // You may set the initial focus
+                                           // when opening the combo
+                                           // (scrolling + for keyboard
+                                           // navigation support)
+        }
+        ImGui::EndCombo();
+      }
+
+      if (ImGui::BeginCombo("Anti Aliasing Type",
+                            antiAliasingSettings[uiSettings.aaMode])) {
+        const char* currentItem = antiAliasingSettings[uiSettings.aaMode];
+        for (int n = 0;
+             n < sizeof(antiAliasingSettings) / sizeof(antiAliasingSettings[0]);
+             n++) {
+          bool is_selected = (currentItem == antiAliasingSettings[n]);
+          if (ImGui::Selectable(antiAliasingSettings[n], is_selected)) {
+            uiSettings.aaMode = n;
+            updatePostProcessingParams();
+          }
+          if (is_selected)
+            ImGui::SetItemDefaultFocus();  // You may set the initial focus
+                                           // when opening the combo
+                                           // (scrolling + for keyboard
+                                           // navigation support)
+        }
+        ImGui::EndCombo();
       }
     }
-
-    if (ImGui::Combo("UI style", &imGui->selectedStyle,
-                     "Vulkan\0Classic\0Dark\0Light\0")) {
-      imGui->setStyle(imGui->selectedStyle);
+    if (ImGui::CollapsingHeader("UI Settings")) {
+      if (ImGui::BeginCombo("UI style", imGui->styles[imGui->selectedStyle])) {
+        const char* currentItem = imGui->styles[imGui->selectedStyle];
+        for (int n = 0; n < sizeof(imGui->styles) / sizeof(imGui->styles[0]);
+             n++) {
+          bool is_selected =
+              (currentItem == imGui->styles[n]);  // You can store your
+                                                  // selection however you want,
+          // outside or inside your objects
+          if (ImGui::Selectable(imGui->styles[n], is_selected))
+            imGui->setStyle(n);
+          if (is_selected)
+            ImGui::SetItemDefaultFocus();  // You may set the initial focus
+                                           // when opening the combo
+                                           // (scrolling + for keyboard
+                                           // navigation support)
+        }
+        ImGui::EndCombo();
+      }
     }
 
     ImGui::End();
@@ -1185,32 +1295,34 @@ class ForwardRenderer : public BaseRenderer {
 
     VkDeviceSize offsets[1] = {0};
 
-    vkglTF::Model& model = models.scene;
+    if (uiSettings.displaySponza) {
+      vkglTF::Model& model = models.scene;
 
-    vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
-                           offsets);
-    if (model.indices.buffer != VK_NULL_HANDLE) {
-      vkCmdBindIndexBuffer(currentCommandBuffer, model.indices.buffer, 0,
-                           VK_INDEX_TYPE_UINT32);
-    }
+      vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
+                             offsets);
+      if (model.indices.buffer != VK_NULL_HANDLE) {
+        vkCmdBindIndexBuffer(currentCommandBuffer, model.indices.buffer, 0,
+                             VK_INDEX_TYPE_UINT32);
+      }
 
-    boundPipeline = VK_NULL_HANDLE;
+      boundPipeline = VK_NULL_HANDLE;
 
-    // Opaque primitives first
-    for (auto node : model.nodes) {
-      renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
-                 currentCommandBuffer);
-    }
-    // Alpha masked primitives
-    for (auto node : model.nodes) {
-      renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_MASK,
-                 currentCommandBuffer);
-    }
-    // Transparent primitives
-    // TODO: Correct depth sorting
-    for (auto node : model.nodes) {
-      renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_BLEND,
-                 currentCommandBuffer);
+      // Opaque primitives first
+      for (auto node : model.nodes) {
+        renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
+                   currentCommandBuffer);
+      }
+      // Alpha masked primitives
+      for (auto node : model.nodes) {
+        renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_MASK,
+                   currentCommandBuffer);
+      }
+      // Transparent primitives
+      // TODO: Correct depth sorting
+      for (auto node : model.nodes) {
+        renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_BLEND,
+                   currentCommandBuffer);
+      }
     }
 
     // Rendered last to use early Z buffer rejection
@@ -1369,7 +1481,6 @@ class ForwardRenderer : public BaseRenderer {
 
     VkClearValue clearValues[2];
     clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
-    // clearValues[1].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
     clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassBeginInfo =
@@ -1386,7 +1497,6 @@ class ForwardRenderer : public BaseRenderer {
     imGui->updateBuffers(currentFrameIndex);
     updateGenericUBO();
     updateSceneParams();
-    updatePostProcessingParams();
 
     VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
 
@@ -1394,7 +1504,7 @@ class ForwardRenderer : public BaseRenderer {
 
     // Shadows Rendering
     {
-      renderPassBeginInfo.renderPass = offscreenShadowPass.renderPass;
+     /* renderPassBeginInfo.renderPass = offscreenShadowPass.renderPass;
       renderPassBeginInfo.framebuffer =
           offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
 
@@ -1409,7 +1519,7 @@ class ForwardRenderer : public BaseRenderer {
                            static_cast<uint32_t>(secondaryCmdBufs.size()),
                            secondaryCmdBufs.data());
       vkCmdEndRenderPass(currentCommandBuffer);
-      secondaryCmdBufs.clear();
+      secondaryCmdBufs.clear();*/
     }
 
     renderPassBeginInfo.renderArea.extent.width = getWidth();
@@ -1837,7 +1947,7 @@ class ForwardRenderer : public BaseRenderer {
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
             dynamicDescriptorSets[i].postProcessing,
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
-            &dynamicUniformBuffers[i].postProcessing.descriptor);
+            &staticUniformBuffers.postProcessing.descriptor);
 
         writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
             dynamicDescriptorSets[i].postProcessing,
@@ -2168,8 +2278,8 @@ class ForwardRenderer : public BaseRenderer {
   void generateBRDFLUT() {
     auto tStart = std::chrono::high_resolution_clock::now();
 
-    const VkFormat format =
-        VK_FORMAT_R16G16_SFLOAT;  // R16G16 is supported pretty much everywhere
+    const VkFormat format = VK_FORMAT_R16G16_SFLOAT;  // R16G16 is supported
+                                                      // pretty much everywhere
     const int32_t dim = 512;
 
     // Image
@@ -3338,12 +3448,12 @@ class ForwardRenderer : public BaseRenderer {
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          &uniformBuffer.params, sizeof(sceneParams)));
-      VK_CHECK_RESULT(vulkanDevice->createBuffer(
-          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          &uniformBuffer.postProcessing, sizeof(postProcessingParams)));
+          &uniformBuffer.params, sizeof(SceneParams)));
+      // VK_CHECK_RESULT(vulkanDevice->createBuffer(
+      //     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+      //     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+      //         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      //     &uniformBuffer.postProcessing, sizeof(postProcessingParams)));
       VK_CHECK_RESULT(vulkanDevice->createBuffer(
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -3353,9 +3463,16 @@ class ForwardRenderer : public BaseRenderer {
       uniformBuffer.scene.map();
       uniformBuffer.skybox.map();
       uniformBuffer.params.map();
-      uniformBuffer.postProcessing.map();
       uniformBuffer.shadow.map();
     }
+
+    VK_CHECK_RESULT(vulkanDevice->createBuffer(
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staticUniformBuffers.postProcessing, sizeof(PostProcessingParams)));
+    staticUniformBuffers.postProcessing.map();
+
     updateGenericUBO();
     updateSceneParams();
     updatePostProcessingParams();
@@ -3467,10 +3584,11 @@ class ForwardRenderer : public BaseRenderer {
     uboMatrices.projection = camera.matrices.perspective;
     uboMatrices.view = camera.matrices.view;
     // TODO: PER OBJECT? should move all per object data onto unique model,
-    // probably onto the node so it can be precomputed with the smaller matrices
+    // probably onto the node so it can be precomputed with the smaller
+    // matrices
     uboMatrices.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
                                     glm::vec3(0.0f, 1.0f, 0.0f)) *
-                        glm::scale(glm::mat4(1.0f), glm::vec3(10, 10, 10));
+                        glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
     glm::mat4 cv = glm::inverse(camera.matrices.view);
     uboMatrices.camPos = glm::vec3(cv[3]);
 
@@ -3499,26 +3617,38 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updateSceneParams() {
-    sceneParams.iblDir = glm::vec4(
-        sin(glm::radians(iblDir.x)) * cos(glm::radians(iblDir.y)),
-        sin(glm::radians(iblDir.y)),
-        cos(glm::radians(iblDir.x)) * cos(glm::radians(iblDir.y)), 0.0f);
-
-    sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.4f);
-    sceneParams.lights[0].lightFOV = 45.0f;
-    sceneParams.lights[0].position = glm::vec4(0.0f, -0.4f, 0.0f, 0.0f);
+    // IBL
+    sceneParams.lights[0].color =
+        glm::vec4(1.0f, 1.0f, 1.0f, 10.0f) * uiSettings.IBLstrength;
+    sceneParams.lights[0].position = glm::vec4(0.0f, -20.0f, 0.0f, 0.0f);
     sceneParams.lights[0].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     sceneParams.lights[0].zNear = 10.0f;
     sceneParams.lights[0].zFar = 60.0f;
+    sceneParams.lights[0].lightFOV = 45.0f;
+
+    // Area Light
+    sceneParams.lights[1].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.4f);
+    if (uiSettings.animateLight) {
+      sceneParams.lights[1].position =
+          glm::vec4(0.0f, -1.0f, sin(timer) * 9.0f, 0.0f);
+    }
+    sceneParams.lights[1].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    sceneParams.lights[1].zNear = 10.0f;
+    sceneParams.lights[1].zFar = 60.0f;
+    sceneParams.lights[1].lightFOV = 45.0f;
+
+    sceneParams.debugViewInputs = uiSettings.debugInput;
+    sceneParams.debugViewEquation = uiSettings.debugEquations;
+    sceneParams.debugViewLight = uiSettings.debugLight;
 
     memcpy(dynamicUniformBuffers[currentFrameIndex].params.mapped, &sceneParams,
-           sizeof(sceneParams));
+           sizeof(SceneParams));
   }
 
   void updatePostProcessingParams() {
     postProcessingParams.aaType = uiSettings.aaMode;
-    memcpy(dynamicUniformBuffers[currentFrameIndex].postProcessing.mapped,
-           &postProcessingParams, sizeof(PostProcessingParams));
+    memcpy(staticUniformBuffers.postProcessing.mapped, &postProcessingParams,
+           sizeof(PostProcessingParams));
   }
 
   void setupNodeDescriptorSet(vkglTF::Node* node) {
@@ -3548,19 +3678,13 @@ class ForwardRenderer : public BaseRenderer {
     }
   }
 
-  void loadScene(std::string filename, uint32_t glTFLoadingFlags = 0,
-                 float scale = 1.0f) {
-    std::cout << "Loading scene from " << filename << std::endl;
+  void loadScene(std::string filename, uint32_t glTFLoadingFlags = 0) {
     models.scene.destroy();
     animationIndex = 0;
     animationTimer = 0.0f;
-    auto tStart = std::chrono::high_resolution_clock::now();
-    models.scene.loadFromFile(filename, vulkanDevice, graphicsQueue, scale);
+
+    models.scene.loadFromFile(filename, vulkanDevice, graphicsQueue);
     createMaterialBuffer();
-    auto tFileLoad = std::chrono::duration<double, std::milli>(
-                         std::chrono::high_resolution_clock::now() - tStart)
-                         .count();
-    std::cout << "Loading took " << tFileLoad << " ms" << std::endl;
     // Check and list unsupported extensions
     for (auto& ext : models.scene.extensions) {
       if (std::find(supportedExtensions.begin(), supportedExtensions.end(),
@@ -3572,6 +3696,9 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void loadAssets() {
+    std::cout << "Loading assets " << std::endl;
+    auto tStart = std::chrono::high_resolution_clock::now();
+
     const uint32_t glTFLoadingFlags =
         vkglTF::FileLoadingFlags::PreTransformVertices |
         vkglTF::FileLoadingFlags::PreMultiplyVertexColors |
@@ -3582,13 +3709,17 @@ class ForwardRenderer : public BaseRenderer {
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/pisa_cube.ktx",
         VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
-    textures.empty.loadFromFile(getAssetPath() + "models/sponza/white.ktx",
+    textures.empty.loadFromFile(getAssetPath() + "models/Sponza/white.ktx",
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
-
     loadScene(getAssetPath() +
-                  "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf",
+                  "models/Sponza/Sponza.gltf",
               glTFLoadingFlags);
+
+    auto tFileLoad = std::chrono::duration<double, std::milli>(
+                         std::chrono::high_resolution_clock::now() - tStart)
+                         .count();
+    std::cout << "Loading took " << tFileLoad << " ms" << std::endl;
     // loadScene(getAssetPath() +
     //               "glTF-Sample-Models-main/assets/MetalRoughSpheres/glTF/MetalRoughSpheres.gltf",
     //           glTFLoadingFlags);
@@ -3601,6 +3732,7 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void prepare() override {
+    auto tStart = std::chrono::high_resolution_clock::now();
     BaseRenderer::prepare();
     loadAssets();
     generateBRDFLUT();
@@ -3611,6 +3743,10 @@ class ForwardRenderer : public BaseRenderer {
     preparePipelines();
     prepareImGui();
     prepared = true;
+    auto tFileLoad = std::chrono::duration<double, std::milli>(
+                         std::chrono::high_resolution_clock::now() - tStart)
+                         .count();
+    std::cout << "Preparing resources took " << tFileLoad << " ms" << std::endl;
   }
 
   void draw() {
