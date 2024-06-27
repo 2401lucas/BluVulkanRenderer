@@ -12,15 +12,13 @@
 struct UISettings {
   bool visible = true;
   float scale = 1;
-  ;
   bool displaySkybox = true;
   bool displaySponza = true;
   bool usePcfFiltering = false;
   int msaaSamples;
   int aaMode = 0;
   float IBLstrength = 1;
-  int debugInput = 0;
-  int debugEquations = 0;
+  int debugOutput = 0;
   int debugLight = 0;
   bool animateLight = true;
   std::array<float, 50> frameTimes{};
@@ -223,15 +221,7 @@ class ForwardRenderer : public BaseRenderer {
     float placeholderSpace;
   };
 
-  const char* debugInputs[7] = {"None",         "Color Map",    "Normals",
-                                "AO Map",       "Emissive Map", "Metallic Map",
-                                "Roughness Map"};
-
-  const char* debugEquations[6] = {"None",
-                                   "F",
-                                   "G",
-                                   "D",
-                                   "IBL Contribution",
+  const char* debugInputs[12] = {"None", "Color Map", "Normals", "AO Map", "Emissive Map", "Metallic Map", "Roughness Map", "F", "G", "D", "IBL Contribution",
                                    "Light Contribution" /*, "Diffuse Contribution",
                                    "Specular Contribution"*/};
   struct SceneParams {
@@ -1146,6 +1136,13 @@ class ForwardRenderer : public BaseRenderer {
     }
 
     if (ImGui::CollapsingHeader("Light Settings")) {
+      ImGui::DragFloat("IBL Strength", &uiSettings.IBLstrength, 0.1f, 0.0f,
+                       2.0f);
+
+      ImGui::Checkbox("Animate Light", &uiSettings.animateLight);
+    }
+
+    if (ImGui::CollapsingHeader("Rendering Settings")) {
       if (ImGui::BeginCombo("Target Light to Debug",
                             debugLights[uiSettings.debugLight])) {
         const char* currentItem = debugLights[uiSettings.debugLight];
@@ -1162,38 +1159,14 @@ class ForwardRenderer : public BaseRenderer {
         }
         ImGui::EndCombo();
       }
-      ImGui::DragFloat("IBL Strength", &uiSettings.IBLstrength, 0.1f, 0.0f,
-                       2.0f);
 
-      ImGui::Checkbox("Animate Light", &uiSettings.animateLight);
-    }
-
-    if (ImGui::CollapsingHeader("Rendering Settings")) {
       if (ImGui::BeginCombo("Debug View Inputs",
-                            debugInputs[uiSettings.debugInput])) {
-        const char* currentItem = debugInputs[uiSettings.debugInput];
+                            debugInputs[uiSettings.debugOutput])) {
+        const char* currentItem = debugInputs[uiSettings.debugOutput];
         for (int n = 0; n < sizeof(debugInputs) / sizeof(debugInputs[0]); n++) {
           bool is_selected = (currentItem == debugInputs[n]);
           if (ImGui::Selectable(debugInputs[n], is_selected)) {
-            uiSettings.debugInput = n;
-          }
-          if (is_selected)
-            ImGui::SetItemDefaultFocus();  // You may set the initial focus
-                                           // when opening the combo
-                                           // (scrolling + for keyboard
-                                           // navigation support)
-        }
-        ImGui::EndCombo();
-      }
-
-      if (ImGui::BeginCombo("Debug View Equations",
-                            debugEquations[uiSettings.debugEquations])) {
-        const char* currentItem = debugEquations[uiSettings.debugEquations];
-        for (int n = 0; n < sizeof(debugEquations) / sizeof(debugEquations[0]);
-             n++) {
-          bool is_selected = (currentItem == debugEquations[n]);
-          if (ImGui::Selectable(debugEquations[n], is_selected)) {
-            uiSettings.debugEquations = n;
+            uiSettings.debugOutput = n;
           }
           if (is_selected)
             ImGui::SetItemDefaultFocus();  // You may set the initial focus
@@ -3711,8 +3684,7 @@ class ForwardRenderer : public BaseRenderer {
     sceneParams.lights[1].zFar = 60.0f;
     sceneParams.lights[1].lightFOV = 45.0f;
 
-    sceneParams.debugViewInputs = uiSettings.debugInput;
-    sceneParams.debugViewEquation = uiSettings.debugEquations;
+    sceneParams.debugViewInputs = uiSettings.debugOutput;
     sceneParams.debugViewLight = uiSettings.debugLight;
 
     memcpy(dynamicUniformBuffers[currentFrameIndex].params.mapped, &sceneParams,

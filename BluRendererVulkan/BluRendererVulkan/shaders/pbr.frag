@@ -32,7 +32,6 @@ layout (set = 0, binding = 1) uniform UBOParams {
 	LightSource lights[2];
 	float prefilteredCubeMipLevels;
 	float debugViewInputs;
-	float debugViewEquation;
 	float debugViewLight;
 } uboParams;
 
@@ -415,16 +414,7 @@ void main()
 			case 6:
 				outColor.rgb = texture(physicalDescriptorMap, inUV0).ggg;
 				break;
-		}
-		//outColor = SRGBtoLINEAR(outColor);
-	}
-
-	// PBR equation debug visualization
-	// "none", "Diff (l,n)", "F (l,h)", "G (l,v,h)", "D (h)", "Specular"
-	if (uboParams.debugViewEquation > 0.0) {
-		int index = int(uboParams.debugViewEquation);
-		switch (index) {
-			case 1:
+			case 7:
 				vec3 debugF_L = normalize(uboParams.lights[int(uboParams.debugViewLight)].position.xyz - inWorldPos);
 				vec3 debugF_H = normalize (pbrInputs.V + debugF_L);
 				pbrInputs.NdotL = clamp(dot(pbrInputs.N, debugF_L), 0.001, 1.0);
@@ -435,7 +425,7 @@ void main()
 				vec3 F = specularReflection(pbrInputs);
 				outColor.rgb = F;
 				break;
-			case 2:
+			case 8:
 				vec3 debugG_L = normalize(uboParams.lights[int(uboParams.debugViewLight)].position.xyz - inWorldPos);
 				vec3 debugG_H = normalize (pbrInputs.V + debugG_L);
 				pbrInputs.NdotL = clamp(dot(pbrInputs.N, debugG_L), 0.001, 1.0);
@@ -447,7 +437,7 @@ void main()
 
 				outColor.rgb = vec3(G);
 				break;
-			case 3: 
+			case 9: 
 				vec3 debugD_L = normalize(uboParams.lights[int(uboParams.debugViewLight)].position.xyz - inWorldPos);
 				vec3 debugD_H = normalize (pbrInputs.V + debugD_L);
 				pbrInputs.NdotL = clamp(dot(pbrInputs.N, debugD_L), 0.001, 1.0);
@@ -459,10 +449,10 @@ void main()
 				float D = microfacetDistribution(pbrInputs); 
 				outColor.rgb = vec3(D);
 				break;
-			case 4:
+			case 10:
 				outColor.rgb = ibl;
 				break;
-			case 5:
+			case 11:
 				outColor.rgb = Lo;
 				break;
 			//case 1:
