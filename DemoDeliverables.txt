@@ -98,6 +98,8 @@ DYNAMIC?-------------
 
 KNOWN PROBLEMS:
 Add ImGui keyboard input
+Change models / 
+Resize Window crashes - VUID-VkPresentInfoKHR-pImageIndices-01430 once when resizing window, but no crash
 // TODO ORDER?
 LIGHTS (Area works without shadows)
 Generate IBL inside

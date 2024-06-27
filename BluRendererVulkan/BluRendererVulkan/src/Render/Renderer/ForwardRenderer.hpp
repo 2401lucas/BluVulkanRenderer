@@ -119,8 +119,8 @@ class ForwardRenderer : public BaseRenderer {
   };
 
   struct OffscreenPass {
-    VkRenderPass renderPass;
-    VkSampler sampler;
+    VkRenderPass renderPass{VK_NULL_HANDLE};
+    VkSampler sampler{VK_NULL_HANDLE};
     std::vector<FrameBuffer> framebuffers;
   };
 
@@ -248,7 +248,7 @@ class ForwardRenderer : public BaseRenderer {
   ForwardRenderer() : BaseRenderer() {
     name = "Forward Renderer with PBR";
     camera.type = Camera::firstperson;
-    camera.movementSpeed = 1.0f;
+    camera.movementSpeed = 2.0f;
     camera.rotationSpeed = 0.25f;
     camera.setPosition(glm::vec3(-0.318f, 0.240f, -0.639f));
     camera.setRotation(glm::vec3(4.5f, -300.25f, 0.0f));
@@ -315,7 +315,6 @@ class ForwardRenderer : public BaseRenderer {
                    nullptr);
       vkDestroyFramebuffer(
           device, offscreenPostPass.framebuffers[i].framebuffer, nullptr);
-
       vkDestroyImage(device, offscreenShadowPass.framebuffers[i].depth.image,
                      nullptr);
       vkDestroyImageView(device, offscreenShadowPass.framebuffers[i].depth.view,
@@ -594,6 +593,8 @@ class ForwardRenderer : public BaseRenderer {
           vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
     } else {
       BaseRenderer::setupRenderPass();
+      setupOffscreenShadowRenderPass();
+      setupOffscreenPostProcessingRenderPass();
     }
   }
 
@@ -602,6 +603,30 @@ class ForwardRenderer : public BaseRenderer {
     if (attachmentSize.width != getWidth() ||
         attachmentSize.height != getHeight()) {
       attachmentSize = {getWidth(), getHeight()};
+      for (size_t i = 0; i < offscreenShadowPass.framebuffers.size(); i++) {
+        vkDestroyImage(device, offscreenPostPass.framebuffers[i].color.image,
+                       nullptr);
+        vkDestroyImageView(device, offscreenPostPass.framebuffers[i].color.view,
+                           nullptr);
+        vkFreeMemory(device, offscreenPostPass.framebuffers[i].color.memory,
+                     nullptr);
+        vkDestroyImage(device, offscreenPostPass.framebuffers[i].depth.image,
+                       nullptr);
+        vkDestroyImageView(device, offscreenPostPass.framebuffers[i].depth.view,
+                           nullptr);
+        vkFreeMemory(device, offscreenPostPass.framebuffers[i].depth.memory,
+                     nullptr);
+        vkDestroyFramebuffer(
+            device, offscreenPostPass.framebuffers[i].framebuffer, nullptr);
+        vkDestroyImage(device, offscreenShadowPass.framebuffers[i].depth.image,
+                       nullptr);
+        vkDestroyImageView(
+            device, offscreenShadowPass.framebuffers[i].depth.view, nullptr);
+        vkFreeMemory(device, offscreenShadowPass.framebuffers[i].depth.memory,
+                     nullptr);
+        vkDestroyFramebuffer(
+            device, offscreenShadowPass.framebuffers[i].framebuffer, nullptr);
+      }
     }
 
     // If multisampling is to be used
@@ -635,12 +660,15 @@ class ForwardRenderer : public BaseRenderer {
     // If not setup additional offscreen framebuffer for post processing
     else {
       BaseRenderer::setupFrameBuffer();
+      vkDeviceWaitIdle(device);
+      setupOffscreenPostProcessingPassResources();
+      setupOffscreenShadowPassResources();
       setupOffscreenPostProcessingPass();
       setupOffscreenShadowPass();
     }
   }
 
-  void setupOffscreenPostProcessingPass() {
+  void setupOffscreenPostProcessingRenderPass() {
     std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
     // Color attachment
     attchmentDescriptions[0].format = swapChain.colorFormat;
@@ -724,7 +752,9 @@ class ForwardRenderer : public BaseRenderer {
     samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     VK_CHECK_RESULT(vkCreateSampler(device, &samplerInfo, nullptr,
                                     &offscreenPostPass.sampler));
+  }
 
+  void setupOffscreenPostProcessingPassResources() {
     std::array<VkImageView, 2> offscreenAttachments;
     // Color attachment
     VkImageCreateInfo image = vks::initializers::imageCreateInfo();
@@ -820,7 +850,9 @@ class ForwardRenderer : public BaseRenderer {
           vkCreateImageView(device, &depthStencilView, nullptr,
                             &offscreenPostPass.framebuffers[i].depth.view));
     }
+  }
 
+  void setupOffscreenPostProcessingPass() {
     for (uint32_t i = 0; i < swapChain.imageCount; i++) {
       VkImageView attachments[2];
       attachments[0] = offscreenPostPass.framebuffers[i].color.view;
@@ -849,7 +881,7 @@ class ForwardRenderer : public BaseRenderer {
     }
   }
 
-  void setupOffscreenShadowPass() {
+  void setupOffscreenShadowRenderPass() {
     std::array<VkAttachmentDescription, 1> attchmentDescriptions = {};
     // Depth attachment
     attchmentDescriptions[0].format = VK_FORMAT_D16_UNORM;
@@ -926,7 +958,9 @@ class ForwardRenderer : public BaseRenderer {
     samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     VK_CHECK_RESULT(vkCreateSampler(device, &samplerInfo, nullptr,
                                     &offscreenShadowPass.sampler));
+  }
 
+  void setupOffscreenShadowPassResources() {
     // Depth attachment
     VkImageCreateInfo image = vks::initializers::imageCreateInfo();
     image.imageType = VK_IMAGE_TYPE_2D;
@@ -979,7 +1013,9 @@ class ForwardRenderer : public BaseRenderer {
           vkCreateImageView(device, &depthStencilView, nullptr,
                             &offscreenShadowPass.framebuffers[i].depth.view));
     }
+  }
 
+  void setupOffscreenShadowPass() {
     for (uint32_t i = 0; i < swapChain.imageCount; i++) {
       VkImageView attachments[1];
       attachments[0] = offscreenShadowPass.framebuffers[i].depth.view;
@@ -1055,6 +1091,9 @@ class ForwardRenderer : public BaseRenderer {
     vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(commandBuffers.shadow.size()),
                          commandBuffers.shadow.data());
+    vkFreeCommandBuffers(device, graphicsCmdPool,
+                         static_cast<uint32_t>(commandBuffers.scene.size()),
+                         commandBuffers.scene.data());
   }
 
   // Starts a new imGui frame and sets up windows and ui elements
@@ -1253,7 +1292,7 @@ class ForwardRenderer : public BaseRenderer {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
     inheritanceInfo.renderPass = renderPass;
-    inheritanceInfo.framebuffer = frameBuffers[currentImageIndex];
+    inheritanceInfo.framebuffer = frameBuffers[currentFrameIndex];
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1275,7 +1314,7 @@ class ForwardRenderer : public BaseRenderer {
         vks::initializers::commandBufferInheritanceInfo();
     inheritanceInfo.renderPass = offscreenPostPass.renderPass;
     inheritanceInfo.framebuffer =
-        offscreenPostPass.framebuffers[currentImageIndex].framebuffer;
+        offscreenPostPass.framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1344,7 +1383,7 @@ class ForwardRenderer : public BaseRenderer {
         vks::initializers::commandBufferInheritanceInfo();
     inheritanceInfo.renderPass = offscreenShadowPass.renderPass;
     inheritanceInfo.framebuffer =
-        offscreenShadowPass.framebuffers[currentImageIndex].framebuffer;
+        offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1504,22 +1543,22 @@ class ForwardRenderer : public BaseRenderer {
 
     // Shadows Rendering
     {
-     /* renderPassBeginInfo.renderPass = offscreenShadowPass.renderPass;
-      renderPassBeginInfo.framebuffer =
-          offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
+      /* renderPassBeginInfo.renderPass = offscreenShadowPass.renderPass;
+       renderPassBeginInfo.framebuffer =
+           offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
 
-      vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
-                           VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-      buildShadowCommandBuffer();
+       buildShadowCommandBuffer();
 
-      secondaryCmdBufs.push_back(commandBuffers.shadow[currentFrameIndex]);
+       secondaryCmdBufs.push_back(commandBuffers.shadow[currentFrameIndex]);
 
-      vkCmdExecuteCommands(currentCommandBuffer,
-                           static_cast<uint32_t>(secondaryCmdBufs.size()),
-                           secondaryCmdBufs.data());
-      vkCmdEndRenderPass(currentCommandBuffer);
-      secondaryCmdBufs.clear();*/
+       vkCmdExecuteCommands(currentCommandBuffer,
+                            static_cast<uint32_t>(secondaryCmdBufs.size()),
+                            secondaryCmdBufs.data());
+       vkCmdEndRenderPass(currentCommandBuffer);
+       secondaryCmdBufs.clear();*/
     }
 
     renderPassBeginInfo.renderArea.extent.width = getWidth();
@@ -1574,90 +1613,102 @@ class ForwardRenderer : public BaseRenderer {
     VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
   }
 
+  void windowResized() override {
+    BaseRenderer::windowResized();
+
+    setupDescriptors();
+  }
+
   void setupDescriptors() {
     /*
             Descriptor Pool
     */
-    uint32_t imageSamplerCount = 0;
-    uint32_t materialCount = 0;
-    uint32_t meshCount = 0;
 
-    // Environment samplers (radiance, irradiance, brdf lut)
-    imageSamplerCount += 3;
-    // Screen Texture
-    imageSamplerCount += 1;
-    // Shadows?
-    meshCount += 3;
-    dynamicDescriptorSets.resize(swapChain.imageCount);
-    std::vector<vkglTF::Model*> modellist = {&models.skybox, &models.scene};
-    for (auto& model : modellist) {
-      for (auto& material : model->materials) {
-        imageSamplerCount += 5;
-        materialCount++;
-      }
-      for (auto node : model->linearNodes) {
-        if (node->mesh) {
-          meshCount++;
+    if (descriptorPool == VK_NULL_HANDLE) {
+      uint32_t imageSamplerCount = 0;
+      uint32_t materialCount = 0;
+      uint32_t meshCount = 0;
+
+      // Environment samplers (radiance, irradiance, brdf lut)
+      imageSamplerCount += 3;
+      // Screen Texture
+      imageSamplerCount += 1;
+      // Shadows?
+      meshCount += 3;
+      dynamicDescriptorSets.resize(swapChain.imageCount);
+      std::vector<vkglTF::Model*> modellist = {&models.skybox, &models.scene};
+      for (auto& model : modellist) {
+        for (auto& material : model->materials) {
+          imageSamplerCount += 5;
+          materialCount++;
+        }
+        for (auto node : model->linearNodes) {
+          if (node->mesh) {
+            meshCount++;
+          }
         }
       }
+
+      std::vector<VkDescriptorPoolSize> poolSizes = {
+          {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+           (4 + meshCount) * swapChain.imageCount},
+          {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+           imageSamplerCount * swapChain.imageCount},
+          // One SSBO for the shader material buffer
+          {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+      VkDescriptorPoolCreateInfo descriptorPoolCI{};
+      descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+      descriptorPoolCI.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+      descriptorPoolCI.pPoolSizes = poolSizes.data();
+      descriptorPoolCI.maxSets =
+          (2 + materialCount + meshCount) * swapChain.imageCount;
+      VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCI, nullptr,
+                                             &descriptorPool));
     }
-
-    std::vector<VkDescriptorPoolSize> poolSizes = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-         (4 + meshCount) * swapChain.imageCount},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-         imageSamplerCount * swapChain.imageCount},
-        // One SSBO for the shader material buffer
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
-    VkDescriptorPoolCreateInfo descriptorPoolCI{};
-    descriptorPoolCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    descriptorPoolCI.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    descriptorPoolCI.pPoolSizes = poolSizes.data();
-    descriptorPoolCI.maxSets =
-        (2 + materialCount + meshCount) * swapChain.imageCount;
-    VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCI, nullptr,
-                                           &descriptorPool));
-
     /*
             Descriptor sets
     */
 
     // Scene (matrices and environment maps)
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.scene));
-
+      if (descriptorSetLayouts.scene == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+             nullptr},
+            {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.scene));
+        for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.scene;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(
+              vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                       &dynamicDescriptorSets[i].scene));
+        }
+      }
       for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.scene;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo, &dynamicDescriptorSets[i].scene));
-
         std::array<VkWriteDescriptorSet, 6> writeDescriptorSets{};
 
         writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1720,39 +1771,41 @@ class ForwardRenderer : public BaseRenderer {
 
     // Material (samplers)
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.material));
-
+      if (descriptorSetLayouts.material == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.material));
+        for (auto& material : models.scene.materials) {
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.material;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(vkAllocateDescriptorSets(
+              device, &descriptorSetAllocInfo, &material.descriptorSet));
+        }
+      }
       // Per-Material descriptor sets
       for (auto& material : models.scene.materials) {
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.material;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo, &material.descriptorSet));
-
         std::vector<VkDescriptorImageInfo> imageDescriptors = {
             textures.empty.descriptor, textures.empty.descriptor,
             material.normalTexture ? material.normalTexture->descriptor
@@ -1800,20 +1853,25 @@ class ForwardRenderer : public BaseRenderer {
 
       // Model node (matrices)
       {
-        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-             VK_SHADER_STAGE_VERTEX_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-        descriptorSetLayoutCI.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-        descriptorSetLayoutCI.bindingCount =
-            static_cast<uint32_t>(setLayoutBindings.size());
-        VK_CHECK_RESULT(
-            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                        &descriptorSetLayouts.node));
-
+        if (descriptorSetLayouts.node == VK_NULL_HANDLE) {
+          std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+              {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+               VK_SHADER_STAGE_VERTEX_BIT, nullptr},
+          };
+          VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+          descriptorSetLayoutCI.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+          descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+          descriptorSetLayoutCI.bindingCount =
+              static_cast<uint32_t>(setLayoutBindings.size());
+          VK_CHECK_RESULT(
+              vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI,
+                                          nullptr, &descriptorSetLayouts.node));
+          // Per-Node descriptor set
+          for (auto& node : models.scene.nodes) {
+            allocateNodeDescriptorSet(node);
+          }
+        }
         // Per-Node descriptor set
         for (auto& node : models.scene.nodes) {
           setupNodeDescriptorSet(node);
@@ -1822,29 +1880,32 @@ class ForwardRenderer : public BaseRenderer {
 
       // Material Buffer
       {
-        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-            {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
-             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-        descriptorSetLayoutCI.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-        descriptorSetLayoutCI.bindingCount =
-            static_cast<uint32_t>(setLayoutBindings.size());
-        VK_CHECK_RESULT(
-            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                        &descriptorSetLayouts.materialBuffer));
+        if (descriptorSetLayouts.materialBuffer == VK_NULL_HANDLE) {
+          std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+              {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
+               VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+          };
+          VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+          descriptorSetLayoutCI.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+          descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+          descriptorSetLayoutCI.bindingCount =
+              static_cast<uint32_t>(setLayoutBindings.size());
+          VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
+              device, &descriptorSetLayoutCI, nullptr,
+              &descriptorSetLayouts.materialBuffer));
 
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts =
-            &descriptorSetLayouts.materialBuffer;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo, &staticDescriptorSets.materials));
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts =
+              &descriptorSetLayouts.materialBuffer;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(
+              vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                       &staticDescriptorSets.materials));
+        }
 
         std::array<VkWriteDescriptorSet, 1> writeDescriptorSets{};
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
@@ -1858,34 +1919,39 @@ class ForwardRenderer : public BaseRenderer {
 
     // Skybox (fixed set)
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.skybox));
+      if (descriptorSetLayouts.skybox == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+             nullptr},
+            {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.skybox));
+        for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.skybox;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(
+              vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                       &dynamicDescriptorSets[i].skybox));
+        }
+      }
 
       for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.skybox;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo, &dynamicDescriptorSets[i].skybox));
-
         std::array<VkWriteDescriptorSet, 3> writeDescriptorSets{};
 
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
@@ -1909,39 +1975,42 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.postProcessing));
+      if (descriptorSetLayouts.postProcessing == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.postProcessing));
 
+        for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          VkDescriptorSetAllocateInfo allocInfo =
+              vks::initializers::descriptorSetAllocateInfo(
+                  descriptorPool, &descriptorSetLayouts.postProcessing, 1);
+
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts =
+              &descriptorSetLayouts.postProcessing;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(vkAllocateDescriptorSets(
+              device, &descriptorSetAllocInfo,
+              &dynamicDescriptorSets[i].postProcessing));
+        }
+      }
       // Post Processing (fixed set)
       for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        VkDescriptorSetAllocateInfo allocInfo =
-            vks::initializers::descriptorSetAllocateInfo(
-                descriptorPool, &descriptorSetLayouts.postProcessing, 1);
-
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts =
-            &descriptorSetLayouts.postProcessing;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(
-            vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
-                                     &dynamicDescriptorSets[i].postProcessing));
-
         std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
@@ -1962,29 +2031,34 @@ class ForwardRenderer : public BaseRenderer {
 
     // Shadows
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          vks::initializers::descriptorSetLayoutBinding(
-              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.shadow));
-
+      if (descriptorSetLayouts.shadow == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            vks::initializers::descriptorSetLayoutBinding(
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT,
+                0),
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.shadow));
+        for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
+          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.shadow;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(
+              vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                       &dynamicDescriptorSets[i].shadow));
+        }
+      }
       for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.shadow;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo, &dynamicDescriptorSets[i].shadow));
         std::array<VkWriteDescriptorSet, 1> writeDescriptorSets = {
             // Binding 0 : Vertex shader uniform buffer
             vks::initializers::writeDescriptorSet(
@@ -3651,18 +3725,23 @@ class ForwardRenderer : public BaseRenderer {
            sizeof(PostProcessingParams));
   }
 
+  void allocateNodeDescriptorSet(vkglTF::Node* node) {
+    VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+    descriptorSetAllocInfo.sType =
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptorSetAllocInfo.descriptorPool = descriptorPool;
+    descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.node;
+    descriptorSetAllocInfo.descriptorSetCount = 1;
+    VK_CHECK_RESULT(
+        vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                 &node->mesh->uniformBuffer.descriptorSet));
+    for (auto& child : node->children) {
+      allocateNodeDescriptorSet(child);
+    }
+  }
+
   void setupNodeDescriptorSet(vkglTF::Node* node) {
     if (node->mesh) {
-      VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-      descriptorSetAllocInfo.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-      descriptorSetAllocInfo.descriptorPool = descriptorPool;
-      descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.node;
-      descriptorSetAllocInfo.descriptorSetCount = 1;
-      VK_CHECK_RESULT(
-          vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
-                                   &node->mesh->uniformBuffer.descriptorSet));
-
       VkWriteDescriptorSet writeDescriptorSet{};
       writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
       writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -3712,9 +3791,7 @@ class ForwardRenderer : public BaseRenderer {
     textures.empty.loadFromFile(getAssetPath() + "models/Sponza/white.ktx",
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
-    loadScene(getAssetPath() +
-                  "models/Sponza/Sponza.gltf",
-              glTFLoadingFlags);
+    loadScene(getAssetPath() + "models/Sponza/Sponza.gltf", glTFLoadingFlags);
 
     auto tFileLoad = std::chrono::duration<double, std::milli>(
                          std::chrono::high_resolution_clock::now() - tStart)

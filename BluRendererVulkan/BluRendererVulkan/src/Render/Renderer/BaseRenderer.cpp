@@ -591,9 +591,9 @@ void BaseRenderer::nextFrame() {
   // Convert to clamped timer value
   if (!paused) {
     timer += timerSpeed * frameTimer;
-    //if (timer > 1.0) {
-    //  timer -= 1.0f;
-    //}
+    // if (timer > 1.0) {
+    //   timer -= 1.0f;
+    // }
   }
   float fpsTimer =
       (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp)
@@ -795,6 +795,10 @@ void BaseRenderer::windowResize() {
   // Recreate swap chain
   int destWidth, destHeight;
   glfwGetFramebufferSize(window->getWindow(), &destWidth, &destHeight);
+  while (destWidth == 0 || destHeight == 0) {
+    glfwGetFramebufferSize(window->getWindow(), &destWidth, &destHeight);
+    glfwWaitEvents();
+  }
   width = destWidth;
   height = destHeight;
 
@@ -804,6 +808,12 @@ void BaseRenderer::windowResize() {
   for (uint32_t i = 0; i < frameBuffers.size(); i++) {
     vkDestroyFramebuffer(device, frameBuffers[i], nullptr);
   }
+  vkDestroyImage(device, depthStencil.image, nullptr);
+  vkDestroyImageView(device, depthStencil.view, nullptr);
+  vkFreeMemory(device, depthStencil.memory, nullptr);
+
+  setupDepthStencil();
+
   setupFrameBuffer();
 
   destroyCommandBuffers();
