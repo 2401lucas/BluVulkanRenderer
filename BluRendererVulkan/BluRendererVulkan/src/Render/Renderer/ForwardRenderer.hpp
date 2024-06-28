@@ -7,22 +7,24 @@
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanglTFModel.h"
 #include "BaseRenderer.h"
+#include "PostProcessingPass.h"
 #include "vkImGui.h"
 
 struct UISettings {
   bool visible = true;
   float scale = 1;
+  std::array<float, 50> frameTimes{};
+  float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
+  // Scene Settings-----------------------------
   bool displaySkybox = true;
-  bool displaySponza = true;
-  bool usePcfFiltering = false;
-  int msaaSamples;
+  bool displayScene = true;
+  int activeSceneIndex = 0;
   int aaMode = 0;
   float IBLstrength = 1;
   int debugOutput = 0;
   int debugLight = 0;
   bool animateLight = true;
-  std::array<float, 50> frameTimes{};
-  float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
+  // bool usePcfFiltering = false;
 } uiSettings;
 
 class ForwardRenderer : public BaseRenderer {
@@ -30,8 +32,12 @@ class ForwardRenderer : public BaseRenderer {
   vkImGUI* imGui = nullptr;
 
 #ifndef SceneResources 1
-  std::string defaultScenePath =
-      "glTF-Sample-Models-main/assets/Sponza/glTF/sponza.gltf";
+  const char* scenes[3] = {"Sponza", "Roughness/Metallic", "Emissive Test"};
+  const char* sceneFilePaths[3] = {
+      "models/Sponza/Sponza.glb",
+      "models/MetalRoughSpheres/MetalRoughSpheres.glb",
+      "models/EmissiveStrengthTest/EmissiveStrengthTest.glb"};
+
   enum PBRWorkflows {
     PBR_WORKFLOW_METALLIC_ROUGHNESS = 0,
     PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1
@@ -81,7 +87,6 @@ class ForwardRenderer : public BaseRenderer {
   struct DynamicDescriptorSets {
     VkDescriptorSet scene{VK_NULL_HANDLE};
     VkDescriptorSet skybox{VK_NULL_HANDLE};
-    VkDescriptorSet postProcessing{VK_NULL_HANDLE};
     VkDescriptorSet shadow{VK_NULL_HANDLE};
   };
 
@@ -127,12 +132,14 @@ class ForwardRenderer : public BaseRenderer {
     VkPipelineLayout skybox{VK_NULL_HANDLE};
     VkPipelineLayout postProcessing{VK_NULL_HANDLE};
     VkPipelineLayout shadow{VK_NULL_HANDLE};
+    VkPipelineLayout computeParticles{VK_NULL_HANDLE};
   } pipelineLayouts;
 
   struct {
     VkPipeline skybox{VK_NULL_HANDLE};
     VkPipeline postProcessing{VK_NULL_HANDLE};
     VkPipeline shadow{VK_NULL_HANDLE};
+    VkPipeline computeParticles{VK_NULL_HANDLE};
   } pipelines;
 
   std::unordered_map<std::string, VkPipeline> genPipelines;
@@ -148,7 +155,7 @@ class ForwardRenderer : public BaseRenderer {
     VkDescriptorSetLayout shadow{VK_NULL_HANDLE};
   } descriptorSetLayouts;
 
-  OffscreenPass offscreenPostPass;
+  std::vector<vks::PostProcessingPass*> postPasses;
   OffscreenPass offscreenShadowPass;
 
   struct MultiSampleTarget {
@@ -169,6 +176,7 @@ class ForwardRenderer : public BaseRenderer {
     std::vector<VkCommandBuffer> postProcessing;
     std::vector<VkCommandBuffer> scene;
     std::vector<VkCommandBuffer> shadow;
+    std::vector<VkCommandBuffer> compute;
   } commandBuffers;
 
   VkExtent2D attachmentSize{};
@@ -188,11 +196,14 @@ class ForwardRenderer : public BaseRenderer {
   const float depthBiasSlope = 1.75f;
 
   const char* antiAliasingSettings[3] = {"Off", "FXAA", "TAA"};
+  const char* aoSettings[3] = {"Off", "SSAO", "HBAO"};
   // NOTE FOR THE BUFFERS, NOT ALL BUFFERS NEED TO BE UPDATE PER FRAME, BUT ALL
   // THE BUFFERS NEED INITIAL UPDATE, FOR EVERY FRAME: THIS SHOULD BE CHANGED TO
   // 1 SHARED BUFFER AS UPDATES ARE RARE AND SHARED BETWEEN FRAMES
   struct PostProcessingParams {
     float aaType = 0;
+    float aoType = 0;
+    bool enableBloom = true;
   } postProcessingParams;
 
   struct ShadowParams {
@@ -290,21 +301,11 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroyImageView(device, multisampleTarget.depth.view, nullptr);
     vkFreeMemory(device, multisampleTarget.depth.memory, nullptr);
 
+    for (auto& pass : postPasses) {
+      delete pass;
+    }
+
     for (uint32_t i = 0; i < swapChain.imageCount; i++) {
-      vkDestroyImage(device, offscreenPostPass.framebuffers[i].color.image,
-                     nullptr);
-      vkDestroyImageView(device, offscreenPostPass.framebuffers[i].color.view,
-                         nullptr);
-      vkFreeMemory(device, offscreenPostPass.framebuffers[i].color.memory,
-                   nullptr);
-      vkDestroyImage(device, offscreenPostPass.framebuffers[i].depth.image,
-                     nullptr);
-      vkDestroyImageView(device, offscreenPostPass.framebuffers[i].depth.view,
-                         nullptr);
-      vkFreeMemory(device, offscreenPostPass.framebuffers[i].depth.memory,
-                   nullptr);
-      vkDestroyFramebuffer(
-          device, offscreenPostPass.framebuffers[i].framebuffer, nullptr);
       vkDestroyImage(device, offscreenShadowPass.framebuffers[i].depth.image,
                      nullptr);
       vkDestroyImageView(device, offscreenShadowPass.framebuffers[i].depth.view,
@@ -319,9 +320,6 @@ class ForwardRenderer : public BaseRenderer {
       dynamicUniformBuffers[i].params.destroy();
       dynamicUniformBuffers[i].shadow.destroy();
     }
-
-    vkDestroyRenderPass(device, offscreenPostPass.renderPass, nullptr);
-    vkDestroySampler(device, offscreenPostPass.sampler, nullptr);
 
     vkDestroyRenderPass(device, offscreenShadowPass.renderPass, nullptr);
     vkDestroySampler(device, offscreenShadowPass.sampler, nullptr);
@@ -584,7 +582,6 @@ class ForwardRenderer : public BaseRenderer {
     } else {
       BaseRenderer::setupRenderPass();
       setupOffscreenShadowRenderPass();
-      setupOffscreenPostProcessingRenderPass();
     }
   }
 
@@ -594,20 +591,6 @@ class ForwardRenderer : public BaseRenderer {
         attachmentSize.height != getHeight()) {
       attachmentSize = {getWidth(), getHeight()};
       for (size_t i = 0; i < offscreenShadowPass.framebuffers.size(); i++) {
-        vkDestroyImage(device, offscreenPostPass.framebuffers[i].color.image,
-                       nullptr);
-        vkDestroyImageView(device, offscreenPostPass.framebuffers[i].color.view,
-                           nullptr);
-        vkFreeMemory(device, offscreenPostPass.framebuffers[i].color.memory,
-                     nullptr);
-        vkDestroyImage(device, offscreenPostPass.framebuffers[i].depth.image,
-                       nullptr);
-        vkDestroyImageView(device, offscreenPostPass.framebuffers[i].depth.view,
-                           nullptr);
-        vkFreeMemory(device, offscreenPostPass.framebuffers[i].depth.memory,
-                     nullptr);
-        vkDestroyFramebuffer(
-            device, offscreenPostPass.framebuffers[i].framebuffer, nullptr);
         vkDestroyImage(device, offscreenShadowPass.framebuffers[i].depth.image,
                        nullptr);
         vkDestroyImageView(
@@ -651,223 +634,8 @@ class ForwardRenderer : public BaseRenderer {
     else {
       BaseRenderer::setupFrameBuffer();
       vkDeviceWaitIdle(device);
-      setupOffscreenPostProcessingPassResources();
       setupOffscreenShadowPassResources();
-      setupOffscreenPostProcessingPass();
       setupOffscreenShadowPass();
-    }
-  }
-
-  void setupOffscreenPostProcessingRenderPass() {
-    std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
-    // Color attachment
-    attchmentDescriptions[0].format = swapChain.colorFormat;
-    attchmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
-    attchmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attchmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attchmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attchmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attchmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attchmentDescriptions[0].finalLayout =
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    // Depth attachment
-    attchmentDescriptions[1].format = depthFormat;
-    attchmentDescriptions[1].samples = VK_SAMPLE_COUNT_1_BIT;
-    attchmentDescriptions[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attchmentDescriptions[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attchmentDescriptions[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attchmentDescriptions[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attchmentDescriptions[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attchmentDescriptions[1].finalLayout =
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference colorReference = {
-        0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    VkAttachmentReference depthReference = {
-        1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-
-    VkSubpassDescription subpassDescription = {};
-    subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpassDescription.colorAttachmentCount = 1;
-    subpassDescription.pColorAttachments = &colorReference;
-    subpassDescription.pDepthStencilAttachment = &depthReference;
-
-    // Use subpass dependencies for layout transitions
-    std::array<VkSubpassDependency, 2> dependencies;
-
-    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    dependencies[0].dstStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-    dependencies[1].srcSubpass = 0;
-    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-    dependencies[1].srcStageMask =
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-    // Create the actual renderpass
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount =
-        static_cast<uint32_t>(attchmentDescriptions.size());
-    renderPassInfo.pAttachments = attchmentDescriptions.data();
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpassDescription;
-    renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
-    renderPassInfo.pDependencies = dependencies.data();
-
-    VK_CHECK_RESULT(vkCreateRenderPass(device, &renderPassInfo, nullptr,
-                                       &offscreenPostPass.renderPass));
-
-    // Create sampler to sample from the color attachments
-    VkSamplerCreateInfo samplerInfo = vks::initializers::samplerCreateInfo();
-    samplerInfo.magFilter = VK_FILTER_LINEAR;
-    samplerInfo.minFilter = VK_FILTER_LINEAR;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.addressModeV = samplerInfo.addressModeU;
-    samplerInfo.addressModeW = samplerInfo.addressModeU;
-    samplerInfo.mipLodBias = 0.0f;
-    samplerInfo.maxAnisotropy = 1.0f;
-    samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = 1.0f;
-    samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-    VK_CHECK_RESULT(vkCreateSampler(device, &samplerInfo, nullptr,
-                                    &offscreenPostPass.sampler));
-  }
-
-  void setupOffscreenPostProcessingPassResources() {
-    std::array<VkImageView, 2> offscreenAttachments;
-    // Color attachment
-    VkImageCreateInfo image = vks::initializers::imageCreateInfo();
-    image.imageType = VK_IMAGE_TYPE_2D;
-    image.format = swapChain.colorFormat;
-    image.extent.width = getWidth();
-    image.extent.height = getHeight();
-    image.extent.depth = 1;
-    image.mipLevels = 1;
-    image.arrayLayers = 1;
-    image.samples = VK_SAMPLE_COUNT_1_BIT;
-    image.tiling = VK_IMAGE_TILING_OPTIMAL;
-    // We will sample directly from the color attachment
-    image.usage =
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-
-    VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
-    VkMemoryRequirements memReqs;
-
-    VkImageViewCreateInfo colorImageView =
-        vks::initializers::imageViewCreateInfo();
-    colorImageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    colorImageView.format = swapChain.colorFormat;
-    colorImageView.flags = 0;
-    colorImageView.subresourceRange = {};
-    colorImageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    colorImageView.subresourceRange.baseMipLevel = 0;
-    colorImageView.subresourceRange.levelCount = 1;
-    colorImageView.subresourceRange.baseArrayLayer = 0;
-    colorImageView.subresourceRange.layerCount = 1;
-
-    offscreenPostPass.framebuffers.resize(swapChain.imageCount);
-    for (uint32_t i = 0; i < swapChain.imageCount; i++) {
-      VK_CHECK_RESULT(
-          vkCreateImage(device, &image, nullptr,
-                        &offscreenPostPass.framebuffers[i].color.image));
-      vkGetImageMemoryRequirements(
-          device, offscreenPostPass.framebuffers[i].color.image, &memReqs);
-      memAlloc.allocationSize = memReqs.size;
-      memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
-          memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      VK_CHECK_RESULT(
-          vkAllocateMemory(device, &memAlloc, nullptr,
-                           &offscreenPostPass.framebuffers[i].color.memory));
-      VK_CHECK_RESULT(vkBindImageMemory(
-          device, offscreenPostPass.framebuffers[i].color.image,
-          offscreenPostPass.framebuffers[i].color.memory, 0));
-
-      colorImageView.image = offscreenPostPass.framebuffers[i].color.image;
-      VK_CHECK_RESULT(
-          vkCreateImageView(device, &colorImageView, nullptr,
-                            &offscreenPostPass.framebuffers[i].color.view));
-    }
-
-    // Depth stencil attachment
-    image.format = depthFormat;
-    image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-    VkImageViewCreateInfo depthStencilView =
-        vks::initializers::imageViewCreateInfo();
-    depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    depthStencilView.format = depthFormat;
-    depthStencilView.flags = 0;
-    depthStencilView.subresourceRange = {};
-    depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    if (vks::tools::formatHasStencil(depthFormat)) {
-      depthStencilView.subresourceRange.aspectMask |=
-          VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-    depthStencilView.subresourceRange.baseMipLevel = 0;
-    depthStencilView.subresourceRange.levelCount = 1;
-    depthStencilView.subresourceRange.baseArrayLayer = 0;
-    depthStencilView.subresourceRange.layerCount = 1;
-
-    for (uint32_t i = 0; i < swapChain.imageCount; i++) {
-      VK_CHECK_RESULT(
-          vkCreateImage(device, &image, nullptr,
-                        &offscreenPostPass.framebuffers[i].depth.image));
-      vkGetImageMemoryRequirements(
-          device, offscreenPostPass.framebuffers[i].depth.image, &memReqs);
-      memAlloc.allocationSize = memReqs.size;
-      memAlloc.memoryTypeIndex = vulkanDevice->getMemoryType(
-          memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-      VK_CHECK_RESULT(
-          vkAllocateMemory(device, &memAlloc, nullptr,
-                           &offscreenPostPass.framebuffers[i].depth.memory));
-      VK_CHECK_RESULT(vkBindImageMemory(
-          device, offscreenPostPass.framebuffers[i].depth.image,
-          offscreenPostPass.framebuffers[i].depth.memory, 0));
-
-      depthStencilView.image = offscreenPostPass.framebuffers[i].depth.image;
-      VK_CHECK_RESULT(
-          vkCreateImageView(device, &depthStencilView, nullptr,
-                            &offscreenPostPass.framebuffers[i].depth.view));
-    }
-  }
-
-  void setupOffscreenPostProcessingPass() {
-    for (uint32_t i = 0; i < swapChain.imageCount; i++) {
-      VkImageView attachments[2];
-      attachments[0] = offscreenPostPass.framebuffers[i].color.view;
-      attachments[1] = offscreenPostPass.framebuffers[i].depth.view;
-
-      VkFramebufferCreateInfo fbufCreateInfo =
-          vks::initializers::framebufferCreateInfo();
-      fbufCreateInfo.renderPass = offscreenPostPass.renderPass;
-      fbufCreateInfo.attachmentCount = 2;
-      fbufCreateInfo.pAttachments = attachments;
-      fbufCreateInfo.width = getWidth();
-      fbufCreateInfo.height = getHeight();
-      fbufCreateInfo.layers = 1;
-
-      VK_CHECK_RESULT(
-          vkCreateFramebuffer(device, &fbufCreateInfo, nullptr,
-                              &offscreenPostPass.framebuffers[i].framebuffer));
-
-      // Fill a descriptor for later use in a descriptor set
-      offscreenPostPass.framebuffers[i].descriptor.imageLayout =
-          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      offscreenPostPass.framebuffers[i].descriptor.imageView =
-          offscreenPostPass.framebuffers[i].color.view;
-      offscreenPostPass.framebuffers[i].descriptor.sampler =
-          offscreenPostPass.sampler;
     }
   }
 
@@ -1131,7 +899,21 @@ class ForwardRenderer : public BaseRenderer {
         ImGuiCond_FirstUseEver);
     ImGui::Begin("Settings");
     if (ImGui::CollapsingHeader("Scene Settings")) {
-      ImGui::Checkbox("Display Level", &uiSettings.displaySponza);
+      if (ImGui::BeginCombo("Active Scene",
+                            scenes[uiSettings.activeSceneIndex])) {
+        const char* currentItem = scenes[uiSettings.activeSceneIndex];
+        for (int n = 0; n < sizeof(scenes) / sizeof(scenes[0]); n++) {
+          bool is_selected = (currentItem == scenes[n]);
+          if (ImGui::Selectable(scenes[n], is_selected)) {
+            uiSettings.activeSceneIndex = 0;
+            // loadScene();
+          }
+          if (is_selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+      }
+
+      ImGui::Checkbox("Display Level", &uiSettings.displayScene);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
     }
 
@@ -1251,9 +1033,10 @@ class ForwardRenderer : public BaseRenderer {
     vkCmdBindDescriptorSets(
         currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelineLayouts.postProcessing, 0, 1,
-        &dynamicDescriptorSets[currentFrameIndex].postProcessing, 0, NULL);
+        &postPasses[postPasses.size() - 1]->descriptorSets[currentFrameIndex],
+        0, NULL);
     vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      pipelines.postProcessing);
+                      postPasses[postPasses.size() - 1]->pipeline);
 
     // Draw triangle
     vkCmdDraw(currentCommandBuffer, 3, 1, 0, 0);
@@ -1285,9 +1068,9 @@ class ForwardRenderer : public BaseRenderer {
   void buildSceneCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = offscreenPostPass.renderPass;
+    inheritanceInfo.renderPass = postPasses[0]->renderPass;
     inheritanceInfo.framebuffer =
-        offscreenPostPass.framebuffers[currentFrameIndex].framebuffer;
+        postPasses[0]->framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1307,7 +1090,7 @@ class ForwardRenderer : public BaseRenderer {
 
     VkDeviceSize offsets[1] = {0};
 
-    if (uiSettings.displaySponza) {
+    if (uiSettings.displayScene) {
       vkglTF::Model& model = models.scene;
 
       vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
@@ -1541,9 +1324,9 @@ class ForwardRenderer : public BaseRenderer {
 
     // Scene Rendering
     {
-      renderPassBeginInfo.renderPass = offscreenPostPass.renderPass;
+      renderPassBeginInfo.renderPass = postPasses[0]->renderPass;
       renderPassBeginInfo.framebuffer =
-          offscreenPostPass.framebuffers[currentFrameIndex].framebuffer;
+          postPasses[0]->framebuffers[currentFrameIndex].framebuffer;
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
@@ -1562,6 +1345,65 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing & UI Rendering
     {
+      // O -> O+1 if O+1 < postPasses.Size() --- Foreach Post Processing Pass,
+      // render into the next
+      // Then, Render final image into Swapchain image
+      for (size_t i = 0; i < postPasses.size() - 1; i++) {
+        renderPassBeginInfo.renderPass = postPasses[i + 1]->renderPass;
+        renderPassBeginInfo.framebuffer =
+            postPasses[i + 1]->framebuffers[currentFrameIndex].framebuffer;
+
+        vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+        VkCommandBufferInheritanceInfo inheritanceInfo =
+            vks::initializers::commandBufferInheritanceInfo();
+        inheritanceInfo.renderPass = postPasses[i + 1]->renderPass;
+        inheritanceInfo.framebuffer =
+            postPasses[i + 1]->framebuffers[currentFrameIndex].framebuffer;
+
+        VkCommandBufferBeginInfo cmdBufInfo =
+            vks::initializers::commandBufferBeginInfo();
+        cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+        VkCommandBuffer curBuf =
+            commandBuffers.postProcessing[currentFrameIndex];
+        vkResetCommandBuffer(curBuf, 0);
+        VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
+
+        VkViewport viewport = vks::initializers::viewport(
+            (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+        vkCmdSetViewport(curBuf, 0, 1, &viewport);
+        VkRect2D scissor =
+            vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+        vkCmdSetScissor(curBuf, 0, 1, &scissor);
+
+        VkDeviceSize offsets[1] = {0};
+
+        vkCmdBindDescriptorSets(
+            curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayouts.postProcessing, 0, 1,
+            &postPasses[i]->descriptorSets[currentFrameIndex], 0, NULL);
+        vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          postPasses[i + 1]->pipeline);
+
+        // Draw triangle
+        vkCmdDraw(curBuf, 3, 1, 0, 0);
+
+        VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
+
+        secondaryCmdBufs.push_back(
+            commandBuffers.postProcessing[currentFrameIndex]);
+
+        // Execute render commands from the secondary command buffer
+        vkCmdExecuteCommands(currentCommandBuffer,
+                             static_cast<uint32_t>(secondaryCmdBufs.size()),
+                             secondaryCmdBufs.data());
+
+        vkCmdEndRenderPass(currentCommandBuffer);
+      }
+
       renderPassBeginInfo.renderPass = renderPass;
       renderPassBeginInfo.framebuffer = frameBuffers[currentFrameIndex];
 
@@ -1592,7 +1434,7 @@ class ForwardRenderer : public BaseRenderer {
     setupDescriptors();
   }
 
-  void setupDescriptors() {
+  void setupDescriptors(bool updatedMaterials = false) {
     /*
             Descriptor Pool
     */
@@ -1744,7 +1586,12 @@ class ForwardRenderer : public BaseRenderer {
 
     // Material (samplers)
     {
-      if (descriptorSetLayouts.material == VK_NULL_HANDLE) {
+      if (descriptorSetLayouts.material == VK_NULL_HANDLE || updatedMaterials) {
+        if (updatedMaterials) {
+          vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.material,
+                                       nullptr);
+        }
+
         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
             {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
              VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
@@ -1826,7 +1673,11 @@ class ForwardRenderer : public BaseRenderer {
 
       // Model node (matrices)
       {
-        if (descriptorSetLayouts.node == VK_NULL_HANDLE) {
+        if (descriptorSetLayouts.node == VK_NULL_HANDLE || updatedMaterials) {
+          if (updatedMaterials) {
+            vkDestroyDescriptorSetLayout(device, descriptorSetLayouts.node,
+                                         nullptr);
+          }
           std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
               {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
                VK_SHADER_STAGE_VERTEX_BIT, nullptr},
@@ -1853,7 +1704,12 @@ class ForwardRenderer : public BaseRenderer {
 
       // Material Buffer
       {
-        if (descriptorSetLayouts.materialBuffer == VK_NULL_HANDLE) {
+        if (descriptorSetLayouts.materialBuffer == VK_NULL_HANDLE ||
+            updatedMaterials) {
+          if (updatedMaterials) {
+            vkDestroyDescriptorSetLayout(
+                device, descriptorSetLayouts.materialBuffer, nullptr);
+          }
           std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
               {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
                VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
@@ -1948,7 +1804,7 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing
     {
-      if (descriptorSetLayouts.postProcessing == VK_NULL_HANDLE) {
+      if (postPasses[0]->descriptorSets.size() == 0) {
         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
             {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
              VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
@@ -1965,40 +1821,44 @@ class ForwardRenderer : public BaseRenderer {
             vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
                                         &descriptorSetLayouts.postProcessing));
 
-        for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
-          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-          VkDescriptorSetAllocateInfo allocInfo =
-              vks::initializers::descriptorSetAllocateInfo(
-                  descriptorPool, &descriptorSetLayouts.postProcessing, 1);
+        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+        VkDescriptorSetAllocateInfo allocInfo =
+            vks::initializers::descriptorSetAllocateInfo(
+                descriptorPool, &descriptorSetLayouts.postProcessing, 1);
 
-          descriptorSetAllocInfo.sType =
-              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-          descriptorSetAllocInfo.descriptorPool = descriptorPool;
-          descriptorSetAllocInfo.pSetLayouts =
-              &descriptorSetLayouts.postProcessing;
-          descriptorSetAllocInfo.descriptorSetCount = 1;
-          VK_CHECK_RESULT(vkAllocateDescriptorSets(
-              device, &descriptorSetAllocInfo,
-              &dynamicDescriptorSets[i].postProcessing));
+        for (auto& pass : postPasses) {
+          pass->descriptorSets.resize(dynamicDescriptorSets.size());
+          for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+            descriptorSetAllocInfo.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptorSetAllocInfo.descriptorPool = descriptorPool;
+            descriptorSetAllocInfo.pSetLayouts =
+                &descriptorSetLayouts.postProcessing;
+            descriptorSetAllocInfo.descriptorSetCount = 1;
+            VK_CHECK_RESULT(vkAllocateDescriptorSets(
+                device, &descriptorSetAllocInfo, &pass->descriptorSets[i]));
+          }
         }
       }
+
       // Post Processing (fixed set)
-      for (auto i = 0; i < dynamicUniformBuffers.size(); i++) {
-        std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+      for (auto& pass : postPasses) {
+        for (size_t i = 0; i < swapChain.imageCount; i++) {
+          std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
-        writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
-            dynamicDescriptorSets[i].postProcessing,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
-            &staticUniformBuffers.postProcessing.descriptor);
+          writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
+              pass->descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+              &staticUniformBuffers.postProcessing.descriptor);
 
-        writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
-            dynamicDescriptorSets[i].postProcessing,
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-            &offscreenPostPass.framebuffers[i].descriptor);
+          writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
+              pass->descriptorSets[i],
+              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+              &pass->framebuffers[i].descriptor);
 
-        vkUpdateDescriptorSets(
-            device, static_cast<uint32_t>(writeDescriptorSets.size()),
-            writeDescriptorSets.data(), 0, nullptr);
+          vkUpdateDescriptorSets(
+              device, static_cast<uint32_t>(writeDescriptorSets.size()),
+              writeDescriptorSets.data(), 0, nullptr);
+        }
       }
     }
 
@@ -2129,7 +1989,7 @@ class ForwardRenderer : public BaseRenderer {
     VkGraphicsPipelineCreateInfo pipelineCI{};
     pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCI.layout = pipelineLayouts.scene;
-    pipelineCI.renderPass = offscreenPostPass.renderPass;
+    pipelineCI.renderPass = postPasses[0]->renderPass;
     pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
     pipelineCI.pVertexInputState = &vertexInputStateCI;
     pipelineCI.pRasterizationState = &rasterizationStateCI;
@@ -2209,7 +2069,7 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr, &pipelineLayouts.skybox));
     VkGraphicsPipelineCreateInfo pipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.skybox, offscreenPostPass.renderPass);
+            pipelineLayouts.skybox, postPasses[0]->renderPass);
 
     pipelineCI.pInputAssemblyState = &inputAssemblyState;
     pipelineCI.pRasterizationState = &rasterizationState;
@@ -2241,10 +2101,6 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr,
                                            &pipelineLayouts.postProcessing));
 
-    VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
-        vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.postProcessing, renderPass);
-
     VkPipelineVertexInputStateCreateInfo emptyInputState{};
     emptyInputState.sType =
         VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -2252,6 +2108,38 @@ class ForwardRenderer : public BaseRenderer {
     emptyInputState.pVertexAttributeDescriptions = nullptr;
     emptyInputState.vertexBindingDescriptionCount = 0;
     emptyInputState.pVertexBindingDescriptions = nullptr;
+
+    rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
+
+    for (uint32_t i = 0; i < postPasses.size() - 1; i++) {
+      VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
+          vks::initializers::graphicsPipelineCreateInfo(
+              pipelineLayouts.postProcessing, postPasses[i + 1]->renderPass);
+      shaderStages[0] = loadShader(postPasses[i]->vertexShaderPath,
+                                   VK_SHADER_STAGE_VERTEX_BIT);
+      shaderStages[1] = loadShader(postPasses[i]->fragmentShaderPath,
+                                   VK_SHADER_STAGE_FRAGMENT_BIT);
+
+      postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
+      postProcessingpipelineCI.pRasterizationState = &rasterizationState;
+      postProcessingpipelineCI.pColorBlendState = &colorBlendState;
+      postProcessingpipelineCI.pMultisampleState = &multisampleState;
+      postProcessingpipelineCI.pViewportState = &viewportState;
+      postProcessingpipelineCI.pDepthStencilState = &depthStencilState;
+      postProcessingpipelineCI.pDynamicState = &dynamicState;
+      postProcessingpipelineCI.pVertexInputState = &emptyInputState;
+      postProcessingpipelineCI.stageCount =
+          static_cast<uint32_t>(shaderStages.size());
+      postProcessingpipelineCI.pStages = shaderStages.data();
+
+      VK_CHECK_RESULT(vkCreateGraphicsPipelines(
+          device, nullptr, 1, &postProcessingpipelineCI, nullptr,
+          &postPasses[i]->pipeline));
+    }
+
+    VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
+        vks::initializers::graphicsPipelineCreateInfo(
+            pipelineLayouts.postProcessing, renderPass);
 
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
     postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
@@ -2266,14 +2154,16 @@ class ForwardRenderer : public BaseRenderer {
     postProcessingpipelineCI.pStages = shaderStages.data();
     postProcessingpipelineCI.pVertexInputState = &emptyInputState;
 
-    shaderStages[0] = loadShader("shaders/postProcessing.vert.spv",
-                                 VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] = loadShader("shaders/postProcessing.frag.spv",
-                                 VK_SHADER_STAGE_FRAGMENT_BIT);
+    shaderStages[0] =
+        loadShader(postPasses[postPasses.size() - 1]->vertexShaderPath,
+                   VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] =
+        loadShader(postPasses[postPasses.size() - 1]->fragmentShaderPath,
+                   VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    VK_CHECK_RESULT(
-        vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
-                                  nullptr, &pipelines.postProcessing));
+    VK_CHECK_RESULT(vkCreateGraphicsPipelines(
+        device, nullptr, 1, &postProcessingpipelineCI, nullptr,
+        &postPasses[postPasses.size() - 1]->pipeline));
 
     // Shadow
     rasterizationState.cullMode = VK_CULL_MODE_NONE;
@@ -3525,10 +3415,8 @@ class ForwardRenderer : public BaseRenderer {
     updatePostProcessingParams();
   }
 
-  // We place all materials for the current scene into a shader storage buffer
-  // stored on the GPU This allows us to use arbitrary large material
-  // defintions The fragment shader then get's the index into this material
-  // array from a push constant set per primitive
+  // All materials for the current scene are stored in an SSBO allowing indexing
+  // from a push constant set per primitive
   void createMaterialBuffer() {
     std::vector<ShaderMaterial> shaderMaterials{};
     for (auto& material : models.scene.materials) {
@@ -3729,13 +3617,19 @@ class ForwardRenderer : public BaseRenderer {
     }
   }
 
-  void loadScene(std::string filename, uint32_t glTFLoadingFlags = 0) {
+  void loadScene(bool firstTime = false) {
+    vkDeviceWaitIdle(device);
     models.scene.destroy();
     animationIndex = 0;
     animationTimer = 0.0f;
 
-    models.scene.loadFromFile(filename, vulkanDevice, graphicsQueue);
+    models.scene.loadFromFile(
+        getAssetPath() + sceneFilePaths[uiSettings.activeSceneIndex],
+        vulkanDevice, graphicsQueue);
     createMaterialBuffer();
+    if (!firstTime) {
+      setupDescriptors(true);
+    }
     // Check and list unsupported extensions
     for (auto& ext : models.scene.extensions) {
       if (std::find(supportedExtensions.begin(), supportedExtensions.end(),
@@ -3763,7 +3657,7 @@ class ForwardRenderer : public BaseRenderer {
     textures.empty.loadFromFile(getAssetPath() + "models/Sponza/white.ktx",
                                 VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice,
                                 graphicsQueue);
-    loadScene(getAssetPath() + "models/Sponza/Sponza.gltf", glTFLoadingFlags);
+    loadScene(true);
 
     auto tFileLoad = std::chrono::duration<double, std::milli>(
                          std::chrono::high_resolution_clock::now() - tStart)
@@ -3780,9 +3674,25 @@ class ForwardRenderer : public BaseRenderer {
     imGui->initResources(this, graphicsQueue, getShaderBasePath());
   }
 
+  void preparePostProcessingPasses() {
+   /* postPasses[0] = new vks::PostProcessingPass(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
+        "shaders/ambientOcclusion.frag.spv");*/  // AO
+   /* postPasses[1] = new vks::PostProcessingPass(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
+        "shaders/antiAliasing.frag.spv");*/  // AA
+    postPasses.push_back(new vks::PostProcessingPass(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
+        "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR CORRECTIONS
+  }
+
   void prepare() override {
     auto tStart = std::chrono::high_resolution_clock::now();
     BaseRenderer::prepare();
+    preparePostProcessingPasses();
     loadAssets();
     generateBRDFLUT();
     generateIrradianceCube();

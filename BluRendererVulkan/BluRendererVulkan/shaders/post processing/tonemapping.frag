@@ -1,3 +1,6 @@
+#version 450
+
+#include "../includes/PostProcessing/postProcessingFragGeneric.glsl"
 #ifndef TONEMAP
     #define TONEMAP 1
 #endif
@@ -20,20 +23,11 @@ vec3 Uncharted2Tonemap(vec3 x)
 	return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
 }
 
-vec3 ApplyTonemap(vec3 rbg) {
+void main() {
 	// Tone mapping
-	vec3 outColor = Uncharted2Tonemap(rbg * TONEMAP_EXPOSURE);
-	outColor = outColor * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
+	vec3 color = Uncharted2Tonemap(texture(screenTexture, fragTexCord).rgb * TONEMAP_EXPOSURE);
+	color = color * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
 	// Gamma correction
-	outColor = pow(outColor, vec3(1.0f / TONEMAP_GAMMA));
-	return outColor;
-}
-
-vec4 ApplyTonemap(vec4 color) {
-	// Tone mapping
-	vec3 outColor = Uncharted2Tonemap(color.rbg * TONEMAP_EXPOSURE);
-	outColor = outColor * (1.0f / Uncharted2Tonemap(vec3(11.2f)));
-	// Gamma correction
-	outColor = pow(color.rbg, vec3(1.0f / TONEMAP_GAMMA));
-	return vec4(outColor, color.a);
+	color = pow(color, vec3(1.0f / TONEMAP_GAMMA));
+	outColor = vec4(color, 0.0);
 }
