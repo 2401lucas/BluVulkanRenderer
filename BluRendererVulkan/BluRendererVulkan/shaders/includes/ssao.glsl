@@ -1,5 +1,6 @@
 #ifndef SSAO
-#define SSAO 1
+    #define SSAO 1
+#endif
 
 vec3 ApplySSAO(vec3 col) {
     vec3 origin = vViewRay * texture(uTexLinearDepth, vTexcoord).r;
@@ -35,5 +36,3 @@ vec3 ApplySSAO(vec3 col) {
 
 
 
-
-#endif

@@ -1430,6 +1430,10 @@ class ForwardRenderer : public BaseRenderer {
   void windowResized() override {
     BaseRenderer::windowResized();
 
+    for (auto& pass : postPasses) {
+      pass->onResize(swapChain.imageCount, getWidth(), getHeight());
+    }
+    
     setupDescriptors();
   }
 
