@@ -17,6 +17,7 @@ struct UISettings {
   float frameTimeMin = 9999.0f, frameTimeMax = 0.0f;
   // Scene Settings-----------------------------
   bool displaySkybox = true;
+  glm::vec4 skyboxColor = glm::vec4(1.0f);
   bool displayScene = true;
   int activeSceneIndex = 0;
   int aaMode = 0;
@@ -915,6 +916,7 @@ class ForwardRenderer : public BaseRenderer {
 
       ImGui::Checkbox("Display Level", &uiSettings.displayScene);
       ImGui::Checkbox("Display Skybox", &uiSettings.displaySkybox);
+      ImGui::ColorPicker3("Skybox Clear Color", &uiSettings.skyboxColor.x);
     }
 
     if (ImGui::CollapsingHeader("Light Settings")) {
@@ -1275,7 +1277,9 @@ class ForwardRenderer : public BaseRenderer {
         vks::initializers::commandBufferBeginInfo();
 
     VkClearValue clearValues[2];
-    clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
+    clearValues[0].color = {{uiSettings.skyboxColor.x, uiSettings.skyboxColor.y,
+                             uiSettings.skyboxColor.z,
+                             uiSettings.skyboxColor.w}};
     clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassBeginInfo =
@@ -1367,8 +1371,7 @@ class ForwardRenderer : public BaseRenderer {
         cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
-        VkCommandBuffer curBuf =
-            postPasses[i]->cmdBufs[currentFrameIndex];
+        VkCommandBuffer curBuf = postPasses[i]->cmdBufs[currentFrameIndex];
         vkResetCommandBuffer(curBuf, 0);
         VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
 
@@ -1433,7 +1436,7 @@ class ForwardRenderer : public BaseRenderer {
     for (auto& pass : postPasses) {
       pass->onResize(swapChain.imageCount, getWidth(), getHeight());
     }
-    
+
     setupDescriptors();
   }
 
@@ -3548,7 +3551,7 @@ class ForwardRenderer : public BaseRenderer {
            &shadowParams, sizeof(shadowParams));
 
     // Skybox
-    glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f, 5.0f, 5.0f));
+    glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 10.0f));
     uboMatrices.model = glm::mat4(glm::mat3(camera.matrices.view)) * scale;
     memcpy(dynamicUniformBuffers[currentFrameIndex].skybox.mapped, &uboMatrices,
            sizeof(uboMatrices));
@@ -3691,8 +3694,7 @@ class ForwardRenderer : public BaseRenderer {
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
         "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR CORRECTIONS
 
-
-        //TODO: THIS IS TEMP
+    // TODO: THIS IS TEMP
     VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
         vks::initializers::commandBufferAllocateInfo(
             graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
