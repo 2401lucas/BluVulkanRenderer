@@ -31,6 +31,8 @@ class PostProcessingPass {
 
   std::string vertexShaderPath;
   std::string fragmentShaderPath;
+  //TEMP
+  std::vector<VkCommandBuffer> cmdBufs;
 
   PostProcessingPass(VulkanDevice* device, VkFormat colorFormat,
                      VkFormat depthFormat, uint32_t imageCount, float width,

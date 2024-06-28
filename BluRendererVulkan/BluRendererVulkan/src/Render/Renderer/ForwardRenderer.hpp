@@ -1368,7 +1368,7 @@ class ForwardRenderer : public BaseRenderer {
         cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
         VkCommandBuffer curBuf =
-            commandBuffers.postProcessing[currentFrameIndex];
+            postPasses[i]->cmdBufs[currentFrameIndex];
         vkResetCommandBuffer(curBuf, 0);
         VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
 
@@ -1386,21 +1386,20 @@ class ForwardRenderer : public BaseRenderer {
             pipelineLayouts.postProcessing, 0, 1,
             &postPasses[i]->descriptorSets[currentFrameIndex], 0, NULL);
         vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          postPasses[i + 1]->pipeline);
+                          postPasses[i]->pipeline);
 
         // Draw triangle
         vkCmdDraw(curBuf, 3, 1, 0, 0);
 
         VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
 
-        secondaryCmdBufs.push_back(
-            commandBuffers.postProcessing[currentFrameIndex]);
+        secondaryCmdBufs.push_back(curBuf);
 
         // Execute render commands from the secondary command buffer
         vkCmdExecuteCommands(currentCommandBuffer,
                              static_cast<uint32_t>(secondaryCmdBufs.size()),
                              secondaryCmdBufs.data());
-
+        secondaryCmdBufs.clear();
         vkCmdEndRenderPass(currentCommandBuffer);
       }
 
@@ -3675,18 +3674,40 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void preparePostProcessingPasses() {
-   /* postPasses[0] = new vks::PostProcessingPass(
+    postPasses.push_back(new vks::PostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/ambientOcclusion.frag.spv");*/  // AO
-   /* postPasses[1] = new vks::PostProcessingPass(
+        "shaders/ambientOcclusion.frag.spv"));  // AO
+    postPasses.push_back(new vks::PostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/antiAliasing.frag.spv");*/  // AA
+        "shaders/antiAliasing.frag.spv"));  // AA
     postPasses.push_back(new vks::PostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
         "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR CORRECTIONS
+
+
+        //TODO: THIS IS TEMP
+    VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
+        vks::initializers::commandBufferAllocateInfo(
+            graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+            swapChain.imageCount);
+
+    postPasses[0]->cmdBufs.resize(swapChain.imageCount);
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 postPasses[0]->cmdBufs.data()));
+
+    postPasses[1]->cmdBufs.resize(swapChain.imageCount);
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 postPasses[1]->cmdBufs.data()));
+
+    postPasses[2]->cmdBufs.resize(swapChain.imageCount);
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 postPasses[2]->cmdBufs.data()));
   }
 
   void prepare() override {

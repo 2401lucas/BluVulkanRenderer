@@ -1,5 +1,5 @@
 #ifndef FXAA
-    #define FXAA 1
+    #define FXAA 0
 #endif
 #ifndef FXAA_DISABLE
     #define FXAA_DISABLE 0
