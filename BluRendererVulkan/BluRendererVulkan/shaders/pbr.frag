@@ -11,8 +11,8 @@ layout (location = 5) in vec4 inShadowCoord;
 // Scene bindings
 
 layout (set = 0, binding = 0) uniform UBO {
+	mat4 model[16];
 	mat4 projection;
-	mat4 model;
 	mat4 view;
 	mat4 lightSpace;
 	vec3 camPos;
@@ -61,6 +61,7 @@ layout(std430, set = 3, binding = 0) buffer SSBO
 
 layout (push_constant) uniform PushConstants {
 	int materialIndex;
+	int transformIndex;
 } pushConstants;
 
 layout (location = 0) out vec4 outColor;
@@ -89,7 +90,6 @@ const float c_MinRoughness = 0.04;
 const float PBR_WORKFLOW_METALLIC_ROUGHNESS = 0.0;
 const float PBR_WORKFLOW_SPECULAR_GLOSSINESS = 1.0;
 
-#include "includes/tonemapping.glsl"
 #include "includes/srgbtolinear.glsl"
 
 // Find the normal for this fragment, pulling either from a predefined normal map

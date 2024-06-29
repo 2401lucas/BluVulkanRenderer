@@ -7,6 +7,7 @@
 class Camera {
  private:
   float fov;
+  float aspect;
   float znear, zfar;
 
   void updateViewMatrix() {
@@ -41,6 +42,10 @@ class Camera {
     }
   };
 
+  void calculateAABB() {
+
+  }
+
  public:
   enum CameraType { lookat, firstperson };
   CameraType type = CameraType::lookat;
@@ -58,6 +63,7 @@ class Camera {
   struct {
     glm::mat4 perspective;
     glm::mat4 view;
+    glm::mat4 aabb;
   } matrices;
 
   struct {
@@ -81,6 +87,7 @@ class Camera {
   void setPerspective(float fov, float aspect, float znear, float zfar) {
     glm::mat4 currentMatrix = matrices.perspective;
     this->fov = fov;
+    this->aspect = aspect;
     this->znear = znear;
     this->zfar = zfar;
     matrices.perspective =
@@ -94,6 +101,7 @@ class Camera {
   };
 
   void updateAspectRatio(float aspect) {
+    this->aspect = aspect;
     glm::mat4 currentMatrix = matrices.perspective;
     matrices.perspective =
         glm::perspective(glm::radians(fov), aspect, znear, zfar);
@@ -165,6 +173,7 @@ class Camera {
         if (keys.up) position += glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed;
         if (keys.down) position -= glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed;
       }
+      calculateAABB();
     }
     updateViewMatrix();
   };

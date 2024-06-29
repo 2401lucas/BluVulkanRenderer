@@ -6,9 +6,14 @@ layout (location = 2) in vec2 inUV;
 
 layout (binding = 0) uniform UBO 
 {
-	mat4 projection;
-	mat4 model;
+    mat4 models[16];
+    mat4 projection;
 } ubo;
+
+layout (push_constant) uniform PushConstants {
+	int materialIndex;
+	int transformIndex;
+} pushConstants;
 
 layout (location = 0) out vec3 outUVW;
 
@@ -20,5 +25,5 @@ out gl_PerVertex
 void main() 
 {
 	outUVW = inPos;
-	gl_Position = ubo.projection * ubo.model * vec4(inPos.xyz, 1.0);
+	gl_Position = ubo.projection * ubo.models[0] * vec4(inPos.xyz, 1.0);
 }

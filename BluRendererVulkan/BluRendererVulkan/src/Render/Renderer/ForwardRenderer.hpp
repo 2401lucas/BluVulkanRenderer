@@ -53,10 +53,11 @@ class ForwardRenderer : public BaseRenderer {
     vks::TextureCubeMap prefilteredCube;
   } textures;
 
-  struct Models {
-    vkglTF::Model skybox;
-    vkglTF::Model scene;
-  } models;
+  vkglTF::Model skybox;
+  std::vector<vkglTF::Model> staticModels;
+  std::vector<vkglTF::Model> dynamicModels;
+  std::vector<uint32_t> staticModelsToRenderIndices;
+  std::vector<uint32_t> dynamicModelsToRenderIndices;
 
   // We use a material buffer to pass material data ind image indices to the
   // shader
@@ -85,6 +86,10 @@ class ForwardRenderer : public BaseRenderer {
 #endif
 
 #ifndef VulkanResources 1
+  struct PushConstData {
+    uint32_t materialIndex = 0;
+    uint32_t transformMatIndex = 0;
+  };
   struct DynamicDescriptorSets {
     VkDescriptorSet scene{VK_NULL_HANDLE};
     VkDescriptorSet skybox{VK_NULL_HANDLE};
@@ -106,7 +111,6 @@ class ForwardRenderer : public BaseRenderer {
   } staticDescriptorSets;
 
   struct StaticUniformBuffers {
-    vks::Buffer shaderMaterialBuffer;
     vks::Buffer postProcessing;
   } staticUniformBuffers;
 
@@ -191,6 +195,8 @@ class ForwardRenderer : public BaseRenderer {
 #endif
 
 #ifndef RenderSettings 1
+#define MAX_MODELS 16
+#define MAX_LIGHTS 2
   const uint32_t shadowMapSize = 2048;
   // Depth bias (and slope) are used to avoid shadowing artifacts
   const float depthBiasConstant = 1.25f;
@@ -213,8 +219,8 @@ class ForwardRenderer : public BaseRenderer {
 
   // Should (M?)VP be precomputed
   struct UBOMatrices {
+    glm::mat4 models[MAX_MODELS];
     glm::mat4 projection;
-    glm::mat4 model;
     glm::mat4 view;
     glm::mat4 lightSpace;
     glm::vec3 camPos;
@@ -237,7 +243,7 @@ class ForwardRenderer : public BaseRenderer {
                                    "Light Contribution" /*, "Diffuse Contribution",
                                    "Specular Contribution"*/};
   struct SceneParams {
-    LightSource lights[2];
+    LightSource lights[MAX_LIGHTS];
     float prefilteredCubeMipLevels;
     float debugViewInputs = 0.0f;
     float debugViewEquation = 0.0f;
@@ -326,10 +332,15 @@ class ForwardRenderer : public BaseRenderer {
     vkDestroySampler(device, offscreenShadowPass.sampler, nullptr);
 
     staticUniformBuffers.postProcessing.destroy();
-    staticUniformBuffers.shaderMaterialBuffer.destroy();
-    models.skybox.destroy();
-    models.scene.destroy();
 
+    for (auto& model : dynamicModels) {
+      model.destroy();
+    }
+    for (auto& model : staticModels) {
+      model.destroy();
+    }
+
+    skybox.destroy();
     textures.empty.destroy();
     textures.environmentCube.destroy();
     textures.irradianceCube.destroy();
@@ -892,6 +903,10 @@ class ForwardRenderer : public BaseRenderer {
                      uiSettings.frameTimeMin, uiSettings.frameTimeMax,
                      ImVec2(0, 80));
 
+    ImGui::Text("Total Model Count: &i",
+                (int)(staticModels.size() + dynamicModels.size()));
+    ImGui::Text("Rendered Models: &i", (int)dynamicModelsToRenderIndices.size());
+
     ImGui::SetNextWindowPos(
         ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
         ImGuiCond_FirstUseEver);
@@ -1092,8 +1107,8 @@ class ForwardRenderer : public BaseRenderer {
 
     VkDeviceSize offsets[1] = {0};
 
-    if (uiSettings.displayScene) {
-      vkglTF::Model& model = models.scene;
+    for (uint32_t i = 0; i < dynamicModelsToRenderIndices.size(); i++) {
+      vkglTF::Model& model = dynamicModels[dynamicModelsToRenderIndices[i]];
 
       vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
                              offsets);
@@ -1103,22 +1118,24 @@ class ForwardRenderer : public BaseRenderer {
       }
 
       boundPipeline = VK_NULL_HANDLE;
+      PushConstData pushConst{};
+      pushConst.transformMatIndex = i + 1;
 
       // Opaque primitives first
       for (auto node : model.nodes) {
         renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
-                   currentCommandBuffer);
+                   currentCommandBuffer, pushConst);
       }
       // Alpha masked primitives
       for (auto node : model.nodes) {
         renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_MASK,
-                   currentCommandBuffer);
+                   currentCommandBuffer, pushConst);
       }
       // Transparent primitives
       // TODO: Correct depth sorting
       for (auto node : model.nodes) {
         renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_BLEND,
-                   currentCommandBuffer);
+                   currentCommandBuffer, pushConst);
       }
     }
 
@@ -1130,75 +1147,82 @@ class ForwardRenderer : public BaseRenderer {
           &dynamicDescriptorSets[currentFrameIndex].skybox, 0, NULL);
       vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         pipelines.skybox);
-      models.skybox.draw(currentCommandBuffer);
+
+      PushConstData pushConst{};
+      pushConst.transformMatIndex = 0;
+      vkCmdPushConstants(
+          currentCommandBuffer, pipelineLayouts.skybox,
+          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+          sizeof(PushConstData), &pushConst);
+      skybox.draw(currentCommandBuffer);
     }
 
     VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
   }
 
-  void buildShadowCommandBuffer() {
-    VkCommandBufferInheritanceInfo inheritanceInfo =
-        vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = offscreenShadowPass.renderPass;
-    inheritanceInfo.framebuffer =
-        offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
+  // void buildShadowCommandBuffer() {
+  //   VkCommandBufferInheritanceInfo inheritanceInfo =
+  //       vks::initializers::commandBufferInheritanceInfo();
+  //   inheritanceInfo.renderPass = offscreenShadowPass.renderPass;
+  //   inheritanceInfo.framebuffer =
+  //       offscreenShadowPass.framebuffers[currentFrameIndex].framebuffer;
 
-    VkCommandBufferBeginInfo cmdBufInfo =
-        vks::initializers::commandBufferBeginInfo();
-    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+  //  VkCommandBufferBeginInfo cmdBufInfo =
+  //      vks::initializers::commandBufferBeginInfo();
+  //  cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+  //  cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
-    VkCommandBuffer currentCommandBuffer =
-        commandBuffers.shadow[currentFrameIndex];
+  //  VkCommandBuffer currentCommandBuffer =
+  //      commandBuffers.shadow[currentFrameIndex];
 
-    vkResetCommandBuffer(currentCommandBuffer, 0);
-    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+  //  vkResetCommandBuffer(currentCommandBuffer, 0);
+  //  VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
 
-    VkViewport viewport = vks::initializers::viewport(
-        (float)shadowMapSize, (float)shadowMapSize, 0.0f, 1.0f);
-    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
-    VkRect2D scissor =
-        vks::initializers::rect2D(shadowMapSize, shadowMapSize, 0, 0);
-    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
+  //  VkViewport viewport = vks::initializers::viewport(
+  //      (float)shadowMapSize, (float)shadowMapSize, 0.0f, 1.0f);
+  //  vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
+  //  VkRect2D scissor =
+  //      vks::initializers::rect2D(shadowMapSize, shadowMapSize, 0, 0);
+  //  vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
 
-    // Set depth bias (aka "Polygon offset")
-    vkCmdSetDepthBias(currentCommandBuffer, depthBiasConstant, 0.0f,
-                      depthBiasSlope);
-    VkDeviceSize offsets[1] = {0};
+  //  // Set depth bias (aka "Polygon offset")
+  //  vkCmdSetDepthBias(currentCommandBuffer, depthBiasConstant, 0.0f,
+  //                    depthBiasSlope);
+  //  VkDeviceSize offsets[1] = {0};
 
-    vkglTF::Model& model = models.scene;
+  //  vkglTF::Model& model = skybox;
 
-    vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
-                           offsets);
-    if (model.indices.buffer != VK_NULL_HANDLE) {
-      vkCmdBindIndexBuffer(currentCommandBuffer, model.indices.buffer, 0,
-                           VK_INDEX_TYPE_UINT32);
-    }
+  //  vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
+  //                         offsets);
+  //  if (model.indices.buffer != VK_NULL_HANDLE) {
+  //    vkCmdBindIndexBuffer(currentCommandBuffer, model.indices.buffer, 0,
+  //                         VK_INDEX_TYPE_UINT32);
+  //  }
 
-    vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      pipelines.shadow);
-    vkCmdBindDescriptorSets(
-        currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelineLayouts.shadow, 0, 1,
-        &dynamicDescriptorSets[currentFrameIndex].shadow, 0, nullptr);
+  //  vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+  //                    pipelines.shadow);
+  //  vkCmdBindDescriptorSets(
+  //      currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+  //      pipelineLayouts.shadow, 0, 1,
+  //      &dynamicDescriptorSets[currentFrameIndex].shadow, 0, nullptr);
 
-    // Opaque primitives first
-    for (auto node : model.nodes) {
-      renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
-                 currentCommandBuffer, true);
-    }
-    // Alpha masked primitives
-    for (auto node : model.nodes) {
-      renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_MASK,
-                 currentCommandBuffer, true);
-    }
+  //  // Opaque primitives first
+  //  for (auto node : model.nodes) {
+  //    renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
+  //               currentCommandBuffer, true);
+  //  }
+  //  // Alpha masked primitives
+  //  for (auto node : model.nodes) {
+  //    renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_MASK,
+  //               currentCommandBuffer, true);
+  //  }
 
-    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
-  }
+  //  VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
+  //}
 
   void renderNode(vkglTF::Node* node, uint32_t cbIndex,
                   vkglTF::Material::AlphaMode alphaMode, VkCommandBuffer curBuf,
-                  bool isShadow = false) {
+                  PushConstData pushConst, bool isShadow = false) {
     if (node->mesh) {
       // Render mesh primitives
       for (vkglTF::Primitive* primitive : node->mesh->primitives) {
@@ -1247,11 +1271,11 @@ class ForwardRenderer : public BaseRenderer {
                                   static_cast<uint32_t>(descriptorsets.size()),
                                   descriptorsets.data(), 0, NULL);
 
-          // Pass material index for this primitive using a push constant, the
-          // shader uses this to index into the material buffer
-          vkCmdPushConstants(curBuf, pipelineLayouts.scene,
-                             VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(uint32_t),
-                             &primitive->material.index);
+          pushConst.materialIndex = primitive->material.index;
+          vkCmdPushConstants(
+              curBuf, pipelineLayouts.scene,
+              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+              sizeof(pushConst), &pushConst);
 
           if (primitive->hasIndices) {
             vkCmdDrawIndexed(curBuf, primitive->indexCount, 1,
@@ -1264,11 +1288,19 @@ class ForwardRenderer : public BaseRenderer {
     }
 
     for (auto child : node->children) {
-      renderNode(child, cbIndex, alphaMode, curBuf, isShadow);
+      renderNode(child, cbIndex, alphaMode, curBuf, pushConst, isShadow);
+    }
+  }
+
+  void getObjectsToRender() {
+    dynamicModelsToRenderIndices.clear();
+    for (uint32_t i = 0; i < dynamicModels.size(); i++) {
+      dynamicModelsToRenderIndices.push_back(i);
     }
   }
 
   void buildCommandBuffer() override {
+    getObjectsToRender();
     // Contains the list of secondary command buffers to be submitted
     std::vector<VkCommandBuffer> secondaryCmdBufs;
 
@@ -1455,15 +1487,14 @@ class ForwardRenderer : public BaseRenderer {
       // Screen Texture
       imageSamplerCount += 1;
       // Shadows?
-      meshCount += 3;
+      meshCount += 6;
       dynamicDescriptorSets.resize(swapChain.imageCount);
-      std::vector<vkglTF::Model*> modellist = {&models.skybox, &models.scene};
-      for (auto& model : modellist) {
-        for (auto& material : model->materials) {
+      for (auto& model : dynamicModels) {
+        for (auto& material : model.materials) {
           imageSamplerCount += 5;
           materialCount++;
         }
-        for (auto node : model->linearNodes) {
+        for (auto node : model.linearNodes) {
           if (node->mesh) {
             meshCount++;
           }
@@ -1619,62 +1650,68 @@ class ForwardRenderer : public BaseRenderer {
         VK_CHECK_RESULT(
             vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
                                         &descriptorSetLayouts.material));
-        for (auto& material : models.scene.materials) {
-          VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-          descriptorSetAllocInfo.sType =
-              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-          descriptorSetAllocInfo.descriptorPool = descriptorPool;
-          descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.material;
-          descriptorSetAllocInfo.descriptorSetCount = 1;
-          VK_CHECK_RESULT(vkAllocateDescriptorSets(
-              device, &descriptorSetAllocInfo, &material.descriptorSet));
+        for (auto& model : dynamicModels) {
+          for (auto& material : model.materials) {
+            VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+            descriptorSetAllocInfo.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptorSetAllocInfo.descriptorPool = descriptorPool;
+            descriptorSetAllocInfo.pSetLayouts = &descriptorSetLayouts.material;
+            descriptorSetAllocInfo.descriptorSetCount = 1;
+            VK_CHECK_RESULT(vkAllocateDescriptorSets(
+                device, &descriptorSetAllocInfo, &material.descriptorSet));
+          }
         }
       }
       // Per-Material descriptor sets
-      for (auto& material : models.scene.materials) {
-        std::vector<VkDescriptorImageInfo> imageDescriptors = {
-            textures.empty.descriptor, textures.empty.descriptor,
-            material.normalTexture ? material.normalTexture->descriptor
-                                   : textures.empty.descriptor,
-            material.occlusionTexture ? material.occlusionTexture->descriptor
-                                      : textures.empty.descriptor,
-            material.emissiveTexture ? material.emissiveTexture->descriptor
-                                     : textures.empty.descriptor};
+      for (auto& model : dynamicModels) {
+        for (auto& material : model.materials) {
+          std::vector<VkDescriptorImageInfo> imageDescriptors = {
+              textures.empty.descriptor, textures.empty.descriptor,
+              material.normalTexture ? material.normalTexture->descriptor
+                                     : textures.empty.descriptor,
+              material.occlusionTexture ? material.occlusionTexture->descriptor
+                                        : textures.empty.descriptor,
+              material.emissiveTexture ? material.emissiveTexture->descriptor
+                                       : textures.empty.descriptor};
 
-        if (material.pbrWorkflows.metallicRoughness) {
-          if (material.baseColorTexture) {
-            imageDescriptors[0] = material.baseColorTexture->descriptor;
-          }
-          if (material.metallicRoughnessTexture) {
-            imageDescriptors[1] = material.metallicRoughnessTexture->descriptor;
-          }
-        } else {
-          if (material.pbrWorkflows.specularGlossiness) {
-            if (material.extension.diffuseTexture) {
-              imageDescriptors[0] =
-                  material.extension.diffuseTexture->descriptor;
+          if (material.pbrWorkflows.metallicRoughness) {
+            if (material.baseColorTexture) {
+              imageDescriptors[0] = material.baseColorTexture->descriptor;
             }
-            if (material.extension.specularGlossinessTexture) {
+            if (material.metallicRoughnessTexture) {
               imageDescriptors[1] =
-                  material.extension.specularGlossinessTexture->descriptor;
+                  material.metallicRoughnessTexture->descriptor;
+            }
+          } else {
+            if (material.pbrWorkflows.specularGlossiness) {
+              if (material.extension.diffuseTexture) {
+                imageDescriptors[0] =
+                    material.extension.diffuseTexture->descriptor;
+              }
+              if (material.extension.specularGlossinessTexture) {
+                imageDescriptors[1] =
+                    material.extension.specularGlossinessTexture->descriptor;
+              }
             }
           }
-        }
 
-        std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
-        for (size_t i = 0; i < imageDescriptors.size(); i++) {
-          writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-          writeDescriptorSets[i].descriptorType =
-              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-          writeDescriptorSets[i].descriptorCount = 1;
-          writeDescriptorSets[i].dstSet = material.descriptorSet;
-          writeDescriptorSets[i].dstBinding = static_cast<uint32_t>(i);
-          writeDescriptorSets[i].pImageInfo = &imageDescriptors[i];
-        }
+          std::array<VkWriteDescriptorSet, 5> writeDescriptorSets{};
+          for (size_t i = 0; i < imageDescriptors.size(); i++) {
+            writeDescriptorSets[i].sType =
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeDescriptorSets[i].descriptorType =
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            writeDescriptorSets[i].descriptorCount = 1;
+            writeDescriptorSets[i].dstSet = material.descriptorSet;
+            writeDescriptorSets[i].dstBinding = static_cast<uint32_t>(i);
+            writeDescriptorSets[i].pImageInfo = &imageDescriptors[i];
+          }
 
-        vkUpdateDescriptorSets(
-            device, static_cast<uint32_t>(writeDescriptorSets.size()),
-            writeDescriptorSets.data(), 0, NULL);
+          vkUpdateDescriptorSets(
+              device, static_cast<uint32_t>(writeDescriptorSets.size()),
+              writeDescriptorSets.data(), 0, NULL);
+        }
       }
 
       // Model node (matrices)
@@ -1698,13 +1735,18 @@ class ForwardRenderer : public BaseRenderer {
               vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI,
                                           nullptr, &descriptorSetLayouts.node));
           // Per-Node descriptor set
-          for (auto& node : models.scene.nodes) {
-            allocateNodeDescriptorSet(node);
+
+          for (auto& model : dynamicModels) {
+            for (auto& node : model.nodes) {
+              allocateNodeDescriptorSet(node);
+            }
           }
         }
         // Per-Node descriptor set
-        for (auto& node : models.scene.nodes) {
-          setupNodeDescriptorSet(node);
+        for (auto& model : dynamicModels) {
+          for (auto& node : model.nodes) {
+            setupNodeDescriptorSet(node);
+          }
         }
       }
 
@@ -1742,13 +1784,15 @@ class ForwardRenderer : public BaseRenderer {
                                        &staticDescriptorSets.materials));
         }
 
-        std::array<VkWriteDescriptorSet, 1> writeDescriptorSets{};
-        writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
-            staticDescriptorSets.materials, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            0, &staticUniformBuffers.shaderMaterialBuffer.descriptor);
-        vkUpdateDescriptorSets(
-            device, static_cast<uint32_t>(writeDescriptorSets.size()),
-            writeDescriptorSets.data(), 0, nullptr);
+        for (auto& model : dynamicModels) {
+          std::array<VkWriteDescriptorSet, 1> writeDescriptorSets{};
+          writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
+              staticDescriptorSets.materials, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+              0, &model.materialBuffer.descriptor);
+          vkUpdateDescriptorSets(
+              device, static_cast<uint32_t>(writeDescriptorSets.size()),
+              writeDescriptorSets.data(), 0, nullptr);
+        }
       }
     }
 
@@ -1959,8 +2003,9 @@ class ForwardRenderer : public BaseRenderer {
     pipelineLayoutCI.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
     pipelineLayoutCI.pSetLayouts = setLayouts.data();
     VkPushConstantRange pushConstantRange{};
-    pushConstantRange.size = sizeof(uint32_t);
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.size = sizeof(PushConstData);
+    pushConstantRange.stageFlags =
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     pipelineLayoutCI.pushConstantRangeCount = 1;
     pipelineLayoutCI.pPushConstantRanges = &pushConstantRange;
     VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr,
@@ -2071,6 +2116,12 @@ class ForwardRenderer : public BaseRenderer {
     VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo =
         vks::initializers::pipelineLayoutCreateInfo(
             &descriptorSetLayouts.skybox, 1);
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.size = sizeof(PushConstData);
+    pushConstantRange.stageFlags =
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+    pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
     VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo,
                                            nullptr, &pipelineLayouts.skybox));
     VkGraphicsPipelineCreateInfo pipelineCI =
@@ -2857,7 +2908,7 @@ class ForwardRenderer : public BaseRenderer {
         vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipelinelayout, 0, 1, &descriptorset, 0, NULL);
 
-        models.skybox.draw(cmdBuf);
+        skybox.draw(cmdBuf);
 
         vkCmdEndRenderPass(cmdBuf);
 
@@ -3307,7 +3358,7 @@ class ForwardRenderer : public BaseRenderer {
         vkCmdBindDescriptorSets(cmdBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipelinelayout, 0, 1, &descriptorset, 0, NULL);
 
-        models.skybox.draw(cmdBuf);
+        skybox.draw(cmdBuf);
 
         vkCmdEndRenderPass(cmdBuf);
 
@@ -3425,134 +3476,134 @@ class ForwardRenderer : public BaseRenderer {
   // from a push constant set per primitive
   void createMaterialBuffer() {
     std::vector<ShaderMaterial> shaderMaterials{};
-    for (auto& material : models.scene.materials) {
-      ShaderMaterial shaderMaterial{};
+    for (auto& model : dynamicModels) {
+      for (auto& material : model.materials) {
+        ShaderMaterial shaderMaterial{};
 
-      shaderMaterial.emissiveFactor = material.emissiveFactor;
-      // To save space, availabilty and texture coordinate set are combined
-      // -1 = texture not used for this material, >= 0 texture used and index
-      // of texture coordinate set
-      shaderMaterial.colorTextureSet = material.baseColorTexture != nullptr
-                                           ? material.texCoordSets.baseColor
-                                           : -1;
-      shaderMaterial.normalTextureSet =
-          material.normalTexture != nullptr ? material.texCoordSets.normal : -1;
-      shaderMaterial.occlusionTextureSet = material.occlusionTexture != nullptr
-                                               ? material.texCoordSets.occlusion
-                                               : -1;
-      shaderMaterial.emissiveTextureSet = material.emissiveTexture != nullptr
-                                              ? material.texCoordSets.emissive
-                                              : -1;
-      shaderMaterial.alphaMask = static_cast<float>(
-          material.alphaMode == vkglTF::Material::ALPHAMODE_MASK);
-      shaderMaterial.alphaMaskCutoff = material.alphaCutoff;
-      shaderMaterial.emissiveStrength = material.emissiveStrength;
-
-      if (material.pbrWorkflows.metallicRoughness) {
-        // Metallic roughness workflow
-        shaderMaterial.workflow =
-            static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
-        shaderMaterial.baseColorFactor = material.baseColorFactor;
-        shaderMaterial.metallicFactor = material.metallicFactor;
-        shaderMaterial.roughnessFactor = material.roughnessFactor;
-        shaderMaterial.PhysicalDescriptorTextureSet =
-            material.metallicRoughnessTexture != nullptr
-                ? material.texCoordSets.metallicRoughness
-                : -1;
+        shaderMaterial.emissiveFactor = material.emissiveFactor;
+        // To save space, availabilty and texture coordinate set are combined
+        // -1 = texture not used for this material, >= 0 texture used and index
+        // of texture coordinate set
         shaderMaterial.colorTextureSet = material.baseColorTexture != nullptr
                                              ? material.texCoordSets.baseColor
                                              : -1;
-      } else {
-        if (material.pbrWorkflows.specularGlossiness) {
-          // Specular glossiness workflow
+        shaderMaterial.normalTextureSet = material.normalTexture != nullptr
+                                              ? material.texCoordSets.normal
+                                              : -1;
+        shaderMaterial.occlusionTextureSet =
+            material.occlusionTexture != nullptr
+                ? material.texCoordSets.occlusion
+                : -1;
+        shaderMaterial.emissiveTextureSet = material.emissiveTexture != nullptr
+                                                ? material.texCoordSets.emissive
+                                                : -1;
+        shaderMaterial.alphaMask = static_cast<float>(
+            material.alphaMode == vkglTF::Material::ALPHAMODE_MASK);
+        shaderMaterial.alphaMaskCutoff = material.alphaCutoff;
+        shaderMaterial.emissiveStrength = material.emissiveStrength;
+
+        if (material.pbrWorkflows.metallicRoughness) {
+          // Metallic roughness workflow
           shaderMaterial.workflow =
-              static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
+              static_cast<float>(PBR_WORKFLOW_METALLIC_ROUGHNESS);
+          shaderMaterial.baseColorFactor = material.baseColorFactor;
+          shaderMaterial.metallicFactor = material.metallicFactor;
+          shaderMaterial.roughnessFactor = material.roughnessFactor;
           shaderMaterial.PhysicalDescriptorTextureSet =
-              material.extension.specularGlossinessTexture != nullptr
-                  ? material.texCoordSets.specularGlossiness
+              material.metallicRoughnessTexture != nullptr
+                  ? material.texCoordSets.metallicRoughness
                   : -1;
-          shaderMaterial.colorTextureSet =
-              material.extension.diffuseTexture != nullptr
-                  ? material.texCoordSets.baseColor
-                  : -1;
-          shaderMaterial.diffuseFactor = material.extension.diffuseFactor;
-          shaderMaterial.specularFactor =
-              glm::vec4(material.extension.specularFactor, 1.0f);
+          shaderMaterial.colorTextureSet = material.baseColorTexture != nullptr
+                                               ? material.texCoordSets.baseColor
+                                               : -1;
+        } else {
+          if (material.pbrWorkflows.specularGlossiness) {
+            // Specular glossiness workflow
+            shaderMaterial.workflow =
+                static_cast<float>(PBR_WORKFLOW_SPECULAR_GLOSSINESS);
+            shaderMaterial.PhysicalDescriptorTextureSet =
+                material.extension.specularGlossinessTexture != nullptr
+                    ? material.texCoordSets.specularGlossiness
+                    : -1;
+            shaderMaterial.colorTextureSet =
+                material.extension.diffuseTexture != nullptr
+                    ? material.texCoordSets.baseColor
+                    : -1;
+            shaderMaterial.diffuseFactor = material.extension.diffuseFactor;
+            shaderMaterial.specularFactor =
+                glm::vec4(material.extension.specularFactor, 1.0f);
+          }
         }
+
+        shaderMaterials.push_back(shaderMaterial);
       }
 
-      shaderMaterials.push_back(shaderMaterial);
+      if (model.materialBuffer.buffer != VK_NULL_HANDLE) {
+        model.materialBuffer.destroy();
+      }
+      VkDeviceSize bufferSize = shaderMaterials.size() * sizeof(ShaderMaterial);
+      vks::Buffer stagingBuffer;
+      VK_CHECK_RESULT(vulkanDevice->createBuffer(
+          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+          bufferSize, &stagingBuffer.buffer, &stagingBuffer.memory,
+          shaderMaterials.data()));
+      VK_CHECK_RESULT(vulkanDevice->createBuffer(
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, bufferSize,
+          &model.materialBuffer.buffer, &model.materialBuffer.memory));
+
+      // Copy from staging buffers
+      VkCommandBuffer copyCmd = vulkanDevice->createCommandBuffer(
+          VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+      VkBufferCopy copyRegion{};
+      copyRegion.size = bufferSize;
+      vkCmdCopyBuffer(copyCmd, stagingBuffer.buffer,
+                      model.materialBuffer.buffer, 1, &copyRegion);
+      vulkanDevice->flushCommandBuffer(copyCmd, graphicsQueue, true);
+      stagingBuffer.device = device;
+      stagingBuffer.destroy();
+
+      // Update descriptor
+      model.materialBuffer.descriptor.buffer = model.materialBuffer.buffer;
+      model.materialBuffer.descriptor.offset = 0;
+      model.materialBuffer.descriptor.range = bufferSize;
+      model.materialBuffer.device = device;
     }
-
-    if (staticUniformBuffers.shaderMaterialBuffer.buffer != VK_NULL_HANDLE) {
-      staticUniformBuffers.shaderMaterialBuffer.destroy();
-    }
-    VkDeviceSize bufferSize = shaderMaterials.size() * sizeof(ShaderMaterial);
-    vks::Buffer stagingBuffer;
-    VK_CHECK_RESULT(vulkanDevice->createBuffer(
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        bufferSize, &stagingBuffer.buffer, &stagingBuffer.memory,
-        shaderMaterials.data()));
-    VK_CHECK_RESULT(vulkanDevice->createBuffer(
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, bufferSize,
-        &staticUniformBuffers.shaderMaterialBuffer.buffer,
-        &staticUniformBuffers.shaderMaterialBuffer.memory));
-
-    // Copy from staging buffers
-    VkCommandBuffer copyCmd = vulkanDevice->createCommandBuffer(
-        VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-    VkBufferCopy copyRegion{};
-    copyRegion.size = bufferSize;
-    vkCmdCopyBuffer(copyCmd, stagingBuffer.buffer,
-                    staticUniformBuffers.shaderMaterialBuffer.buffer, 1,
-                    &copyRegion);
-    vulkanDevice->flushCommandBuffer(copyCmd, graphicsQueue, true);
-    stagingBuffer.device = device;
-    stagingBuffer.destroy();
-
-    // Update descriptor
-    staticUniformBuffers.shaderMaterialBuffer.descriptor.buffer =
-        staticUniformBuffers.shaderMaterialBuffer.buffer;
-    staticUniformBuffers.shaderMaterialBuffer.descriptor.offset = 0;
-    staticUniformBuffers.shaderMaterialBuffer.descriptor.range = bufferSize;
-    staticUniformBuffers.shaderMaterialBuffer.device = device;
   }
 
   void updateGenericUBO() {
+    // TODO: FOR EACH LIGHT
+    //  Matrix from light's point of view
+    // glm::mat4 depthProjectionMatrix =
+    //     glm::perspective(glm::radians(45.0f), 1.0f, 1.0f, 2.0f);
+    // glm::mat4 depthViewMatrix =
+    //     glm::lookAt(glm::vec3(iblDir), glm::vec3(0.0f), glm::vec3(0, 1, 0));
+    // glm::mat4 depthModelMatrix = glm::mat4(1.0f);
+    // TODO THIS IS HAPPENING TWICE, IT SHOULD NOT BE
+    // uboMatrices.lightSpace =
+    //   (depthProjectionMatrix * depthViewMatrix * depthModelMatrix);
+
+    // shadowParams.depthMVP = uboMatrices.lightSpace;
+    // memcpy(dynamicUniformBuffers[currentFrameIndex].shadow.mapped,
+    //      &shadowParams, sizeof(shadowParams));
+
     uboMatrices.projection = camera.matrices.perspective;
     uboMatrices.view = camera.matrices.view;
-    // TODO: PER OBJECT? should move all per object data onto unique model,
-    // probably onto the node so it can be precomputed with the smaller
-    // matrices
-    uboMatrices.model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
-                                    glm::vec3(0.0f, 1.0f, 0.0f)) *
-                        glm::scale(glm::mat4(1.0f), glm::vec3(1, 1, 1));
     glm::mat4 cv = glm::inverse(camera.matrices.view);
     uboMatrices.camPos = glm::vec3(cv[3]);
 
-    // TODO: FOR EACH LIGHT
-    //  Matrix from light's point of view
-    glm::mat4 depthProjectionMatrix =
-        glm::perspective(glm::radians(45.0f), 1.0f, 1.0f, 2.0f);
-    glm::mat4 depthViewMatrix =
-        glm::lookAt(glm::vec3(iblDir), glm::vec3(0.0f), glm::vec3(0, 1, 0));
-    glm::mat4 depthModelMatrix = glm::mat4(1.0f);
-    // TODO THIS IS HAPPENING TWICE, IT SHOULD NOT BE
-    uboMatrices.lightSpace =
-        (depthProjectionMatrix * depthViewMatrix * depthModelMatrix);
+    skybox.transform.transformMat =
+        glm::mat4(glm::mat3(camera.matrices.view)) * skybox.transform.scaleMat;
+    uboMatrices.models[0] = skybox.transform.transformMat;
+    for (uint32_t i = 0; i < dynamicModelsToRenderIndices.size(); i++) {
+      uboMatrices.models[i + 1] =
+          dynamicModels[dynamicModelsToRenderIndices[i]].transform.transformMat;
+    }
+    //TODO: ONE TRANSFORM UPLOAD
     memcpy(dynamicUniformBuffers[currentFrameIndex].scene.mapped, &uboMatrices,
            sizeof(uboMatrices));
-
-    shadowParams.depthMVP = uboMatrices.lightSpace;
-    memcpy(dynamicUniformBuffers[currentFrameIndex].shadow.mapped,
-           &shadowParams, sizeof(shadowParams));
-
-    // Skybox
-    glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 10.0f));
-    uboMatrices.model = glm::mat4(glm::mat3(camera.matrices.view)) * scale;
     memcpy(dynamicUniformBuffers[currentFrameIndex].skybox.mapped, &uboMatrices,
            sizeof(uboMatrices));
   }
@@ -3625,19 +3676,23 @@ class ForwardRenderer : public BaseRenderer {
 
   void loadScene(bool firstTime = false) {
     vkDeviceWaitIdle(device);
-    models.scene.destroy();
     animationIndex = 0;
     animationTimer = 0.0f;
 
-    models.scene.loadFromFile(
+    int index = dynamicModels.size();
+    dynamicModels.push_back(vkglTF::Model());
+    dynamicModels[index].destroy();
+    dynamicModels[index].loadFromFile(
         getAssetPath() + sceneFilePaths[uiSettings.activeSceneIndex],
         vulkanDevice, graphicsQueue);
+    dynamicModels[index].transform.updateRotation(
+        glm::vec3(0.0f, -90.0f, 0.0f));
     createMaterialBuffer();
     if (!firstTime) {
       setupDescriptors(true);
     }
     // Check and list unsupported extensions
-    for (auto& ext : models.scene.extensions) {
+    for (auto& ext : dynamicModels[index].extensions) {
       if (std::find(supportedExtensions.begin(), supportedExtensions.end(),
                     ext) == supportedExtensions.end()) {
         std::cout << "[WARN] Unsupported extension " << ext
@@ -3655,8 +3710,10 @@ class ForwardRenderer : public BaseRenderer {
         vkglTF::FileLoadingFlags::PreMultiplyVertexColors |
         vkglTF::FileLoadingFlags::FlipY;
 
-    models.skybox.loadFromFile(getAssetPath() + "models/cube.gltf",
-                               vulkanDevice, graphicsQueue, glTFLoadingFlags);
+    skybox.loadFromFile(getAssetPath() + "models/cube.gltf", vulkanDevice,
+                        graphicsQueue, glTFLoadingFlags);
+    skybox.transform.updateScale(glm::vec3(10.0f));
+
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/pisa_cube.ktx",
         VK_FORMAT_R16G16B16A16_SFLOAT, vulkanDevice, graphicsQueue);
@@ -3692,7 +3749,8 @@ class ForwardRenderer : public BaseRenderer {
     postPasses.push_back(new vks::PostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR CORRECTIONS
+        "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR
+                                           // CORRECTIONS
 
     // TODO: THIS IS TEMP
     VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =

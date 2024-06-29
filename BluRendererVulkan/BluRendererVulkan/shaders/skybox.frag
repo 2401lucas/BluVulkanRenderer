@@ -6,8 +6,6 @@ layout (binding = 2) uniform samplerCube samplerEnv;
 
 layout (location = 0) out vec4 outColor;
 
-#include "includes/tonemapping.glsl"
-
 void main() 
 {
 	vec3 color = texture(samplerEnv, inUVW).rgb;

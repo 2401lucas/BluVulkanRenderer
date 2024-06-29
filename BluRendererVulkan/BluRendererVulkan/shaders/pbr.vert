@@ -10,8 +10,8 @@ layout (location = 6) in vec4 inColor0;
 
 layout (set = 0, binding = 0) uniform UBO 
 {
+	mat4 model[16];
 	mat4 projection;
-	mat4 model;
 	mat4 view;
 	mat4 lightSpace;
 	vec3 camPos;
@@ -24,6 +24,11 @@ layout (set = 2, binding = 0) uniform UBONode {
 	mat4 jointMatrix[MAX_NUM_JOINTS];
 	uint jointCount;
 } node;
+
+layout (push_constant) uniform PushConstants {
+	int materialIndex;
+	int transformIndex;
+} pushConstants;
 
 layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outNormal;
@@ -51,11 +56,11 @@ void main()
 			inWeight0.z * node.jointMatrix[inJoint0.z] +
 			inWeight0.w * node.jointMatrix[inJoint0.w];
 
-		locPos = ubo.model * node.matrix * skinMat * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix * skinMat))) * inNormal);
+		locPos = ubo.model[pushConstants.transformIndex] * node.matrix * skinMat * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex] * node.matrix * skinMat))) * inNormal);
 	} else {
-		locPos = ubo.model * node.matrix * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix))) * inNormal);
+		locPos = ubo.model[pushConstants.transformIndex] * node.matrix * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex] * node.matrix))) * inNormal);
 	}
 	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
@@ -63,7 +68,7 @@ void main()
 	outUV1 = inUV1;
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 
-	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model * node.matrix) ) * vec4(inPos, 1.0);
+	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model[pushConstants.transformIndex] * node.matrix) ) * vec4(inPos, 1.0);
 	//outShadowCoord = ( ubo.lightSpace ) * vec4(outWorldPos, 1.0);
 	//bias * lightMVP.Matrix * Model.ModelMat * vec4(a_Position, 1.0);
 }

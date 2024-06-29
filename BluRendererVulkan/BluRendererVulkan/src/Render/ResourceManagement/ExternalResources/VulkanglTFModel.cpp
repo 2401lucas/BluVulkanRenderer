@@ -445,6 +445,7 @@ void Model::destroy() {
     vkFreeMemory(device->logicalDevice, indices.memory, nullptr);
     indices.buffer = VK_NULL_HANDLE;
   }
+  materialBuffer.destroy();
   for (auto texture : textures) {
     texture.destroy();
   }
@@ -1239,8 +1240,8 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     std::cerr << "Could not load gltf file: " << error << std::endl;
     return;
   }
-  //TODO: PRIO 4
-  // Pre-Calculations for requested features
+  // TODO: PRIO 4
+  //  Pre-Calculations for requested features
   if ((fileLoadingFlags & FileLoadingFlags::PreTransformVertices) ||
       (fileLoadingFlags & FileLoadingFlags::PreMultiplyVertexColors) ||
       (fileLoadingFlags & FileLoadingFlags::FlipY)) {
@@ -1365,6 +1366,7 @@ void Model::drawNode(Node *node, VkCommandBuffer commandBuffer) {
 }
 
 void Model::draw(VkCommandBuffer commandBuffer) {
+  // Occ. Check with Dimensions?
   const VkDeviceSize offsets[1] = {0};
   vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertices.buffer, offsets);
   vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -1594,4 +1596,44 @@ vkglTF::Vertex::getPipelineVertexInputState(
   return &pipelineVertexInputStateCreateInfo;
 }
 
+void Transform::updatePosition(glm::vec3 newPos) {
+  position = newPos;
+  posMat = glm::translate(glm::mat4(1.0f), position);
+  calculateTransformMat();
+}
+
+void Transform::updateRotation(glm::vec3 newRot) {
+  rotation = newRot;
+  glm::mat4 rotMat = glm::mat4(1.0f);
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.x),
+                       glm::vec3(1.0f, 0.0f, 0.0f));  // Pitch
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.y),
+                       glm::vec3(0.0f, 1.0f, 0.0f));  // Yaw
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.z),
+                       glm::vec3(0.0f, 0.0f, 1.0f));  // Roll
+  calculateTransformMat();
+}
+
+void Transform::updatePositionAndRotation(glm::vec3 newPos, glm::vec3 newRot) {
+  position = newPos;
+  rotation = newRot;
+  posMat = glm::translate(glm::mat4(1.0f), position);
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.x),
+                       glm::vec3(1.0f, 0.0f, 0.0f));  // Pitch
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.y),
+                       glm::vec3(0.0f, 1.0f, 0.0f));  // Yaw
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.z),
+                       glm::vec3(0.0f, 0.0f, 1.0f));  // Roll
+  calculateTransformMat();
+}
+
+void Transform::updateScale(glm::vec3 newScale) {
+  scale = newScale;
+  scaleMat = glm::scale(glm::mat4(1.0f), scale);
+  calculateTransformMat();
+}
+
+void Transform::calculateTransformMat() {
+  transformMat = posMat * rotMat * scaleMat;
+}
 }  // namespace vkglTF
