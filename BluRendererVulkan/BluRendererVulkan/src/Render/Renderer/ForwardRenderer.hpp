@@ -98,7 +98,6 @@ class ForwardRenderer : public BaseRenderer {
 
   struct DynamicUniformBuffers {
     vks::Buffer scene;
-    vks::Buffer skybox;
     vks::Buffer params;
     vks::Buffer shadow;
   };
@@ -323,7 +322,6 @@ class ForwardRenderer : public BaseRenderer {
           device, offscreenShadowPass.framebuffers[i].framebuffer, nullptr);
 
       dynamicUniformBuffers[i].scene.destroy();
-      dynamicUniformBuffers[i].skybox.destroy();
       dynamicUniformBuffers[i].params.destroy();
       dynamicUniformBuffers[i].shadow.destroy();
     }
@@ -1835,7 +1833,7 @@ class ForwardRenderer : public BaseRenderer {
 
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
             dynamicDescriptorSets[i].skybox, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            0, &dynamicUniformBuffers[i].skybox.descriptor);
+            0, &dynamicUniformBuffers[i].scene.descriptor);
 
         writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
             dynamicDescriptorSets[i].skybox, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -3437,11 +3435,6 @@ class ForwardRenderer : public BaseRenderer {
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          &uniformBuffer.skybox, sizeof(uboMatrices)));
-      VK_CHECK_RESULT(vulkanDevice->createBuffer(
-          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
           &uniformBuffer.params, sizeof(SceneParams)));
       // VK_CHECK_RESULT(vulkanDevice->createBuffer(
       //     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -3455,7 +3448,6 @@ class ForwardRenderer : public BaseRenderer {
           &uniformBuffer.shadow, sizeof(shadowParams)));
 
       uniformBuffer.scene.map();
-      uniformBuffer.skybox.map();
       uniformBuffer.params.map();
       uniformBuffer.shadow.map();
     }
@@ -3601,10 +3593,7 @@ class ForwardRenderer : public BaseRenderer {
       uboMatrices.models[i + 1] =
           dynamicModels[dynamicModelsToRenderIndices[i]].transform.transformMat;
     }
-    //TODO: ONE TRANSFORM UPLOAD
     memcpy(dynamicUniformBuffers[currentFrameIndex].scene.mapped, &uboMatrices,
-           sizeof(uboMatrices));
-    memcpy(dynamicUniformBuffers[currentFrameIndex].skybox.mapped, &uboMatrices,
            sizeof(uboMatrices));
   }
 
@@ -3622,7 +3611,7 @@ class ForwardRenderer : public BaseRenderer {
     sceneParams.lights[1].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.4f);
     if (uiSettings.animateLight) {
       sceneParams.lights[1].position =
-          glm::vec4(0.0f, -1.0f, sin(timer) * 9.0f, 0.0f);
+          glm::vec4(sin(timer) * 9.0f, 0.0f, -1.0f, 0.0f);
     }
     sceneParams.lights[1].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     sceneParams.lights[1].zNear = 10.0f;
