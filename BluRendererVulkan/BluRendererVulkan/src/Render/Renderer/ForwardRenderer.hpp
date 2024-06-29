@@ -195,7 +195,7 @@ class ForwardRenderer : public BaseRenderer {
 
 #ifndef RenderSettings 1
 #define MAX_MODELS 16
-#define MAX_LIGHTS 2
+#define MAX_LIGHTS 1
   const uint32_t shadowMapSize = 2048;
   // Depth bias (and slope) are used to avoid shadowing artifacts
   const float depthBiasConstant = 1.25f;
@@ -225,7 +225,7 @@ class ForwardRenderer : public BaseRenderer {
     glm::vec3 camPos;
   } uboMatrices;
 
-  const char* debugLights[2] = {"Image Baked Light", "Area Light"};
+  const char* debugLights[1] = {"Area Light"};
 
   struct LightSource {
     glm::vec4 color = glm::vec4(1.0f);
@@ -245,8 +245,8 @@ class ForwardRenderer : public BaseRenderer {
     LightSource lights[MAX_LIGHTS];
     float prefilteredCubeMipLevels;
     float debugViewInputs = 0.0f;
-    float debugViewEquation = 0.0f;
     float debugViewLight = 0.0f;
+    float scaleIBLAmbient = 1.0f;
   } sceneParams;
 
   glm::vec3 iblDir = glm::vec3(0.0f, -40.0f, 0.0f);
@@ -3598,29 +3598,20 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updateSceneParams() {
-    // IBL
-    sceneParams.lights[0].color =
-        glm::vec4(1.0f, 1.0f, 1.0f, 10.0f) * uiSettings.IBLstrength;
-    sceneParams.lights[0].position = glm::vec4(0.0f, -20.0f, 0.0f, 0.0f);
+    // Area Light
+    sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.4f);
+    if (uiSettings.animateLight) {
+      sceneParams.lights[0].position =
+          glm::vec4(sin(timer) * 9.0f, 0.0f, -1.0f, 0.0f);
+    }
     sceneParams.lights[0].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     sceneParams.lights[0].zNear = 10.0f;
     sceneParams.lights[0].zFar = 60.0f;
     sceneParams.lights[0].lightFOV = 45.0f;
 
-    // Area Light
-    sceneParams.lights[1].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.4f);
-    if (uiSettings.animateLight) {
-      sceneParams.lights[1].position =
-          glm::vec4(sin(timer) * 9.0f, 0.0f, -1.0f, 0.0f);
-    }
-    sceneParams.lights[1].rotation = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    sceneParams.lights[1].zNear = 10.0f;
-    sceneParams.lights[1].zFar = 60.0f;
-    sceneParams.lights[1].lightFOV = 45.0f;
-
     sceneParams.debugViewInputs = uiSettings.debugOutput;
     sceneParams.debugViewLight = uiSettings.debugLight;
-
+    sceneParams.scaleIBLAmbient = uiSettings.IBLstrength;
     memcpy(dynamicUniformBuffers[currentFrameIndex].params.mapped, &sceneParams,
            sizeof(SceneParams));
   }

@@ -1,5 +1,4 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
 
 layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;
@@ -29,10 +28,11 @@ layout (set = 0, binding = 0) uniform UBO {
   };
 
 layout (set = 0, binding = 1) uniform UBOParams {
-	LightSource lights[2];
+	LightSource lights[1];
 	float prefilteredCubeMipLevels;
 	float debugViewInputs;
 	float debugViewLight;
+	float scaleIBLAmbient;
 } uboParams;
 
 layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
@@ -112,22 +112,21 @@ vec3 getNormal(ShaderMaterial material)
 	return normalize(TBN * tangentNormal);
 }
 
-//vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
-//{
-//	float lod = (pbrInputs.perceptualRoughness * uboParams.prefilteredCubeMipLevels);
-	// retrieve a scale and bias to F0. See [1], Figure 3
-//	vec3 brdf = (texture(samplerBRDFLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
-//	vec3 diffuseLight = SRGBtoLINEAR(texture(samplerIrradiance, n)).rgb;
-//	vec3 specularLight = SRGBtoLINEAR(textureLod(prefilteredMap, reflection, lod)).rgb;
+vec3 getIBLContribution(PBRInfo pbrInputs, vec3 reflection)
+{
+	float lod = (pbrInputs.perceptualRoughness * uboParams.prefilteredCubeMipLevels);
+	vec3 brdf = texture(samplerBRDFLUT, clamp(vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness), vec2(0), vec2(1.0))).rgb;
+	vec3 diffuseLight = texture(samplerIrradiance, pbrInputs.N).rgb;
+	vec3 specularLight = textureLod(prefilteredMap, reflection, lod).rgb;
 
-//	vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
-//	vec3 specular = specularLight * (pbrInputs.specularColor * brdf.x + brdf.y);
+	vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
+	vec3 specular = specularLight * (pbrInputs.specularColor * brdf.x + brdf.y);
 
 	// For presentation, this allows us to disable IBL terms
-//	diffuse *= uboParams.scaleIBLAmbient;
-//	specular *= uboParams.scaleIBLAmbient;
-//	return diffuse + specular;
-//}
+	diffuse *= uboParams.scaleIBLAmbient;
+	specular *= uboParams.scaleIBLAmbient;
+	return diffuse + specular;
+}
 
 vec3 diffuse(PBRInfo pbrInputs)
 {
@@ -349,33 +348,18 @@ void main()
 		specularColor
 	);
 
-	//vec3 F = specularReflection(pbrInputs);
-	//float G = geometricOcclusion(pbrInputs);
-	//float D = microfacetDistribution(pbrInputs);
-
-	//const vec3 u_LightColor = vec3(0.2f);
-
-	// Calculation of analytical lighting contribution
-	//vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
-	//vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
-	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
-	//vec3 color = NdotL * u_LightColor * (diffuseContrib + specContrib);
-	//vec3 iblContrib = getIBLContribution(pbrInputs, n, reflection);
-	//color += iblContrib;
 	vec3 color = vec3(0.0);
 
 	//Lights
-	vec3 ibl = vec3(0.0);
-	for(int i = 0; i < 1; i++) {
-		ibl += CalculateLight(uboParams.lights[i], pbrInputs);
-	}
+	vec3 ibl = getIBLContribution(pbrInputs, reflection);
+	color += ibl;
+
 	vec3 Lo = vec3(0.0);
-	for(int i = 1; i < 2; i++) {
+	for(int i = 0; i < 1; i++) {
 		Lo += CalculateLight(uboParams.lights[i], pbrInputs);
 	}
 
 	color += Lo;
-	color += ibl;
 	const float u_OcclusionStrength = 1.0f;
 	// Apply optional PBR terms for additional (optional) shading
 	if (material.occlusionTextureSet > -1) {
