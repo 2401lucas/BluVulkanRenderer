@@ -871,7 +871,7 @@ class ForwardRenderer : public BaseRenderer {
     // Debug window
     ImGui::SetWindowPos(ImVec2(20 * uiSettings.scale, 20 * uiSettings.scale),
                         ImGuiCond_FirstUseEver);
-    ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 185 * uiSettings.scale),
+    ImGui::SetWindowSize(ImVec2(300 * uiSettings.scale, 225 * uiSettings.scale),
                          ImGuiCond_Always);
     ImGui::TextUnformatted(getTitle());
     ImGui::TextUnformatted(deviceProperties.deviceName);
@@ -901,9 +901,9 @@ class ForwardRenderer : public BaseRenderer {
                      uiSettings.frameTimeMin, uiSettings.frameTimeMax,
                      ImVec2(0, 80));
 
-    ImGui::Text("Total Model Count: &i",
-                (int)(staticModels.size() + dynamicModels.size()));
-    ImGui::Text("Rendered Models: &i", (int)dynamicModelsToRenderIndices.size());
+    ImGui::Text("Total Model Count:%i",
+                (uint32_t)(staticModels.size() + dynamicModels.size()));
+    ImGui::Text("Rendered Models: %i", dynamicModelsToRenderIndices.size());
 
     ImGui::SetNextWindowPos(
         ImVec2(20 * uiSettings.scale, 360 * uiSettings.scale),
