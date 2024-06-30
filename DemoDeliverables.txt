@@ -96,9 +96,7 @@ Descriptor Layouts
 DYNAMIC?-------------
 
 
-pushconstindex
 culling
-updating ubo
 
 KNOWN PROBLEMS:
 Add ImGui keyboard input

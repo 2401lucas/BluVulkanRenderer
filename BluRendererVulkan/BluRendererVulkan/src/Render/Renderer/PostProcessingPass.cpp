@@ -7,11 +7,12 @@ PostProcessingPass::PostProcessingPass(
     VulkanDevice* device, VkFormat colorFormat, VkFormat depthFormat,
     uint32_t imageCount, float width, float height,
     std::string vertexShaderPath, std::string fragmentShaderPath)
-    : device(device),
-      colorFormat(colorFormat),
-      depthFormat(depthFormat),
-      vertexShaderPath(vertexShaderPath),
-      fragmentShaderPath(fragmentShaderPath) {
+    : device(device) {
+  this->colorFormat = colorFormat;
+  this->depthFormat = depthFormat;
+  this->vertexShaderPath = vertexShaderPath;
+  this->fragmentShaderPath = fragmentShaderPath;
+
   std::array<VkAttachmentDescription, 2> attchmentDescriptions = {};
   // Color attachment
   attchmentDescriptions[0].format = colorFormat;
@@ -109,8 +110,6 @@ void PostProcessingPass::onResize(uint32_t imageCount, float width,
   cleanResources();
   createResources(imageCount, width, height);
 }
-
-void PostProcessingPass::render() {}
 
 void PostProcessingPass::cleanResources() {
   for (size_t i = 0; i < framebuffers.size(); i++) {

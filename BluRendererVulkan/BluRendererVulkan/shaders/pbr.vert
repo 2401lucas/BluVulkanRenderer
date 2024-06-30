@@ -69,6 +69,4 @@ void main()
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 
 	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model[pushConstants.transformIndex] * node.matrix) ) * vec4(inPos, 1.0);
-	//outShadowCoord = ( ubo.lightSpace ) * vec4(outWorldPos, 1.0);
-	//bias * lightMVP.Matrix * Model.ModelMat * vec4(a_Position, 1.0);
 }

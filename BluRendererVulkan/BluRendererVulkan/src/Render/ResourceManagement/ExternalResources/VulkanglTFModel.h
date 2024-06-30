@@ -19,8 +19,10 @@
 #include <glm/gtx/string_cast.hpp>
 
 #define TINYGLTF_NO_STB_IMAGE_WRITE
+#define TINYGLTF_USE_CPP14
 
-#include "../../../libraries/GLTF/tiny_gltf.h"
+//#include "../../../libraries/GLTF/tiny_gltf.h"
+#include "../../../libraries/GLTF/tiny_gltf_exp.h" // sajson : faster but readonly
 #include "../../Renderer/BaseRenderer.h"
 
 // Changing this value here also requires changing it in the vertex shader

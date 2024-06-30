@@ -1195,13 +1195,10 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   filePath = filename.substr(0, pos);
 
   if (fileLoaded) {
-    // TODO: PRIO 5
-    // Maybe dispatch this into 3 threads?
     loadTextureSamplers(gltfModel);
     loadTextures(gltfModel, transferQueue);
     loadMaterials(gltfModel);
 
-    // Rejoin threads
     const tinygltf::Scene &scene =
         gltfModel
             .scenes[gltfModel.defaultScene > -1 ? gltfModel.defaultScene : 0];
@@ -1214,15 +1211,16 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     loaderInfo.vertexBuffer = new Vertex[vertexCount];
     loaderInfo.indexBuffer = new uint32_t[indexCount];
 
-    // TODO: PRIO 3
     // TODO: scene handling with no default scene
     for (size_t i = 0; i < scene.nodes.size(); i++) {
       const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
       loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo);
     }
+
     if (gltfModel.animations.size() > 0) {
       loadAnimations(gltfModel);
     }
+
     loadSkins(gltfModel);
 
     for (auto node : linearNodes) {
@@ -1242,6 +1240,7 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
   }
   // TODO: PRIO 4
   //  Pre-Calculations for requested features
+
   if ((fileLoadingFlags & FileLoadingFlags::PreTransformVertices) ||
       (fileLoadingFlags & FileLoadingFlags::PreMultiplyVertexColors) ||
       (fileLoadingFlags & FileLoadingFlags::FlipY)) {

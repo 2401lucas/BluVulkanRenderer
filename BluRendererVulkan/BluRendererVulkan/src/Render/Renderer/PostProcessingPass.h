@@ -5,33 +5,14 @@
 #include <vector>
 
 #include "../ResourceManagement/VulkanResources/VulkanDevice.h"
+#include "OffscreenPass.h"
 
 namespace vks {
-class PostProcessingPass {
+class PostProcessingPass : public OffscreenPass {
  public:
-  struct FrameBufferAttachment {
-    VkImage image;
-    VkDeviceMemory memory;
-    VkImageView view;
-  };
-
-  struct FrameBuffer {
-    VkFramebuffer framebuffer;
-    FrameBufferAttachment color, depth;
-    VkDescriptorImageInfo descriptor;
-  };
-
   VulkanDevice* device;
 
-  VkPipeline pipeline{VK_NULL_HANDLE};
-  VkRenderPass renderPass{VK_NULL_HANDLE};
-  VkSampler sampler{VK_NULL_HANDLE};
-  std::vector<VkDescriptorSet> descriptorSets;
-  std::vector<FrameBuffer> framebuffers;
-
-  std::string vertexShaderPath;
-  std::string fragmentShaderPath;
-  //TEMP
+  // TEMP
   std::vector<VkCommandBuffer> cmdBufs;
 
   PostProcessingPass(VulkanDevice* device, VkFormat colorFormat,
@@ -42,14 +23,9 @@ class PostProcessingPass {
 
   // When window has been resized, recreate required resources
   void onResize(uint32_t imageCount, float width, float height);
-  void render();
 
-  private:
-  VkFormat colorFormat;
-  VkFormat depthFormat;
-
+ private:
   void cleanResources();
   void createResources(uint32_t imageCount, float width, float height);
 };
-
 }  // namespace vks

@@ -5,7 +5,7 @@ layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
 layout (location = 4) in vec4 inColor0;
-layout (location = 5) in vec4 inShadowCoord;
+layout (location = 5) in vec4 inShadowCoords;
 
 // Scene bindings
 
@@ -20,15 +20,15 @@ layout (set = 0, binding = 0) uniform UBO {
  struct LightSource {
     vec4 color;
     vec4 position;
-    vec4 rotation;
+    vec4 dir;
     float zNear;
     float zFar;
     float lightFOV;
-	float placeholderSpace;
+	float lightType;
   };
 
 layout (set = 0, binding = 1) uniform UBOParams {
-	LightSource lights[1];
+	LightSource lights[2];
 	float prefilteredCubeMipLevels;
 	float debugViewInputs;
 	float debugViewLight;
@@ -166,17 +166,44 @@ float microfacetDistribution(PBRInfo pbrInputs)
 	//return roughnessSq / (M_PI * pow(pow(pbrInputs.NdotH, 2) * (roughnessSq - 1) + 1, 2));
 }
 
-#define ambient 0.1
-float GetShadowContrib(vec4 shadowCoord) {
-	float shadow = 1.0;
-	vec3 projCoords = shadowCoord.xyz * 0.5 + 0.5;
-	float dist = texture( shadowMap, projCoords.xy).r;
-	float bias = 0.005;
-	if (dist < projCoords.z - bias) 
-	{
-		shadow = ambient;
-	}
-	return shadow;
+float calculateShadow(vec4 shadowCoords, vec2 off)
+{
+   if (shadowCoords.z > -1.0 && shadowCoords.z < 1.0)
+   {
+      float closestDepth = texture(shadowMap, shadowCoords.xy + off).r;
+      float currentDepth = shadowCoords.z;
+
+      if (closestDepth < currentDepth)
+         return 1.0;
+   }
+
+   return 0.0;
+}
+
+float filterPCF(vec4 shadowCoords)
+{
+   vec2 texelSize = textureSize(shadowMap, 0);
+   float scale = 1.5;
+   float dx = scale * 1.0 / float(texelSize.x);
+   float dy = scale * 1.0 / float(texelSize.y);
+
+   float shadow = 0.0;
+   int count = 0;
+   int range = 1;
+
+   for (int x = -range; x <= range; x++)
+   {
+      for (int y = -range; y <= range; y++)
+      {
+         shadow += calculateShadow(
+               shadowCoords,
+               vec2(dx * x, dy * y)
+         );
+         count++;
+      }
+   }
+
+   return shadow / count;
 }
 
 // Gets metallic factor from specular glossiness workflow inputs 
@@ -193,22 +220,16 @@ float convertMetallic(vec3 diffuse, vec3 specular, float maxSpecular) {
 	return clamp((-b + sqrt(D)) / (2.0 * a), 0.0, 1.0);
 }
 
-//Area light calc without shadows
-vec3 CalculateLight(LightSource light, PBRInfo pbrInputs) {
-	float distance		= length(light.position.xyz - inWorldPos);
-	//Max value because as distance approaches 0, attenuation increases. 2 is chosen at random
-	float attenuation	= clamp(1.0 / (distance * distance), 0, 2) * light.color.w;
-	vec3 radiance		= light.rotation.xyz * attenuation; //Not for area lights
-
+vec3 CalculateDirLight(LightSource light, PBRInfo pbrInputs) {
 	// Precalculate vectors and dot products	
-	vec3 L = normalize(light.position.xyz - inWorldPos);
+	vec3 L = normalize(light.dir.xyz);
 	vec3 H = normalize (pbrInputs.V + L);
 	pbrInputs.NdotL = clamp(dot(pbrInputs.N, L), 0.001, 1.0);
 	pbrInputs.NdotH = clamp(dot(pbrInputs.N, H), 0.0, 1.0);
 	pbrInputs.LdotH = clamp(dot(L, H), 0.0, 1.0);
 	pbrInputs.VdotH = clamp(dot(pbrInputs.V, H), 0.0, 1.0);
 
-	vec3 color = vec3(0.0);
+	vec3 inRadiance = light.color.w * light.color.rbg;
 
 	// D = Normal distribution (Distribution of the microfacets)
 	float D = microfacetDistribution(pbrInputs); 
@@ -217,16 +238,105 @@ vec3 CalculateLight(LightSource light, PBRInfo pbrInputs) {
 	// F = Fresnel factor (Reflectance depending on angle of incidence)
 	vec3 F = specularReflection(pbrInputs);
 
-	// Calculation of analytical lighting contribution
-	vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
-	vec3 specContrib = F * G * D / (4.0 * pbrInputs.NdotL * pbrInputs.NdotV);
-	// Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
-	color = pbrInputs.NdotL * light.color.xyz * (diffuseContrib + specContrib) * attenuation;
-	//vec3 spec = D * F * G / (4.0 * pbrInputs.NdotL * pbrInputs.NdotV + 0.001);
-	//vec3 kD = (vec3(1.0) - F) * (1.0 - pbrInputs.metalness);
-	//color += (kD * pbrInputs.diffuseColor / M_PI + spec) * radiance * pbrInputs.NdotL;
+	// Energy conservation
+	// Specular and Diffuse
+	vec3 kS = F;
+	vec3 kD = vec3(1.0) - kS;
+	kD *= 1.0 - pbrInputs.metalness;
 
-	return color;
+	vec3 numerator = D * G * F;
+	float denominator = 4.0 * pbrInputs.NdotV * pbrInputs.NdotL;
+
+	vec3 diffuse = kD * diffuse(pbrInputs);
+	vec3 specular = numerator / max(denominator, 0.0001);
+
+	return ((diffuse + specular) * inRadiance * pbrInputs.NdotL);
+}
+
+vec3 CalculatePointLight(LightSource light, PBRInfo pbrInputs) {
+	// Precalculate vectors and dot products	
+	vec3 L = normalize(light.position.xyz - inWorldPos);
+	vec3 H = normalize (pbrInputs.V + L);
+	pbrInputs.NdotL = clamp(dot(pbrInputs.N, L), 0.001, 1.0);
+	pbrInputs.NdotH = clamp(dot(pbrInputs.N, H), 0.0, 1.0);
+	pbrInputs.LdotH = clamp(dot(L, H), 0.0, 1.0);
+	pbrInputs.VdotH = clamp(dot(pbrInputs.V, H), 0.0, 1.0);
+
+	vec3 inRadiance = light.color.w * light.color.rbg;
+
+	// D = Normal distribution (Distribution of the microfacets)
+	float D = microfacetDistribution(pbrInputs); 
+	// G = Geometric shadowing term (Microfacets shadowing)
+	float G = geometricOcclusion(pbrInputs);
+	// F = Fresnel factor (Reflectance depending on angle of incidence)
+	vec3 F = specularReflection(pbrInputs);
+
+	// Energy conservation
+	// Specular and Diffuse
+	vec3 kS = F;
+	vec3 kD = vec3(1.0) - kS;
+	kD *= 1.0 - pbrInputs.metalness;
+
+	vec3 numerator = D * G * F;
+	float denominator = 4.0 * pbrInputs.NdotV * pbrInputs.NdotL;
+
+	vec3 diffuse = kD * diffuse(pbrInputs);
+	vec3 specular = numerator / max(denominator, 0.0001);
+
+	// TODO: Make these const. adjustable by the GUI.
+	float lightConst = 1.0;
+	float lightLinear = 0.09;
+	float lightQuadratic = 0.032;
+   
+	float distance = length(light.position.xyz - inWorldPos);
+	float attenuation = (1.0 / ( lightConst + lightLinear * distance + lightQuadratic * (distance * distance)));
+
+	return (attenuation * (diffuse + specular) * inRadiance * pbrInputs.NdotL);
+}
+
+vec3 CalculateSpotLight(LightSource light, PBRInfo pbrInputs) {
+	// Precalculate vectors and dot products	
+	vec3 L = normalize(light.position.xyz - inWorldPos);
+	vec3 H = normalize (pbrInputs.V + L);
+	pbrInputs.NdotL = clamp(dot(pbrInputs.N, L), 0.001, 1.0);
+	pbrInputs.NdotH = clamp(dot(pbrInputs.N, H), 0.0, 1.0);
+	pbrInputs.LdotH = clamp(dot(L, H), 0.0, 1.0);
+	pbrInputs.VdotH = clamp(dot(pbrInputs.V, H), 0.0, 1.0);
+
+	float theta = dot(L, normalize(-light.dir.xyz));
+   float epsilon = 0.9978 - light.lightFOV;
+   float intensity = clamp((theta - light.lightFOV) / epsilon, 0.0, 1.0);
+
+	vec3 inRadiance = light.color.w * light.color.rbg;
+
+	// D = Normal distribution (Distribution of the microfacets)
+	float D = microfacetDistribution(pbrInputs); 
+	// G = Geometric shadowing term (Microfacets shadowing)
+	float G = geometricOcclusion(pbrInputs);
+	// F = Fresnel factor (Reflectance depending on angle of incidence)
+	vec3 F = specularReflection(pbrInputs);
+
+	// Energy conservation
+	// Specular and Diffuse
+	vec3 kS = F;
+	vec3 kD = vec3(1.0) - kS;
+	kD *= 1.0 - pbrInputs.metalness;
+
+	vec3 numerator = D * G * F;
+	float denominator = 4.0 * pbrInputs.NdotV * pbrInputs.NdotL;
+
+	vec3 diffuse = kD * diffuse(pbrInputs) * intensity;
+	vec3 specular = numerator / max(denominator, 0.0001) * intensity;
+
+	// TODO: Make these const. adjustable by the GUI.
+	float lightConst = 1.0;
+	float lightLinear = 0.09;
+	float lightQuadratic = 0.032;
+   
+	float distance = length(light.position.xyz - inWorldPos);
+	float attenuation = (1.0 / ( lightConst + lightLinear * distance + lightQuadratic * (distance * distance)));
+
+	return (attenuation * (diffuse + specular) * inRadiance * pbrInputs.NdotL);
 }
 
 void main()
@@ -356,7 +466,19 @@ void main()
 
 	vec3 Lo = vec3(0.0);
 	for(int i = 0; i < 1; i++) {
-		Lo += CalculateLight(uboParams.lights[i], pbrInputs);
+		int lightType = int(uboParams.lights[i].lightType);
+		switch(lightType) {
+			case 0:
+			float shadow = (1.0 - filterPCF(inShadowCoords / inShadowCoords.w));
+				Lo += CalculateDirLight(uboParams.lights[i], pbrInputs) * shadow;
+				break;
+			case 1:
+				Lo += CalculatePointLight(uboParams.lights[i], pbrInputs);
+				break;
+			case 2:
+				Lo += CalculateSpotLight(uboParams.lights[i], pbrInputs);
+				break;
+		}
 	}
 
 	color += Lo;
