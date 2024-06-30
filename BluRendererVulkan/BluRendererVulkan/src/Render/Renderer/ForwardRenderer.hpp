@@ -3439,7 +3439,7 @@ class ForwardRenderer : public BaseRenderer {
   void updateSceneParams() {
     // Area Light
     sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.8f);
-    sceneParams.lights[0].position = glm::vec4(-15.0f, 25.0f, 0.0f, 0.0f);
+    sceneParams.lights[0].position = glm::vec4(-30.0f, 50.0f, 0.0f, 0.0f);
     sceneParams.lights[0].rotation = glm::vec4(0.0f, -10.0f, 5.0f, 0.0f);
     sceneParams.lights[0].zNear = 16.0f;
     sceneParams.lights[0].zFar = 64.0f;
