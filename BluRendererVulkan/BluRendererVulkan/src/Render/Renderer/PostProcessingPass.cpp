@@ -111,6 +111,21 @@ void PostProcessingPass::onResize(uint32_t imageCount, float width,
   createResources(imageCount, width, height);
 }
 
+void PostProcessingPass::onRender(VkCommandBuffer curBuf,
+                                  uint32_t currentFrameIndex) {
+  vkCmdBindDescriptorSets(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          pipelineLayout, 0, 1,
+      &screenTextureDescriptorSet[currentFrameIndex], 0, NULL);
+  vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  vkCmdDraw(curBuf, 3, 1, 0, 0);
+}
+
+void PostProcessingPass::updateDescriptorSets() {}
+
+void PostProcessingPass::createUbo() {}
+
+void PostProcessingPass::updateUbo() {}
+
 void PostProcessingPass::cleanResources() {
   for (size_t i = 0; i < framebuffers.size(); i++) {
     vkDestroyImage(device->logicalDevice, framebuffers[i].color.image, nullptr);

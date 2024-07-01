@@ -6,6 +6,7 @@
 #include "../ResourceManagement/ExternalResources/ThreadPool.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanglTFModel.h"
+#include "AOPostProcessingPass.h"
 #include "BaseRenderer.h"
 #include "PostProcessingPass.h"
 #include "ShadowPass.h"
@@ -858,7 +859,8 @@ class ForwardRenderer : public BaseRenderer {
     vkCmdBindDescriptorSets(
         currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelineLayouts.postProcessing, 0, 1,
-        &postPasses[postPasses.size() - 1]->descriptorSets[currentFrameIndex],
+        &postPasses[postPasses.size() - 1]
+             ->screenTextureDescriptorSet[currentFrameIndex],
         0, NULL);
     vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       postPasses[postPasses.size() - 1]->pipeline);
@@ -1196,8 +1198,7 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing & UI Rendering
     {
-      // O -> O+1 if O+1 < postPasses.Size() --- Foreach Post Processing Pass,
-      // render into the next
+      // Foreach Post Processing Pass render into the next
       // Then, Render final image into Swapchain image
       for (size_t i = 0; i < postPasses.size() - 1; i++) {
         renderPassBeginInfo.renderPass = postPasses[i + 1]->renderPass;
@@ -1231,15 +1232,7 @@ class ForwardRenderer : public BaseRenderer {
 
         VkDeviceSize offsets[1] = {0};
 
-        vkCmdBindDescriptorSets(
-            curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            pipelineLayouts.postProcessing, 0, 1,
-            &postPasses[i]->descriptorSets[currentFrameIndex], 0, NULL);
-        vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          postPasses[i]->pipeline);
-
-        // Draw triangle
-        vkCmdDraw(curBuf, 3, 1, 0, 0);
+        postPasses[i]->onRender(curBuf, currentFrameIndex);
 
         VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
 
@@ -1669,7 +1662,7 @@ class ForwardRenderer : public BaseRenderer {
 
     // Post Processing
     {
-      if (postPasses[0]->descriptorSets.size() == 0) {
+      if (postPasses[0]->screenTextureDescriptorSet.size() == 0) {
         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
             {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
              VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
@@ -1690,9 +1683,28 @@ class ForwardRenderer : public BaseRenderer {
         VkDescriptorSetAllocateInfo allocInfo =
             vks::initializers::descriptorSetAllocateInfo(
                 descriptorPool, &descriptorSetLayouts.postProcessing, 1);
+        for (auto& pass : postPasses) {
+          if (pass->staticDescriptorSetLayoutBindings.size() != 0) {
+            VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+            descriptorSetLayoutCI.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            descriptorSetLayoutCI.pBindings =
+                pass->staticDescriptorSetLayoutBindings.data();
+            descriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(
+                pass->staticDescriptorSetLayoutBindings.size());
+            VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
+                device, &descriptorSetLayoutCI, nullptr,
+                &pass->staticDescriptorSetLayout));
+
+            VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+            VkDescriptorSetAllocateInfo allocInfo =
+                vks::initializers::descriptorSetAllocateInfo(
+                    descriptorPool, &pass->staticDescriptorSetLayout, 1);
+          }
+        }
 
         for (auto& pass : postPasses) {
-          pass->descriptorSets.resize(dynamicDescriptorSets.size());
+          pass->screenTextureDescriptorSet.resize(dynamicDescriptorSets.size());
           for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
             descriptorSetAllocInfo.sType =
                 VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1700,8 +1712,19 @@ class ForwardRenderer : public BaseRenderer {
             descriptorSetAllocInfo.pSetLayouts =
                 &descriptorSetLayouts.postProcessing;
             descriptorSetAllocInfo.descriptorSetCount = 1;
+            VK_CHECK_RESULT(
+                vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                         &pass->screenTextureDescriptorSet[i]));
+          };
+          if (pass->staticDescriptorSetLayoutBindings.size() != 0) {
+            descriptorSetAllocInfo.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            descriptorSetAllocInfo.descriptorPool = descriptorPool;
+            descriptorSetAllocInfo.pSetLayouts =
+                &pass->staticDescriptorSetLayout;
+            descriptorSetAllocInfo.descriptorSetCount = 1;
             VK_CHECK_RESULT(vkAllocateDescriptorSets(
-                device, &descriptorSetAllocInfo, &pass->descriptorSets[i]));
+                device, &descriptorSetAllocInfo, &pass->staticDescriptorSet));
           }
         }
       }
@@ -1712,11 +1735,12 @@ class ForwardRenderer : public BaseRenderer {
           std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
 
           writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
-              pass->descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+              pass->screenTextureDescriptorSet[i],
+              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
               &staticUniformBuffers.postProcessing.descriptor);
 
           writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
-              pass->descriptorSets[i],
+              pass->screenTextureDescriptorSet[i],
               VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
               &pass->framebuffers[i].descriptor);
 
@@ -1724,6 +1748,7 @@ class ForwardRenderer : public BaseRenderer {
               device, static_cast<uint32_t>(writeDescriptorSets.size()),
               writeDescriptorSets.data(), 0, nullptr);
         }
+        pass->updateDescriptorSets();
       }
     }
 
@@ -1992,9 +2017,27 @@ class ForwardRenderer : public BaseRenderer {
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
 
     for (uint32_t i = 0; i < postPasses.size() - 1; i++) {
-      VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
-          vks::initializers::graphicsPipelineCreateInfo(
-              pipelineLayouts.postProcessing, postPasses[i + 1]->renderPass);
+      VkGraphicsPipelineCreateInfo postProcessingpipelineCI;
+      if (postPasses[i]->staticDescriptorSetLayout != VK_NULL_HANDLE) {
+        const std::vector<VkDescriptorSetLayout> setLayouts = {
+            descriptorSetLayouts.postProcessing,
+            postPasses[i]->staticDescriptorSetLayout};
+        pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+            setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
+        VK_CHECK_RESULT(
+            vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr,
+                                   &postPasses[i]->pipelineLayout));
+
+        postProcessingpipelineCI =
+            vks::initializers::graphicsPipelineCreateInfo(
+                postPasses[i]->pipelineLayout, postPasses[i + 1]->renderPass);
+      } else {
+        postPasses[i]->pipelineLayout = pipelineLayouts.postProcessing;
+        postProcessingpipelineCI =
+            vks::initializers::graphicsPipelineCreateInfo(
+                pipelineLayouts.postProcessing, postPasses[i + 1]->renderPass);
+      }
+
       shaderStages[0] = loadShader(postPasses[i]->vertexShaderPath,
                                    VK_SHADER_STAGE_VERTEX_BIT);
       shaderStages[1] = loadShader(postPasses[i]->fragmentShaderPath,
@@ -2017,9 +2060,26 @@ class ForwardRenderer : public BaseRenderer {
           &postPasses[i]->pipeline));
     }
 
-    VkGraphicsPipelineCreateInfo postProcessingpipelineCI =
-        vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.postProcessing, renderPass);
+    VkGraphicsPipelineCreateInfo postProcessingpipelineCI;
+    if (postPasses[postPasses.size() - 1]->staticDescriptorSetLayout !=
+        VK_NULL_HANDLE) {
+      const std::vector<VkDescriptorSetLayout> setLayouts = {
+          descriptorSetLayouts.postProcessing,
+          postPasses[postPasses.size() - 1]->staticDescriptorSetLayout};
+      pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+          setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
+      VK_CHECK_RESULT(vkCreatePipelineLayout(
+          device, &pipelineLayoutCreateInfo, nullptr,
+          &postPasses[postPasses.size() - 1]->pipelineLayout));
+
+      postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
+          postPasses[postPasses.size() - 1]->pipelineLayout, renderPass);
+    } else {
+      postPasses[postPasses.size() - 1]->pipelineLayout =
+          pipelineLayouts.postProcessing;
+      postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
+          pipelineLayouts.postProcessing, renderPass);
+    }
 
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
     postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
@@ -3271,11 +3331,6 @@ class ForwardRenderer : public BaseRenderer {
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
           &uniformBuffer.params, sizeof(SceneParams)));
-      // VK_CHECK_RESULT(vulkanDevice->createBuffer(
-      //     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-      //     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-      //         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-      //     &uniformBuffer.postProcessing, sizeof(postProcessingParams)));
       VK_CHECK_RESULT(vulkanDevice->createBuffer(
           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -3287,11 +3342,14 @@ class ForwardRenderer : public BaseRenderer {
       uniformBuffer.shadow.map();
     }
 
-    VK_CHECK_RESULT(vulkanDevice->createBuffer(
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &staticUniformBuffers.postProcessing, sizeof(PostProcessingParams)));
+    for (auto& pass : postPasses) {
+      pass->createUbo();
+    }
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &staticUniformBuffers.postProcessing, sizeof(postProcessingParams)));
     staticUniformBuffers.postProcessing.map();
 
     updateSceneParams();
@@ -3567,10 +3625,10 @@ class ForwardRenderer : public BaseRenderer {
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
         "shaders/ambientOcclusion.frag.spv"));  // AO
-    postPasses.push_back(new vks::PostProcessingPass(
+    postPasses.push_back(new vks::AOPostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/antiAliasing.frag.spv"));  // AA
+        "shaders/antiAliasing.frag.spv", graphicsQueue));  // AA
     postPasses.push_back(new vks::PostProcessingPass(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
