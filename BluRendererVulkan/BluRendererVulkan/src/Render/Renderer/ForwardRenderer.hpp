@@ -759,24 +759,99 @@ class ForwardRenderer : public BaseRenderer {
       ImGui::ColorPicker3("Skybox Clear Color", &uiSettings.skyboxColor.x);
     }
 
-    /*if (ImGui::CollapsingHeader("Light Settings")) {
-      ImGui::DragFloat3("XYZ", &uiSettings.dirPos.x, 1.0f, -100.0f, 100.0f);
-      ImGui::DragFloat("IBL Strength", &uiSettings.IBLstrength, 0.1f, 0.0f,
-                       2.0f);
-      if (ImGui::BeginCombo("Light Type",
-                            debugLightType[uiSettings.lightType])) {
-        const char* currentItem = debugLightType[uiSettings.lightType];
-        for (int n = 0; n < sizeof(debugLightType) / sizeof(debugLightType[0]);
-             n++) {
-          bool is_selected = (currentItem == debugLightType[n]);
-          if (ImGui::Selectable(debugLightType[n], is_selected)) {
-            uiSettings.lightType = n;
+    if (ImGui::CollapsingHeader("Light Settings")) {
+      ImGui::Indent();
+      for (uint32_t i = 0; i < lights.size(); i++) {
+        if (ImGui::CollapsingHeader(
+                vks::light::debugLightType[lights[i].lightType])) {
+          ImGui::PushID(i);
+          /* if (ImGui::BeginCombo("Light Type",
+                                       debugLightType[uiSettings.lightType])) {
+             const char* currentItem = debugLightType[uiSettings.lightType];
+             for (int n = 0;
+                  n < sizeof(debugLightType) / sizeof(debugLightType[0]); n++) {
+               bool is_selected = (currentItem == debugLightType[n]);
+               if (ImGui::Selectable(debugLightType[n], is_selected)) {
+                 uiSettings.lightType = n;
+               }
+               if (is_selected) ImGui::SetItemDefaultFocus();
+             }
+             ImGui::EndCombo();
+           }*/
+          bool updateLight = false;
+          if (ImGui::DragFloat3("Color RGB", &lights[i].color.x, 0.01f, 0.0f,
+                                1.0f))
+            updateLight = true;
+          if (ImGui::DragFloat("Intensity", &lights[i].color.w, 0.1f, 0.0f,
+                               10.0f))
+            updateLight = true;
+
+          // Directional
+          if (lights[i].lightType == 0) {
+            if (ImGui::DragFloat3("Direction", &lights[i].rotation.x, 0.1f,
+                                  -1.0f, 1.0f))
+              updateLight = true;
+            if (ImGui::DragFloat3("Target", &lights[i].position.x, 1.0f,
+                                  -100.0f, 100.0f))
+              updateLight = true;
+            if (ImGui::DragFloat("FOV", &lights[i].lightFOV, 1.0f, 1.0f,
+                                 135.0f))
+              updateLight = true;
+            // ImGui::DragFloat("zNear", &lights[i].lightFOV, 1.0f, 1.0f,
+            // 135.0f); ImGui::DragFloat("zFar",
+            // &lights[i].lightFOV, 1.0f, 1.0f, 135.0f);
           }
-          if (is_selected) ImGui::SetItemDefaultFocus();
+          // Point
+          else if (lights[i].lightType == 1) {
+            if (ImGui::DragFloat3("Position", &lights[i].position.x, 1.0f,
+                                  -100.0f, 100.0f))
+              updateLight = true;
+
+            ImGui::Text("Light Falloff");
+            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f, 0.01f,
+                                 1.0f))
+              updateLight = true;
+            if (ImGui::DragFloat("Linear", &lights[i].lightLinear, 0.01f, 0.0f,
+                                 1.0f))
+              updateLight = true;
+            if (ImGui::DragFloat("Quadratic", &lights[i].lightQuadratic, 0.01f,
+                                 0.0f, 1.0f))
+              updateLight = true;
+          }
+          // Spot
+          else if (lights[i].lightType == 2) {
+            if (ImGui::DragFloat3("Position", &lights[i].position.x, 1.0f,
+                                  -100.0f, 100.0f))
+              updateLight = true;
+
+            if (ImGui::DragFloat3("Direction", &lights[i].rotation.x, 0.1f,
+                                  -1.0f, 1.0f))
+              updateLight = true;
+
+            if (ImGui::DragFloat("FOV", &lights[i].lightFOV, 1.0f, 1.0f,
+                                 135.0f))
+              updateLight = true;
+
+            ImGui::Text("Light Falloff");
+            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f, 0.01f,
+                                 1.0f))
+              updateLight = true;
+            if (ImGui::DragFloat("Linear", &lights[i].lightLinear, 0.01f, 0.0f,
+                                 1.0f))
+              updateLight = true;
+            if (ImGui::DragFloat("Quadratic", &lights[i].lightQuadratic, 0.01f,
+                                 0.0f, 1.0f))
+              updateLight = true;
+          }
+
+          if (updateLight = true) {
+            lights[i].updateLight();
+          }
+          ImGui::PopID();
         }
-        ImGui::EndCombo();
       }
-    }*/
+      ImGui::Unindent();
+    }
 
     if (ImGui::CollapsingHeader("Rendering Settings")) {
       // if (ImGui::BeginCombo("Target Light to Debug",
@@ -3788,7 +3863,7 @@ class ForwardRenderer : public BaseRenderer {
     lights.clear();
     auto mainLight = vks::light::Light();
     mainLight.createDirectionalLight(
-        glm::vec4(1.0f, 1.0f, 1.0f, 2.8f), glm::vec3(5.0f, 9.0f, 0.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 2.8f), glm::vec3(0.4f, 0.6f, 0.0f),
         glm::vec3(0.0f), 90.0f, 1.0f, 16.0f, 128.0f);
     lights.push_back(mainLight);
     auto spotLight = vks::light::Light();

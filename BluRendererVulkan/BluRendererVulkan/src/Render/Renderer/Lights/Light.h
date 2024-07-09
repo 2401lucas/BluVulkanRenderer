@@ -45,7 +45,7 @@ struct Light {
     if (lightType == 0) {
       depthProjectionMatrix =
           glm::perspective(glm::radians(lightFOV), aspect, zNear, zFar);
-      depthViewMatrix = glm::lookAt(glm::vec3(rotation * -10.0f), position,
+      depthViewMatrix = glm::lookAt(glm::vec3(rotation * -100.0f), position,
                                     glm::vec3(0, 1, 0));
 
       lightSpace = depthProjectionMatrix * depthViewMatrix;
