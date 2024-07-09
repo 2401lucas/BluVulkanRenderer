@@ -7,7 +7,7 @@
 #include "../ResourceManagement/VulkanResources/VulkanDevice.h"
 
 namespace vks {
-class ShadowPass {
+class DepthPass {
  public:
   struct FrameBufferAttachment {
     VkImage image;
@@ -39,8 +39,8 @@ class ShadowPass {
 
   // TEMP
 
-  ShadowPass(VulkanDevice* device, VkFormat depthFormat, uint32_t imageCount,
+  DepthPass(VulkanDevice* device, VkFormat depthFormat, uint32_t imageCount,
              float shadowMapSize, std::string vertexShaderPath);
-  ~ShadowPass();
+  ~DepthPass();
 };
 }  // namespace vks

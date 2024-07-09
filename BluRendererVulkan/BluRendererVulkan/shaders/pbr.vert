@@ -59,14 +59,14 @@ void main()
 		locPos = ubo.model[pushConstants.transformIndex] * node.matrix * skinMat * vec4(inPos, 1.0);
 		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex] * node.matrix * skinMat))) * inNormal);
 	} else {
-		locPos = ubo.model[pushConstants.transformIndex] * node.matrix * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex] * node.matrix))) * inNormal);
+		//Static model meshes are pre-transformed
+		locPos = ubo.model[pushConstants.transformIndex] * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex]))) * inNormal);
 	}
-	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
 	outUV0 = inUV0;
 	outUV1 = inUV1;
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 
-	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model[pushConstants.transformIndex] * node.matrix) ) * vec4(inPos, 1.0);
+	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model[pushConstants.transformIndex])) * vec4(inPos, 1.0);
 }

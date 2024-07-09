@@ -4,7 +4,7 @@
 
 namespace math {
 namespace random {
-int randomRange(int& min, int& max) {
+int randomRange(int min, int max) {
   std::random_device rd;      // seed for PRNG
   std::mt19937 mt_eng(rd());  // mersenne-twister engine initialised with seed
 
@@ -12,7 +12,7 @@ int randomRange(int& min, int& max) {
 
   return dist(mt_eng);
 }
-float randomRange(float& min, float& max) {
+float randomRange(float min, float max) {
   std::random_device rd;      // seed for PRNG
   std::mt19937 mt_eng(rd());  // mersenne-twister engine initialised with seed
 

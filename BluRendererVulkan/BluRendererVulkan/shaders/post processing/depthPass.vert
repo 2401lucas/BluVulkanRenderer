@@ -28,5 +28,7 @@ out gl_PerVertex
 
 void main()
 {
-	gl_Position =  ubo.depthMVP[pushConstants.depthMVPIndex] * mUbo.models[pushConstants.transformIndex] * vec4(inPos, 1.0);
+	vec4 locPos = mUbo.models[pushConstants.transformIndex] * vec4(inPos, 1.0);
+	//vec3 pos = locPos.xyz / locPos.w;
+	gl_Position =  ubo.depthMVP[pushConstants.depthMVPIndex] * locPos;
 }

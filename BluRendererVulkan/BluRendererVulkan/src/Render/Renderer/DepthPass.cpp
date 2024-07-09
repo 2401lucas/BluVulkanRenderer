@@ -1,9 +1,11 @@
-#include "ShadowPass.h"
-
 #include <array>
-vks::ShadowPass::ShadowPass(VulkanDevice* device, VkFormat depthFormat,
-                            uint32_t imageCount, float shadowMapSize,
-                            std::string vertexShaderPath)
+
+#include "DepthPass.h"
+namespace vks {
+
+DepthPass::DepthPass(VulkanDevice* device, VkFormat depthFormat,
+                     uint32_t imageCount, float shadowMapSize,
+                     std::string vertexShaderPath)
     : device(device) {
   this->colorFormat = colorFormat;
   this->depthFormat = depthFormat;
@@ -158,7 +160,7 @@ vks::ShadowPass::ShadowPass(VulkanDevice* device, VkFormat depthFormat,
   }
 }
 
-vks::ShadowPass::~ShadowPass() {
+DepthPass::~DepthPass() {
   for (size_t i = 0; i < framebuffers.size(); i++) {
     vkDestroyImage(device->logicalDevice, framebuffers[i].depth.image, nullptr);
     vkDestroyImageView(device->logicalDevice, framebuffers[i].depth.view,
@@ -171,3 +173,4 @@ vks::ShadowPass::~ShadowPass() {
   vkDestroySampler(device->logicalDevice, sampler, nullptr);
   vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
 }
+}  // namespace vks

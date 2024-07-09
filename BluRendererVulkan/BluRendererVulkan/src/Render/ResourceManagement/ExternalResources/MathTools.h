@@ -1,8 +1,8 @@
 #pragma once
 namespace math {
 namespace random {
-int randomRange(int& min, int& max);
-float randomRange(float& min, float& max);
+int randomRange(int min, int max);
+float randomRange(float min, float max);
 
 }  // namespace random
 

@@ -1,15 +1,15 @@
 #pragma once
 #define NOMINMAX
+#define GLM_FORCE_DEPTH_ZERO_ONE
 
 #include <corecrt_math_defines.h>
 
+#include "../ResourceManagement/ExternalResources/MathTools.h"
 #include "../ResourceManagement/ExternalResources/ThreadPool.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanTexture.hpp"
 #include "../ResourceManagement/ExternalResources/VulkanglTFModel.h"
-#include "AOPostProcessingPass.h"
+#include "../ResourceManagement/VulkanResources/VulkanRenderHelper.h"
 #include "BaseRenderer.h"
-#include "PostProcessingPass.h"
-#include "ShadowPass.h"
 #include "vkImGui.h"
 
 struct UISettings {
@@ -35,7 +35,7 @@ class ForwardRenderer : public BaseRenderer {
  public:
   vkImGUI* imGui = nullptr;
 
-#ifndef SceneResources 1
+#ifndef SceneResources
   const char* scenes[3] = {"Sponza", "Roughness/Metallic", "Emissive Test"};
   const char* sceneFilePaths[3] = {
       "models/Sponza/Sponza.glb",
@@ -88,8 +88,9 @@ class ForwardRenderer : public BaseRenderer {
   bool animate = true;
 #endif
 
-#ifndef VulkanResources 1
+#ifndef VulkanResources
   struct PushConstData {
+    // Doubles as matrix index during depth passes
     uint32_t materialIndex = 0;
     uint32_t transformMatIndex = 0;
   };
@@ -97,6 +98,7 @@ class ForwardRenderer : public BaseRenderer {
     VkDescriptorSet scene{VK_NULL_HANDLE};
     VkDescriptorSet skybox{VK_NULL_HANDLE};
     VkDescriptorSet shadow{VK_NULL_HANDLE};
+    VkDescriptorSet postProcessing{VK_NULL_HANDLE};
   };
 
   struct DynamicUniformBuffers {
@@ -142,9 +144,6 @@ class ForwardRenderer : public BaseRenderer {
     VkDescriptorSetLayout shadow{VK_NULL_HANDLE};
   } descriptorSetLayouts;
 
-  std::vector<vks::PostProcessingPass*> postPasses;
-  std::vector<vks::ShadowPass*> shadowPasses;
-
   struct MultiSampleTarget {
     struct {
       VkImage image{VK_NULL_HANDLE};
@@ -163,8 +162,19 @@ class ForwardRenderer : public BaseRenderer {
     std::vector<VkCommandBuffer> postProcessing;
     std::vector<VkCommandBuffer> scene;
     std::vector<VkCommandBuffer> shadow;
+    std::vector<VkCommandBuffer> aoPrePass;
     std::vector<VkCommandBuffer> compute;
+    std::vector<VkCommandBuffer> aa;
+    std::vector<VkCommandBuffer> ao;
   } commandBuffers;
+
+  struct {
+    vks::VulkanRenderTarget* depthPrepass;
+    std::vector<vks::VulkanRenderTarget*> shadowPasses;
+    vks::VulkanRenderTarget* mainPass;
+    vks::VulkanRenderTarget* aoPass;  // Ambient Occlusion
+    vks::VulkanRenderTarget* aaPass;  // Anti Aliasing
+  } renderTargets;
 
   VkExtent2D attachmentSize{};
 
@@ -176,9 +186,11 @@ class ForwardRenderer : public BaseRenderer {
   vks::ThreadPool* threadPool;
 #endif
 
-#ifndef RenderSettings 1
+#ifndef RenderSettings
 #define MAX_MODELS 16
 #define MAX_LIGHTS 2
+#define MAX_DEPTHPASSES 4
+
   const uint32_t shadowMapSize = 2048;
   // Depth bias (and slope) are used to avoid shadowing artifacts
   const float depthBiasConstant = 1.25f;
@@ -190,13 +202,22 @@ class ForwardRenderer : public BaseRenderer {
   // THE BUFFERS NEED INITIAL UPDATE, FOR EVERY FRAME: THIS SHOULD BE CHANGED TO
   // 1 SHARED BUFFER AS UPDATES ARE RARE AND SHARED BETWEEN FRAMES
   struct PostProcessingParams {
+    glm::mat4 projMat;
+    glm::mat4 inverseProjMat;
+    glm::mat4 inverseViewMat;
+    glm::vec2 noiseScale = glm::vec2(1920 / 8, 1080 / 8);
+    glm::vec2 fovScale = glm::vec2(1.0f);
+    float zNear = 1;
+    float zFar = 500;
+    float kernelSize = 16;
+    float radius = 0.5f;
     float aaType = 0;
     float aoType = 0;
     bool enableBloom = true;
   } postProcessingParams;
 
-  struct ShadowParams {
-    glm::mat4 depthMVP;
+  struct DepthParams {
+    glm::mat4 depthMVP[MAX_DEPTHPASSES];
   } shadowParams;
 
   // Should (M?)VP be precomputed
@@ -237,14 +258,14 @@ class ForwardRenderer : public BaseRenderer {
 #endif
 
   ForwardRenderer() : BaseRenderer() {
-    name = "Forward Renderer with PBR";
+    name = "Forward Renderer";
     camera.type = Camera::firstperson;
     camera.movementSpeed = 2.0f;
     camera.rotationSpeed = 0.25f;
-    camera.setPosition(glm::vec3(-0.318f, 0.240f, -0.639f));
-    camera.setRotation(glm::vec3(4.5f, -300.25f, 0.0f));
-    camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 0.01f,
-                          5000.0f);
+    camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
+    camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 1.0f,
+                          500.0f);
 
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
@@ -295,12 +316,13 @@ class ForwardRenderer : public BaseRenderer {
       dynamicUniformBuffers[i].shadow.destroy();
     }
 
-    for (auto& pass : postPasses) {
-      delete pass;
-    }
+    delete renderTargets.aaPass;
+    delete renderTargets.aoPass;
+    delete renderTargets.mainPass;
+    delete renderTargets.depthPrepass;
 
-    for (auto& pass : shadowPasses) {
-      delete pass;
+    for (auto& shadowTarget : renderTargets.shadowPasses) {
+      delete shadowTarget;
     }
 
     staticUniformBuffers.postProcessing.destroy();
@@ -616,6 +638,9 @@ class ForwardRenderer : public BaseRenderer {
     commandBuffers.postProcessing.resize(swapChain.imageCount);
     commandBuffers.scene.resize(swapChain.imageCount);
     commandBuffers.shadow.resize(swapChain.imageCount);
+    commandBuffers.aoPrePass.resize(swapChain.imageCount);
+    commandBuffers.aa.resize(swapChain.imageCount);
+    commandBuffers.ao.resize(swapChain.imageCount);
     computeCmdBuffers.resize(swapChain.imageCount);
 
     VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
@@ -635,6 +660,15 @@ class ForwardRenderer : public BaseRenderer {
     VK_CHECK_RESULT(
         vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
                                  commandBuffers.shadow.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 commandBuffers.aoPrePass.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 commandBuffers.ao.data()));
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
+                                 commandBuffers.aa.data()));
 
     VkCommandBufferAllocateInfo secondaryComputeCmdBufAllocateInfo =
         vks::initializers::commandBufferAllocateInfo(
@@ -661,6 +695,15 @@ class ForwardRenderer : public BaseRenderer {
     vkFreeCommandBuffers(device, graphicsCmdPool,
                          static_cast<uint32_t>(commandBuffers.scene.size()),
                          commandBuffers.scene.data());
+    vkFreeCommandBuffers(device, graphicsCmdPool,
+                         static_cast<uint32_t>(commandBuffers.scene.size()),
+                         commandBuffers.aa.data());
+    vkFreeCommandBuffers(device, graphicsCmdPool,
+                         static_cast<uint32_t>(commandBuffers.scene.size()),
+                         commandBuffers.ao.data());
+    vkFreeCommandBuffers(device, graphicsCmdPool,
+                         static_cast<uint32_t>(commandBuffers.scene.size()),
+                         commandBuffers.aoPrePass.data());
   }
 
   // Starts a new imGui frame and sets up windows and ui elements
@@ -794,7 +837,7 @@ class ForwardRenderer : public BaseRenderer {
           bool is_selected = (currentItem == antiAliasingSettings[n]);
           if (ImGui::Selectable(antiAliasingSettings[n], is_selected)) {
             uiSettings.aaMode = n;
-            updatePostProcessingParams();
+            // updatePostProcessingParams();
           }
           if (is_selected)
             ImGui::SetItemDefaultFocus();  // You may set the initial focus
@@ -859,11 +902,10 @@ class ForwardRenderer : public BaseRenderer {
     vkCmdBindDescriptorSets(
         currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
         pipelineLayouts.postProcessing, 0, 1,
-        &postPasses[postPasses.size() - 1]
-             ->screenTextureDescriptorSet[currentFrameIndex],
+        &renderTargets.aaPass->screenTextureDescriptorSets[currentFrameIndex],
         0, NULL);
     vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      postPasses[postPasses.size() - 1]->pipeline);
+                      renderTargets.aoPass->pipeline);
 
     // Draw triangle
     vkCmdDraw(currentCommandBuffer, 3, 1, 0, 0);
@@ -895,9 +937,9 @@ class ForwardRenderer : public BaseRenderer {
   void buildSceneCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = postPasses[0]->renderPass;
+    inheritanceInfo.renderPass = renderTargets.aoPass->renderPass;
     inheritanceInfo.framebuffer =
-        postPasses[0]->framebuffers[currentFrameIndex].framebuffer;
+        renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -973,9 +1015,10 @@ class ForwardRenderer : public BaseRenderer {
   void buildShadowCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = shadowPasses[0]->renderPass;
-    inheritanceInfo.framebuffer =
-        shadowPasses[0]->framebuffers[currentFrameIndex].framebuffer;
+    inheritanceInfo.renderPass = renderTargets.shadowPasses[0]->renderPass;
+    inheritanceInfo.framebuffer = renderTargets.shadowPasses[0]
+                                      ->framebuffers[currentFrameIndex]
+                                      .framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1001,7 +1044,7 @@ class ForwardRenderer : public BaseRenderer {
     VkDeviceSize offsets[1] = {0};
 
     vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      shadowPasses[0]->pipeline);
+                      renderTargets.shadowPasses[0]->pipeline);
     for (uint32_t i = 0; i < dynamicModelsToRenderIndices.size(); i++) {
       vkglTF::Model& model = dynamicModels[dynamicModelsToRenderIndices[i]];
 
@@ -1014,6 +1057,61 @@ class ForwardRenderer : public BaseRenderer {
 
       PushConstData pushConst{};
       pushConst.transformMatIndex = i + 1;
+      pushConst.materialIndex = i + 1;
+
+      // Opaque primitives first
+      for (auto node : model.nodes) {
+        renderNode(node, currentFrameIndex, vkglTF::Material::ALPHAMODE_OPAQUE,
+                   currentCommandBuffer, pushConst, true);
+      }
+    }
+
+    VK_CHECK_RESULT(vkEndCommandBuffer(currentCommandBuffer));
+  }
+
+  void buildDepthPrepassCommandBuffer() {
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderTargets.depthPrepass->renderPass;
+    inheritanceInfo.framebuffer =
+        renderTargets.depthPrepass->framebuffers[currentFrameIndex].framebuffer;
+
+    VkCommandBufferBeginInfo cmdBufInfo =
+        vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+    VkCommandBuffer currentCommandBuffer =
+        commandBuffers.aoPrePass[currentFrameIndex];
+
+    vkResetCommandBuffer(currentCommandBuffer, 0);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+
+    VkViewport viewport = vks::initializers::viewport(
+        (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+    vkCmdSetViewport(currentCommandBuffer, 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+    vkCmdSetScissor(currentCommandBuffer, 0, 1, &scissor);
+
+    // Set depth bias (aka "Polygon offset")
+    vkCmdSetDepthBias(currentCommandBuffer, 0.0f, 0.0f, 1.0f);
+    VkDeviceSize offsets[1] = {0};
+
+    vkCmdBindPipeline(currentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderTargets.depthPrepass->pipeline);
+    for (uint32_t i = 0; i < dynamicModelsToRenderIndices.size(); i++) {
+      vkglTF::Model& model = dynamicModels[dynamicModelsToRenderIndices[i]];
+
+      vkCmdBindVertexBuffers(currentCommandBuffer, 0, 1, &model.vertices.buffer,
+                             offsets);
+      if (model.indices.buffer != VK_NULL_HANDLE) {
+        vkCmdBindIndexBuffer(currentCommandBuffer, model.indices.buffer, 0,
+                             VK_INDEX_TYPE_UINT32);
+      }
+
+      PushConstData pushConst{};
+      pushConst.transformMatIndex = i + 1;
+      pushConst.materialIndex = 0;
 
       // Opaque primitives first
       for (auto node : model.nodes) {
@@ -1036,8 +1134,8 @@ class ForwardRenderer : public BaseRenderer {
               dynamicDescriptorSets[currentFrameIndex].shadow,
               node->mesh->uniformBuffer.descriptorSet};
           vkCmdPushConstants(curBuf, pipelineLayouts.shadow,
-                             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t),
-                             &pushConst.transformMatIndex);
+                             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(pushConst),
+                             &pushConst);
 
           vkCmdBindDescriptorSets(
               curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts.shadow,
@@ -1135,8 +1233,8 @@ class ForwardRenderer : public BaseRenderer {
 
     renderPassBeginInfo.renderArea.offset.x = 0;
     renderPassBeginInfo.renderArea.offset.y = 0;
-    renderPassBeginInfo.renderArea.extent.width = shadowMapSize;
-    renderPassBeginInfo.renderArea.extent.height = shadowMapSize;
+    renderPassBeginInfo.renderArea.extent.width = getWidth();
+    renderPassBeginInfo.renderArea.extent.height = getHeight();
     renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = &clearValues[1];
 
@@ -1144,17 +1242,38 @@ class ForwardRenderer : public BaseRenderer {
     imGui->updateBuffers(currentFrameIndex);
     updateSceneParams();
     updateLightsUBO();
+    updatePostProcessingParams();
     updateGenericUBO();
 
     VkCommandBuffer currentCommandBuffer = drawCmdBuffers[currentFrameIndex];
 
     VK_CHECK_RESULT(vkBeginCommandBuffer(currentCommandBuffer, &cmdBufInfo));
+    {
+      renderPassBeginInfo.renderPass = renderTargets.depthPrepass->renderPass;
+      renderPassBeginInfo.framebuffer =
+          renderTargets.depthPrepass->framebuffers[currentFrameIndex]
+              .framebuffer;
+      vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                           VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
+      buildDepthPrepassCommandBuffer();
+      secondaryCmdBufs.push_back(commandBuffers.aoPrePass[currentFrameIndex]);
+
+      vkCmdExecuteCommands(currentCommandBuffer,
+                           static_cast<uint32_t>(secondaryCmdBufs.size()),
+                           secondaryCmdBufs.data());
+      vkCmdEndRenderPass(currentCommandBuffer);
+      secondaryCmdBufs.clear();
+    }
+    renderPassBeginInfo.renderArea.extent.width = shadowMapSize;
+    renderPassBeginInfo.renderArea.extent.height = shadowMapSize;
     // Shadows Rendering
     {
-      renderPassBeginInfo.renderPass = shadowPasses[0]->renderPass;
-      renderPassBeginInfo.framebuffer =
-          shadowPasses[0]->framebuffers[currentFrameIndex].framebuffer;
+      renderPassBeginInfo.renderPass =
+          renderTargets.shadowPasses[0]->renderPass;
+      renderPassBeginInfo.framebuffer = renderTargets.shadowPasses[0]
+                                            ->framebuffers[currentFrameIndex]
+                                            .framebuffer;
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
@@ -1177,9 +1296,9 @@ class ForwardRenderer : public BaseRenderer {
 
     // Scene Rendering
     {
-      renderPassBeginInfo.renderPass = postPasses[0]->renderPass;
+      renderPassBeginInfo.renderPass = renderTargets.aoPass->renderPass;
       renderPassBeginInfo.framebuffer =
-          postPasses[0]->framebuffers[currentFrameIndex].framebuffer;
+          renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
@@ -1200,63 +1319,92 @@ class ForwardRenderer : public BaseRenderer {
     {
       // Foreach Post Processing Pass render into the next
       // Then, Render final image into Swapchain image
-      for (size_t i = 0; i < postPasses.size() - 1; i++) {
-        renderPassBeginInfo.renderPass = postPasses[i + 1]->renderPass;
-        renderPassBeginInfo.framebuffer =
-            postPasses[i + 1]->framebuffers[currentFrameIndex].framebuffer;
+      renderPassBeginInfo.renderPass = renderTargets.aaPass->renderPass;
+      renderPassBeginInfo.framebuffer =
+          renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
 
-        vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
-                             VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+      vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                           VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-        VkCommandBufferInheritanceInfo inheritanceInfo =
-            vks::initializers::commandBufferInheritanceInfo();
-        inheritanceInfo.renderPass = postPasses[i + 1]->renderPass;
-        inheritanceInfo.framebuffer =
-            postPasses[i + 1]->framebuffers[currentFrameIndex].framebuffer;
+      VkCommandBufferInheritanceInfo inheritanceInfo =
+          vks::initializers::commandBufferInheritanceInfo();
+      inheritanceInfo.renderPass = renderTargets.aaPass->renderPass;
+      inheritanceInfo.framebuffer =
+          renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
 
-        VkCommandBufferBeginInfo cmdBufInfo =
-            vks::initializers::commandBufferBeginInfo();
-        cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-        cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+      VkCommandBufferBeginInfo cmdBufInfo =
+          vks::initializers::commandBufferBeginInfo();
+      cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+      cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
-        VkCommandBuffer curBuf = postPasses[i]->cmdBufs[currentFrameIndex];
-        vkResetCommandBuffer(curBuf, 0);
-        VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
+      VkCommandBuffer curBuf = commandBuffers.ao[currentFrameIndex];
+      vkResetCommandBuffer(curBuf, 0);
+      VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
 
-        VkViewport viewport = vks::initializers::viewport(
-            (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
-        vkCmdSetViewport(curBuf, 0, 1, &viewport);
-        VkRect2D scissor =
-            vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
-        vkCmdSetScissor(curBuf, 0, 1, &scissor);
+      VkViewport viewport = vks::initializers::viewport(
+          (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+      vkCmdSetViewport(curBuf, 0, 1, &viewport);
+      VkRect2D scissor =
+          vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+      vkCmdSetScissor(curBuf, 0, 1, &scissor);
 
-        VkDeviceSize offsets[1] = {0};
+      VkDeviceSize offsets[1] = {0};
 
-        postPasses[i]->onRender(curBuf, currentFrameIndex);
+      const std::vector<VkDescriptorSet> descriptorsets = {
+          renderTargets.aoPass->screenTextureDescriptorSets[currentFrameIndex],
+          renderTargets.aoPass->descriptorSets[currentFrameIndex]};
 
-        VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
-
-        secondaryCmdBufs.push_back(curBuf);
-
-        // Execute render commands from the secondary command buffer
-        vkCmdExecuteCommands(currentCommandBuffer,
-                             static_cast<uint32_t>(secondaryCmdBufs.size()),
-                             secondaryCmdBufs.data());
-        secondaryCmdBufs.clear();
-        vkCmdEndRenderPass(currentCommandBuffer);
-      }
-
+      vkCmdBindDescriptorSets(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              renderTargets.aoPass->pipelineLayout, 0,
+                              static_cast<uint32_t>(descriptorsets.size()),
+                              descriptorsets.data(), 0, NULL);
+      vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        renderTargets.aoPass->pipeline);
+      vkCmdDraw(curBuf, 3, 1, 0, 0);
+      VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
+      secondaryCmdBufs.push_back(curBuf);
+      // Execute render commands from the secondary command buffer
+      vkCmdExecuteCommands(currentCommandBuffer,
+                           static_cast<uint32_t>(secondaryCmdBufs.size()),
+                           secondaryCmdBufs.data());
+      secondaryCmdBufs.clear();
+      vkCmdEndRenderPass(currentCommandBuffer);
+      //------------------------------------------------------------------------------------------
       renderPassBeginInfo.renderPass = renderPass;
       renderPassBeginInfo.framebuffer = frameBuffers[currentFrameIndex];
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-      buildPostProcessingCommandBuffer();
+      inheritanceInfo = vks::initializers::commandBufferInheritanceInfo();
+      inheritanceInfo.renderPass = renderPass;
+      inheritanceInfo.framebuffer = frameBuffers[currentFrameIndex];
+
+      cmdBufInfo = vks::initializers::commandBufferBeginInfo();
+      cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+      cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+      curBuf = commandBuffers.aa[currentFrameIndex];
+      vkResetCommandBuffer(curBuf, 0);
+      VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
+
+      vkCmdSetViewport(curBuf, 0, 1, &viewport);
+      vkCmdSetScissor(curBuf, 0, 1, &scissor);
+
+      vkCmdBindDescriptorSets(
+          curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+          renderTargets.aaPass->pipelineLayout, 0, 1,
+          &renderTargets.aaPass->screenTextureDescriptorSets[currentFrameIndex],
+          0, NULL);
+      vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        renderTargets.aaPass->pipeline);
+      vkCmdDraw(curBuf, 3, 1, 0, 0);
+      VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
+      ;
+
       buildUICommandBuffer();
 
-      secondaryCmdBufs.push_back(
-          commandBuffers.postProcessing[currentFrameIndex]);
+      secondaryCmdBufs.push_back(commandBuffers.aa[currentFrameIndex]);
       secondaryCmdBufs.push_back(commandBuffers.ui[currentFrameIndex]);
 
       // Execute render commands from the secondary command buffer
@@ -1272,10 +1420,6 @@ class ForwardRenderer : public BaseRenderer {
 
   void windowResized() override {
     BaseRenderer::windowResized();
-
-    for (auto& pass : postPasses) {
-      pass->onResize(swapChain.imageCount, getWidth(), getHeight());
-    }
 
     setupDescriptors();
   }
@@ -1293,7 +1437,7 @@ class ForwardRenderer : public BaseRenderer {
       // Environment samplers (radiance, irradiance, brdf lut)
       imageSamplerCount += 3;
       // Screen Texture
-      imageSamplerCount += 1;
+      imageSamplerCount += 3;
       // Shadows?
       meshCount += 6;
       dynamicDescriptorSets.resize(swapChain.imageCount);
@@ -1421,7 +1565,7 @@ class ForwardRenderer : public BaseRenderer {
         writeDescriptorSets[5].dstSet = dynamicDescriptorSets[i].scene;
         writeDescriptorSets[5].dstBinding = 5;
         writeDescriptorSets[5].pImageInfo =
-            &shadowPasses[0]->framebuffers[i].descriptor;
+            &renderTargets.shadowPasses[0]->framebuffers[i].descriptor;
 
         vkUpdateDescriptorSets(
             device, static_cast<uint32_t>(writeDescriptorSets.size()),
@@ -1661,94 +1805,142 @@ class ForwardRenderer : public BaseRenderer {
     }
 
     // Post Processing
+
     {
-      if (postPasses[0]->screenTextureDescriptorSet.size() == 0) {
-        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-        };
-        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-        descriptorSetLayoutCI.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-        descriptorSetLayoutCI.bindingCount =
-            static_cast<uint32_t>(setLayoutBindings.size());
-        VK_CHECK_RESULT(
-            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                        &descriptorSetLayouts.postProcessing));
+      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+      };
+      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+      descriptorSetLayoutCI.sType =
+          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+      descriptorSetLayoutCI.bindingCount =
+          static_cast<uint32_t>(setLayoutBindings.size());
+      VK_CHECK_RESULT(
+          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                      &descriptorSetLayouts.postProcessing));
 
-        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-        VkDescriptorSetAllocateInfo allocInfo =
-            vks::initializers::descriptorSetAllocateInfo(
-                descriptorPool, &descriptorSetLayouts.postProcessing, 1);
-        for (auto& pass : postPasses) {
-          if (pass->staticDescriptorSetLayoutBindings.size() != 0) {
-            VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-            descriptorSetLayoutCI.sType =
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            descriptorSetLayoutCI.pBindings =
-                pass->staticDescriptorSetLayoutBindings.data();
-            descriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(
-                pass->staticDescriptorSetLayoutBindings.size());
-            VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
-                device, &descriptorSetLayoutCI, nullptr,
-                &pass->staticDescriptorSetLayout));
+      VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+      VkDescriptorSetAllocateInfo allocInfo =
+          vks::initializers::descriptorSetAllocateInfo(
+              descriptorPool, &descriptorSetLayouts.postProcessing, 1);
+    }
 
-            VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-            VkDescriptorSetAllocateInfo allocInfo =
-                vks::initializers::descriptorSetAllocateInfo(
-                    descriptorPool, &pass->staticDescriptorSetLayout, 1);
-          }
-        }
+    {
+      // renderTargets.aoPass
+      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+      };
 
-        for (auto& pass : postPasses) {
-          pass->screenTextureDescriptorSet.resize(dynamicDescriptorSets.size());
-          for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-            descriptorSetAllocInfo.sType =
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            descriptorSetAllocInfo.descriptorPool = descriptorPool;
-            descriptorSetAllocInfo.pSetLayouts =
-                &descriptorSetLayouts.postProcessing;
-            descriptorSetAllocInfo.descriptorSetCount = 1;
-            VK_CHECK_RESULT(
-                vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
-                                         &pass->screenTextureDescriptorSet[i]));
-          };
-          if (pass->staticDescriptorSetLayoutBindings.size() != 0) {
-            descriptorSetAllocInfo.sType =
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            descriptorSetAllocInfo.descriptorPool = descriptorPool;
-            descriptorSetAllocInfo.pSetLayouts =
-                &pass->staticDescriptorSetLayout;
-            descriptorSetAllocInfo.descriptorSetCount = 1;
-            VK_CHECK_RESULT(vkAllocateDescriptorSets(
-                device, &descriptorSetAllocInfo, &pass->staticDescriptorSet));
-          }
-        }
+      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+      descriptorSetLayoutCI.sType =
+          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+      descriptorSetLayoutCI.bindingCount =
+          static_cast<uint32_t>(setLayoutBindings.size());
+      VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
+          device, &descriptorSetLayoutCI, nullptr,
+          &renderTargets.aoPass->descriptorSetLayout));
+
+      VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+      VkDescriptorSetAllocateInfo allocInfo =
+          vks::initializers::descriptorSetAllocateInfo(
+              descriptorPool, &renderTargets.aoPass->descriptorSetLayout, 1);
+
+      renderTargets.aoPass->descriptorSets.resize(dynamicDescriptorSets.size());
+      renderTargets.aoPass->screenTextureDescriptorSets.resize(
+          dynamicDescriptorSets.size());
+
+      for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+        descriptorSetAllocInfo.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptorSetAllocInfo.descriptorPool = descriptorPool;
+        descriptorSetAllocInfo.pSetLayouts =
+            &descriptorSetLayouts.postProcessing;
+        descriptorSetAllocInfo.descriptorSetCount = 1;
+        VK_CHECK_RESULT(vkAllocateDescriptorSets(
+            device, &descriptorSetAllocInfo,
+            &renderTargets.aoPass->screenTextureDescriptorSets[i]));
+
+        std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+        writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
+            renderTargets.aoPass->screenTextureDescriptorSets[i],
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+            &staticUniformBuffers.postProcessing.descriptor);
+        writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
+            renderTargets.aoPass->screenTextureDescriptorSets[i],
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+            &renderTargets.aoPass->framebuffers[i].descriptor);
+        vkUpdateDescriptorSets(
+            device, static_cast<uint32_t>(writeDescriptorSets.size()),
+            writeDescriptorSets.data(), 0, nullptr);
       }
 
-      // Post Processing (fixed set)
-      for (auto& pass : postPasses) {
-        for (size_t i = 0; i < swapChain.imageCount; i++) {
-          std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+      for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+        descriptorSetAllocInfo.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptorSetAllocInfo.descriptorPool = descriptorPool;
+        descriptorSetAllocInfo.pSetLayouts =
+            &renderTargets.aoPass->descriptorSetLayout;
+        descriptorSetAllocInfo.descriptorSetCount = 1;
+        VK_CHECK_RESULT(
+            vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
+                                     &renderTargets.aoPass->descriptorSets[i]));
 
-          writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
-              pass->screenTextureDescriptorSet[i],
-              VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
-              &staticUniformBuffers.postProcessing.descriptor);
+        std::array<VkWriteDescriptorSet, 3> writeDescriptorSets{};
+        writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
+            renderTargets.aoPass->descriptorSets[i],
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+            &renderTargets.aoPass->passBuffers[0].descriptor);
+        writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
+            renderTargets.aoPass->descriptorSets[i],
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+            &renderTargets.aoPass->passImages[0].descriptor);
+        writeDescriptorSets[2] = vks::initializers::writeDescriptorSet(
+            renderTargets.aoPass->descriptorSets[i],
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2,
+            &renderTargets.depthPrepass->framebuffers[i].descriptor);
+        vkUpdateDescriptorSets(
+            device, static_cast<uint32_t>(writeDescriptorSets.size()),
+            writeDescriptorSets.data(), 0, nullptr);
+      }
 
-          writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
-              pass->screenTextureDescriptorSet[i],
-              VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-              &pass->framebuffers[i].descriptor);
+      // renderpass.AA
 
-          vkUpdateDescriptorSets(
-              device, static_cast<uint32_t>(writeDescriptorSets.size()),
-              writeDescriptorSets.data(), 0, nullptr);
-        }
-        pass->updateDescriptorSets();
+      renderTargets.aaPass->screenTextureDescriptorSets.resize(
+          dynamicDescriptorSets.size());
+
+      for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+        descriptorSetAllocInfo.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        descriptorSetAllocInfo.descriptorPool = descriptorPool;
+        descriptorSetAllocInfo.pSetLayouts =
+            &descriptorSetLayouts.postProcessing;
+        descriptorSetAllocInfo.descriptorSetCount = 1;
+        VK_CHECK_RESULT(vkAllocateDescriptorSets(
+            device, &descriptorSetAllocInfo,
+            &renderTargets.aaPass->screenTextureDescriptorSets[i]));
+
+        std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
+        writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
+            renderTargets.aaPass->screenTextureDescriptorSets[i],
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0,
+            &staticUniformBuffers.postProcessing.descriptor);
+        writeDescriptorSets[1] = vks::initializers::writeDescriptorSet(
+            renderTargets.aaPass->screenTextureDescriptorSets[i],
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+            &renderTargets.aaPass->framebuffers[i].descriptor);
+        vkUpdateDescriptorSets(
+            device, static_cast<uint32_t>(writeDescriptorSets.size()),
+            writeDescriptorSets.data(), 0, nullptr);
       }
     }
 
@@ -1888,7 +2080,7 @@ class ForwardRenderer : public BaseRenderer {
     VkGraphicsPipelineCreateInfo pipelineCI{};
     pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCI.layout = pipelineLayouts.scene;
-    pipelineCI.renderPass = postPasses[0]->renderPass;
+    pipelineCI.renderPass = renderTargets.aoPass->renderPass;
     pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
     pipelineCI.pVertexInputState = &vertexInputStateCI;
     pipelineCI.pRasterizationState = &rasterizationStateCI;
@@ -1974,7 +2166,7 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr, &pipelineLayouts.skybox));
     VkGraphicsPipelineCreateInfo pipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.skybox, postPasses[0]->renderPass);
+            pipelineLayouts.skybox, renderTargets.aoPass->renderPass);
 
     pipelineCI.pInputAssemblyState = &inputAssemblyState;
     pipelineCI.pRasterizationState = &rasterizationState;
@@ -2014,72 +2206,53 @@ class ForwardRenderer : public BaseRenderer {
     emptyInputState.vertexBindingDescriptionCount = 0;
     emptyInputState.pVertexBindingDescriptions = nullptr;
 
+    // AO PASS
+    std::vector<VkDescriptorSetLayout> setLayouts = {
+        descriptorSetLayouts.postProcessing,
+        renderTargets.aoPass->descriptorSetLayout};
+
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
 
-    for (uint32_t i = 0; i < postPasses.size() - 1; i++) {
-      VkGraphicsPipelineCreateInfo postProcessingpipelineCI;
-      if (postPasses[i]->staticDescriptorSetLayout != VK_NULL_HANDLE) {
-        const std::vector<VkDescriptorSetLayout> setLayouts = {
-            descriptorSetLayouts.postProcessing,
-            postPasses[i]->staticDescriptorSetLayout};
-        pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
-            setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
-        VK_CHECK_RESULT(
-            vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr,
-                                   &postPasses[i]->pipelineLayout));
-
-        postProcessingpipelineCI =
-            vks::initializers::graphicsPipelineCreateInfo(
-                postPasses[i]->pipelineLayout, postPasses[i + 1]->renderPass);
-      } else {
-        postPasses[i]->pipelineLayout = pipelineLayouts.postProcessing;
-        postProcessingpipelineCI =
-            vks::initializers::graphicsPipelineCreateInfo(
-                pipelineLayouts.postProcessing, postPasses[i + 1]->renderPass);
-      }
-
-      shaderStages[0] = loadShader(postPasses[i]->vertexShaderPath,
-                                   VK_SHADER_STAGE_VERTEX_BIT);
-      shaderStages[1] = loadShader(postPasses[i]->fragmentShaderPath,
-                                   VK_SHADER_STAGE_FRAGMENT_BIT);
-
-      postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
-      postProcessingpipelineCI.pRasterizationState = &rasterizationState;
-      postProcessingpipelineCI.pColorBlendState = &colorBlendState;
-      postProcessingpipelineCI.pMultisampleState = &multisampleState;
-      postProcessingpipelineCI.pViewportState = &viewportState;
-      postProcessingpipelineCI.pDepthStencilState = &depthStencilState;
-      postProcessingpipelineCI.pDynamicState = &dynamicState;
-      postProcessingpipelineCI.pVertexInputState = &emptyInputState;
-      postProcessingpipelineCI.stageCount =
-          static_cast<uint32_t>(shaderStages.size());
-      postProcessingpipelineCI.pStages = shaderStages.data();
-
-      VK_CHECK_RESULT(vkCreateGraphicsPipelines(
-          device, nullptr, 1, &postProcessingpipelineCI, nullptr,
-          &postPasses[i]->pipeline));
-    }
-
     VkGraphicsPipelineCreateInfo postProcessingpipelineCI;
-    if (postPasses[postPasses.size() - 1]->staticDescriptorSetLayout !=
-        VK_NULL_HANDLE) {
-      const std::vector<VkDescriptorSetLayout> setLayouts = {
-          descriptorSetLayouts.postProcessing,
-          postPasses[postPasses.size() - 1]->staticDescriptorSetLayout};
-      pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
-          setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
-      VK_CHECK_RESULT(vkCreatePipelineLayout(
-          device, &pipelineLayoutCreateInfo, nullptr,
-          &postPasses[postPasses.size() - 1]->pipelineLayout));
+    pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+        setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
+    VK_CHECK_RESULT(
+        vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr,
+                               &renderTargets.aoPass->pipelineLayout));
 
-      postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
-          postPasses[postPasses.size() - 1]->pipelineLayout, renderPass);
-    } else {
-      postPasses[postPasses.size() - 1]->pipelineLayout =
-          pipelineLayouts.postProcessing;
-      postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
-          pipelineLayouts.postProcessing, renderPass);
-    }
+    postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
+        renderTargets.aoPass->pipelineLayout, renderTargets.aaPass->renderPass);
+
+    shaderStages[0] = loadShader(renderTargets.aoPass->vertexShaderPath,
+                                 VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] = loadShader(renderTargets.aoPass->fragmentShaderPath,
+                                 VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
+    postProcessingpipelineCI.pRasterizationState = &rasterizationState;
+    postProcessingpipelineCI.pColorBlendState = &colorBlendState;
+    postProcessingpipelineCI.pMultisampleState = &multisampleState;
+    postProcessingpipelineCI.pViewportState = &viewportState;
+    postProcessingpipelineCI.pDepthStencilState = &depthStencilState;
+    postProcessingpipelineCI.pDynamicState = &dynamicState;
+    postProcessingpipelineCI.pVertexInputState = &emptyInputState;
+    postProcessingpipelineCI.stageCount =
+        static_cast<uint32_t>(shaderStages.size());
+    postProcessingpipelineCI.pStages = shaderStages.data();
+
+    VK_CHECK_RESULT(
+        vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
+                                  nullptr, &renderTargets.aoPass->pipeline));
+
+    setLayouts = {descriptorSetLayouts.postProcessing};
+    pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
+        setLayouts.data(), static_cast<uint32_t>(setLayouts.size()));
+    VK_CHECK_RESULT(
+        vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr,
+                               &renderTargets.aaPass->pipelineLayout));
+
+    postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
+        renderTargets.aaPass->pipelineLayout, renderPass);
 
     rasterizationState.cullMode = VK_CULL_MODE_FRONT_BIT;
     postProcessingpipelineCI.pInputAssemblyState = &inputAssemblyState;
@@ -2094,16 +2267,14 @@ class ForwardRenderer : public BaseRenderer {
     postProcessingpipelineCI.pStages = shaderStages.data();
     postProcessingpipelineCI.pVertexInputState = &emptyInputState;
 
-    shaderStages[0] =
-        loadShader(postPasses[postPasses.size() - 1]->vertexShaderPath,
-                   VK_SHADER_STAGE_VERTEX_BIT);
-    shaderStages[1] =
-        loadShader(postPasses[postPasses.size() - 1]->fragmentShaderPath,
-                   VK_SHADER_STAGE_FRAGMENT_BIT);
+    shaderStages[0] = loadShader(renderTargets.aaPass->vertexShaderPath,
+                                 VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[1] = loadShader(renderTargets.aaPass->fragmentShaderPath,
+                                 VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    VK_CHECK_RESULT(vkCreateGraphicsPipelines(
-        device, nullptr, 1, &postProcessingpipelineCI, nullptr,
-        &postPasses[postPasses.size() - 1]->pipeline));
+    VK_CHECK_RESULT(
+        vkCreateGraphicsPipelines(device, nullptr, 1, &postProcessingpipelineCI,
+                                  nullptr, &renderTargets.aaPass->pipeline));
 
     // Shadow
     rasterizationState.cullMode = VK_CULL_MODE_NONE;
@@ -2114,7 +2285,7 @@ class ForwardRenderer : public BaseRenderer {
 
     pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(
         layouts.data(), layouts.size());
-    pushConstantRange.size = sizeof(uint32_t);
+    pushConstantRange.size = sizeof(PushConstData);
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
     pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
@@ -2124,10 +2295,11 @@ class ForwardRenderer : public BaseRenderer {
 
     VkGraphicsPipelineCreateInfo shadowPipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.shadow, shadowPasses[0]->renderPass);
+            pipelineLayouts.shadow, renderTargets.shadowPasses[0]->renderPass);
 
-    shaderStages[0] = loadShader(shadowPasses[0]->vertexShaderPath,
-                                 VK_SHADER_STAGE_VERTEX_BIT);
+    shaderStages[0] =
+        loadShader(renderTargets.shadowPasses[0]->vertexShaderPath,
+                   VK_SHADER_STAGE_VERTEX_BIT);
 
     shadowPipelineCI.pInputAssemblyState = &inputAssemblyState;
     shadowPipelineCI.pRasterizationState = &rasterizationState;
@@ -2144,7 +2316,9 @@ class ForwardRenderer : public BaseRenderer {
 
     // No blend attachment states (no color attachments used)
     colorBlendState.attachmentCount = 0;
-    depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencilState.minDepthBounds = 0.0f;  // Optional
+    depthStencilState.maxDepthBounds = 1.0f;  // Optional
     // Enable depth bias
     rasterizationState.depthBiasEnable = VK_TRUE;
     // Add depth bias to dynamic state, so we can change it at runtime
@@ -2152,10 +2326,43 @@ class ForwardRenderer : public BaseRenderer {
     dynamicState =
         vks::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
 
-    shadowPipelineCI.renderPass = shadowPasses[0]->renderPass;
-    VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1,
-                                              &shadowPipelineCI, nullptr,
-                                              &shadowPasses[0]->pipeline));
+    shadowPipelineCI.renderPass = renderTargets.shadowPasses[0]->renderPass;
+    VK_CHECK_RESULT(vkCreateGraphicsPipelines(
+        device, pipelineCache, 1, &shadowPipelineCI, nullptr,
+        &renderTargets.shadowPasses[0]->pipeline));
+
+    shadowPipelineCI = vks::initializers::graphicsPipelineCreateInfo(
+        pipelineLayouts.shadow, renderTargets.depthPrepass->renderPass);
+
+    shaderStages[0] = loadShader(renderTargets.depthPrepass->vertexShaderPath,
+                                 VK_SHADER_STAGE_VERTEX_BIT);
+
+    dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    dynamicState =
+        vks::initializers::pipelineDynamicStateCreateInfo(dynamicStateEnables);
+    shadowPipelineCI.pInputAssemblyState = &inputAssemblyState;
+    shadowPipelineCI.pRasterizationState = &rasterizationState;
+    shadowPipelineCI.pColorBlendState = &colorBlendState;
+    shadowPipelineCI.pMultisampleState = &multisampleState;
+    shadowPipelineCI.pViewportState = &viewportState;
+    shadowPipelineCI.pDepthStencilState = &depthStencilState;
+    shadowPipelineCI.pDynamicState = &dynamicState;
+    shadowPipelineCI.stageCount = 1;
+    shadowPipelineCI.pStages = &shaderStages[0];
+    shadowPipelineCI.pVertexInputState =
+        vkglTF::Vertex::getPipelineVertexInputState(
+            {vkglTF::VertexComponent::Position});
+
+    // No blend attachment states (no color attachments used)
+    colorBlendState.attachmentCount = 0;
+    depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS;
+    // Enable depth bias
+    // rasterizationState.depthBiasEnable = VK_TRUE;
+
+    shadowPipelineCI.renderPass = renderTargets.depthPrepass->renderPass;
+    VK_CHECK_RESULT(vkCreateGraphicsPipelines(
+        device, pipelineCache, 1, &shadowPipelineCI, nullptr,
+        &renderTargets.depthPrepass->pipeline));
 
     addPipelineSet("pbr", "shaders/pbr.vert.spv", "shaders/pbr.frag.spv");
   }
@@ -3342,15 +3549,37 @@ class ForwardRenderer : public BaseRenderer {
       uniformBuffer.shadow.map();
     }
 
-    for (auto& pass : postPasses) {
-      pass->createUbo();
-    }
-        VK_CHECK_RESULT(vulkanDevice->createBuffer(
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            &staticUniformBuffers.postProcessing, sizeof(postProcessingParams)));
+    VK_CHECK_RESULT(vulkanDevice->createBuffer(
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staticUniformBuffers.postProcessing, sizeof(postProcessingParams)));
     staticUniformBuffers.postProcessing.map();
+
+    renderTargets.aoPass->passBuffers.resize(1);
+    VK_CHECK_RESULT(vulkanDevice->createBuffer(
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &renderTargets.aoPass->passBuffers[0], sizeof(float) * 48));
+    renderTargets.aoPass->passBuffers[0].map();
+
+    float mSSAOKernel[48];
+    for (int i = 0; i < 16; i++) {
+      int index = i * 3;
+      mSSAOKernel[index] = math::random::randomRange(-1.0f, 1.0f);
+      mSSAOKernel[index + 1] = math::random::randomRange(-1.0f, 1.0f);
+      mSSAOKernel[index + 2] = math::random::randomRange(0.0f, 1.0f);
+
+      float scale = (float)i / 16.0f;
+      float scaleMul = math::linear::lerp(0.1f, 1.0f, scale * scale);
+
+      mSSAOKernel[index] *= scaleMul;
+      mSSAOKernel[index + 1] *= scaleMul;
+      mSSAOKernel[index + 2] *= scaleMul;
+    }
+    memcpy(renderTargets.aoPass->passBuffers[0].mapped, &mSSAOKernel,
+           sizeof(mSSAOKernel));
 
     updateSceneParams();
     updateLightsUBO();
@@ -3358,8 +3587,8 @@ class ForwardRenderer : public BaseRenderer {
     updatePostProcessingParams();
   }
 
-  // All materials for the current scene are stored in an SSBO allowing indexing
-  // from a push constant set per primitive
+  // All materials for the current scene are stored in an SSBO allowing
+  // indexing from a push constant set per primitive
   void createMaterialBuffer() {
     std::vector<ShaderMaterial> shaderMaterials{};
     for (auto& model : dynamicModels) {
@@ -3368,8 +3597,8 @@ class ForwardRenderer : public BaseRenderer {
 
         shaderMaterial.emissiveFactor = material.emissiveFactor;
         // To save space, availabilty and texture coordinate set are combined
-        // -1 = texture not used for this material, >= 0 texture used and index
-        // of texture coordinate set
+        // -1 = texture not used for this material, >= 0 texture used and
+        // index of texture coordinate set
         shaderMaterial.colorTextureSet = material.baseColorTexture != nullptr
                                              ? material.texCoordSets.baseColor
                                              : -1;
@@ -3463,16 +3692,17 @@ class ForwardRenderer : public BaseRenderer {
     glm::mat4 depthProjectionMatrix = glm::perspective(
         glm::radians(sceneParams.lights[0].lightFOV), 1.0f,
         sceneParams.lights[0].zNear, sceneParams.lights[0].zFar);
-    depthProjectionMatrix[1][1] *= -1;
     glm::mat4 depthViewMatrix =
         glm::lookAt(glm::vec3(sceneParams.lights[0].position), glm::vec3(0.0f),
                     glm::vec3(0, 1, 0));
-    glm::mat4 depthModelMatrix = glm::mat4(1.0f);
 
-    uboMatrices.lightSpace =
-        depthProjectionMatrix * depthViewMatrix * depthModelMatrix;
+    uboMatrices.lightSpace = depthProjectionMatrix * depthViewMatrix;
 
-    shadowParams.depthMVP = uboMatrices.lightSpace;
+    shadowParams.depthMVP[0] =
+        camera.matrices.perspective * camera.matrices.view;
+
+    shadowParams.depthMVP[1] = uboMatrices.lightSpace;
+
     memcpy(dynamicUniformBuffers[currentFrameIndex].shadow.mapped,
            &shadowParams, sizeof(shadowParams));
   }
@@ -3496,11 +3726,11 @@ class ForwardRenderer : public BaseRenderer {
 
   void updateSceneParams() {
     // Area Light
-    sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.8f);
-    sceneParams.lights[0].position = glm::vec4(-30.0f, 50.0f, 0.0f, 0.0f);
-    sceneParams.lights[0].rotation = glm::vec4(0.0f, -10.0f, 5.0f, 0.0f);
+    sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 2.8f);
+    sceneParams.lights[0].position = glm::vec4(-50.0f, -90.0f, 0.0f, 0.0f);
+    sceneParams.lights[0].rotation = glm::vec4(5.0f, 10.0f, 0.0f, 0.0f);
     sceneParams.lights[0].zNear = 16.0f;
-    sceneParams.lights[0].zFar = 64.0f;
+    sceneParams.lights[0].zFar = 128.0f;
     sceneParams.lights[0].lightFOV = 90.0f;
     sceneParams.lights[0].lightType = 0;
 
@@ -3520,6 +3750,17 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updatePostProcessingParams() {
+    auto perspective = glm::inverse(camera.matrices.perspective);
+    postProcessingParams.inverseViewMat = glm::inverse(camera.matrices.view);
+    postProcessingParams.inverseProjMat = perspective;
+    postProcessingParams.projMat = camera.matrices.perspective;
+    postProcessingParams.fovScale =
+        glm::vec2(glm::tan(2 *
+                           glm::atan(glm::tan(glm::radians(60.0) * 0.5) *
+                                     (float)getWidth() / (float)getHeight()) /
+                           2),
+                  glm::tan(glm::radians(60.0) * 0.5));
+    postProcessingParams.fovScale *= 2;
     postProcessingParams.aaType = uiSettings.aaMode;
     memcpy(staticUniformBuffers.postProcessing.mapped, &postProcessingParams,
            sizeof(PostProcessingParams));
@@ -3559,6 +3800,10 @@ class ForwardRenderer : public BaseRenderer {
 
   void loadScene(bool firstTime = false) {
     vkDeviceWaitIdle(device);
+    const uint32_t glTFLoadingFlags =
+        vkglTF::FileLoadingFlags::PreTransformVertices |
+        vkglTF::FileLoadingFlags::PreMultiplyVertexColors |
+        vkglTF::FileLoadingFlags::FlipY;
     animationIndex = 0;
     animationTimer = 0.0f;
 
@@ -3567,7 +3812,8 @@ class ForwardRenderer : public BaseRenderer {
     dynamicModels[index].destroy();
     dynamicModels[index].loadFromFile(
         getAssetPath() + sceneFilePaths[uiSettings.activeSceneIndex],
-        vulkanDevice, graphicsQueue);
+        vulkanDevice, graphicsQueue, glTFLoadingFlags);
+    dynamicModels[index].transform.updateScale(glm::vec3(3.0f));
     dynamicModels[index].transform.updateRotation(
         glm::vec3(0.0f, -90.0f, 0.0f));
     createMaterialBuffer();
@@ -3620,54 +3866,58 @@ class ForwardRenderer : public BaseRenderer {
     imGui->initResources(this, graphicsQueue, getShaderBasePath());
   }
 
-  void preparePostProcessingPasses() {
-    postPasses.push_back(new vks::PostProcessingPass(
+  void preparePasses() {
+    // PREPASSES
+    renderTargets.depthPrepass = vks::rendering::createDepthRenderTarget(
+        vulkanDevice, VK_FORMAT_D16_UNORM, VK_FILTER_LINEAR,
+        swapChain.imageCount, getWidth(), getHeight(),
+        "shaders/depthPass.vert.spv");
+    renderTargets.shadowPasses.push_back(
+        vks::rendering::createDepthRenderTarget(
+            vulkanDevice, VK_FORMAT_D16_UNORM,
+            vks::tools::formatIsFilterable(physicalDevice, VK_FORMAT_D16_UNORM,
+                                           VK_IMAGE_TILING_OPTIMAL)
+                ? VK_FILTER_LINEAR
+                : VK_FILTER_NEAREST,
+            swapChain.imageCount, shadowMapSize, shadowMapSize,
+            "shaders/shadow.vert.spv"));
+
+    // RENDERING
+    renderTargets.mainPass = vks::rendering::createColorDepthRenderTarget(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "", "");
+
+    // POSTPROCESSING
+    renderTargets.aoPass = vks::rendering::createColorDepthRenderTarget(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "shaders/ambientOcclusion.vert.spv",
+        "shaders/ambientOcclusion.frag.spv");
+
+    float noiseTextureData[192];
+    float zero = 0.0f;
+    float min = -1.0f;
+    float max = 1.0f;
+    for (int i = 0; i < 64; i++) {
+      int index = i * 3;
+      noiseTextureData[index] = math::random::randomRange(min, max);
+      noiseTextureData[index + 1] = math::random::randomRange(min, max);
+      noiseTextureData[index + 2] = 0.0f;
+    }
+
+    vks::rendering::createImageFromBuffer(
+        renderTargets.aoPass, (void**)noiseTextureData,
+        sizeof(noiseTextureData), 8, 8, swapChain.colorFormat, graphicsQueue);
+
+    renderTargets.aaPass = vks::rendering::createColorDepthRenderTarget(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/ambientOcclusion.frag.spv"));  // AO
-    postPasses.push_back(new vks::AOPostProcessingPass(
-        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
-        getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/antiAliasing.frag.spv", graphicsQueue));  // AA
-    postPasses.push_back(new vks::PostProcessingPass(
-        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
-        getWidth(), getHeight(), "shaders/postProcessing.vert.spv",
-        "shaders/tonemapping.frag.spv"));  // TONEMAPPING & COLOR
-                                           // CORRECTIONS
-
-    // TODO: THIS IS TEMP
-    VkCommandBufferAllocateInfo secondaryGraphicsCmdBufAllocateInfo =
-        vks::initializers::commandBufferAllocateInfo(
-            graphicsCmdPool, VK_COMMAND_BUFFER_LEVEL_SECONDARY,
-            swapChain.imageCount);
-
-    postPasses[0]->cmdBufs.resize(swapChain.imageCount);
-    VK_CHECK_RESULT(
-        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
-                                 postPasses[0]->cmdBufs.data()));
-
-    postPasses[1]->cmdBufs.resize(swapChain.imageCount);
-    VK_CHECK_RESULT(
-        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
-                                 postPasses[1]->cmdBufs.data()));
-
-    postPasses[2]->cmdBufs.resize(swapChain.imageCount);
-    VK_CHECK_RESULT(
-        vkAllocateCommandBuffers(device, &secondaryGraphicsCmdBufAllocateInfo,
-                                 postPasses[2]->cmdBufs.data()));
-  }
-
-  void prepareShadowPasses() {
-    shadowPasses.push_back(
-        new vks::ShadowPass(vulkanDevice, depthFormat, swapChain.imageCount,
-                            shadowMapSize, "shaders/shadow.vert.spv"));
+        "shaders/antiAliasing.frag.spv");
   }
 
   void prepare() override {
     auto tStart = std::chrono::high_resolution_clock::now();
     BaseRenderer::prepare();
-    preparePostProcessingPasses();
-    prepareShadowPasses();
+    preparePasses();
     loadAssets();
     generateBRDFLUT();
     generateIrradianceCube();

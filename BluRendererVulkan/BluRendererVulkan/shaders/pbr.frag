@@ -184,8 +184,8 @@ float filterPCF(vec4 shadowCoords)
 {
    vec2 texelSize = textureSize(shadowMap, 0);
    float scale = 1.5;
-   float dx = scale * 1.0 / float(texelSize.x);
-   float dy = scale * 1.0 / float(texelSize.y);
+   float dx = scale * (1.0 / float(texelSize.x));
+   float dy = scale * (1.0 / float(texelSize.y));
 
    float shadow = 0.0;
    int count = 0;
