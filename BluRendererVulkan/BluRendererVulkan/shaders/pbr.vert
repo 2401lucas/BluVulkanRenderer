@@ -11,9 +11,9 @@ layout (location = 6) in vec4 inColor0;
 layout (set = 0, binding = 0) uniform UBO 
 {
 	mat4 model[16];
+	mat4 lightSpace[2];
 	mat4 projection;
 	mat4 view;
-	mat4 lightSpace;
 	vec3 camPos;
 } ubo;
 
@@ -68,5 +68,5 @@ void main()
 	outUV1 = inUV1;
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
 
-	outShadowCoord = ( biasMat * ubo.lightSpace * (ubo.model[pushConstants.transformIndex])) * vec4(inPos, 1.0);
+	outShadowCoord = ( biasMat * ubo.lightSpace[0] * (ubo.model[pushConstants.transformIndex])) * vec4(inPos, 1.0);
 }

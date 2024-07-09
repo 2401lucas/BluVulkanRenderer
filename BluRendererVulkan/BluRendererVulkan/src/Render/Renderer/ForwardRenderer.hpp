@@ -10,6 +10,7 @@
 #include "../ResourceManagement/ExternalResources/VulkanglTFModel.h"
 #include "../ResourceManagement/VulkanResources/VulkanRenderHelper.h"
 #include "BaseRenderer.h"
+#include "Lights/Light.h"
 #include "vkImGui.h"
 
 struct UISettings {
@@ -25,9 +26,6 @@ struct UISettings {
   int aaMode = 0;
   float IBLstrength = 1;
   int debugOutput = 0;
-  int debugLight = 0;
-  int lightType = 0;
-  glm::vec3 dirPos = glm::vec3(-5.0f, 4000.0f, 0.0f);
   // bool usePcfFiltering = false;
 } uiSettings;
 
@@ -223,44 +221,30 @@ class ForwardRenderer : public BaseRenderer {
   // Should (M?)VP be precomputed
   struct UBOMatrices {
     glm::mat4 models[MAX_MODELS];
+    glm::mat4 lightSpace[MAX_LIGHTS];
     glm::mat4 projection;
     glm::mat4 view;
-    glm::mat4 lightSpace;
     glm::vec3 camPos;
   } uboMatrices;
-
-  const char* debugLights[1] = {"Area Light"};
-  const char* debugLightType[3] = {"Directional", "Point", "Spot"};
-
-  struct LightSource {
-    glm::vec4 color = glm::vec4(1.0f);
-    glm::vec4 position = glm::vec4(0.0f, 20.0f, 0.0f, 0.0f);
-    glm::vec4 rotation = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f);
-    // Keep depth range as small as possible for better shadow map precision
-    float zNear = 20.0f;
-    float zFar = 70.0f;
-    float lightFOV = 45.0f;
-    float lightType = 0.0f;
-  };
 
   const char* debugInputs[12] = {"None", "Color Map", "Normals", "AO Map", "Emissive Map", "Metallic Map", "Roughness Map", "F", "G", "D", "IBL Contribution",
                                    "Light Contribution" /*, "Diffuse Contribution",
                                    "Specular Contribution"*/};
+
+  std::vector<vks::light::Light> lights;
   struct SceneParams {
-    LightSource lights[MAX_LIGHTS];
+    vks::light::GPULightInfo lights[MAX_LIGHTS];
     float prefilteredCubeMipLevels;
     float debugViewInputs = 0.0f;
     float debugViewLight = 0.0f;
     float scaleIBLAmbient = 1.0f;
-  } sceneParams;
-
-  glm::vec3 iblDir = glm::vec3(0.0f, -40.0f, 0.0f);
+  } sceneParams; //TODO: NOT UPDATE EVERY FRAME
 #endif
 
   ForwardRenderer() : BaseRenderer() {
     name = "Forward Renderer";
     camera.type = Camera::firstperson;
-    camera.movementSpeed = 2.0f;
+    camera.movementSpeed = 4.0f;
     camera.rotationSpeed = 0.25f;
     camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
     camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
@@ -774,7 +758,7 @@ class ForwardRenderer : public BaseRenderer {
       ImGui::ColorPicker3("Skybox Clear Color", &uiSettings.skyboxColor.x);
     }
 
-    if (ImGui::CollapsingHeader("Light Settings")) {
+    /*if (ImGui::CollapsingHeader("Light Settings")) {
       ImGui::DragFloat3("XYZ", &uiSettings.dirPos.x, 1.0f, -100.0f, 100.0f);
       ImGui::DragFloat("IBL Strength", &uiSettings.IBLstrength, 0.1f, 0.0f,
                        2.0f);
@@ -791,25 +775,25 @@ class ForwardRenderer : public BaseRenderer {
         }
         ImGui::EndCombo();
       }
-    }
+    }*/
 
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      if (ImGui::BeginCombo("Target Light to Debug",
-                            debugLights[uiSettings.debugLight])) {
-        const char* currentItem = debugLights[uiSettings.debugLight];
-        for (int n = 0; n < sizeof(debugLights) / sizeof(debugLights[0]); n++) {
-          bool is_selected = (currentItem == debugLights[n]);
-          if (ImGui::Selectable(debugLights[n], is_selected)) {
-            uiSettings.debugLight = n;
-          }
-          if (is_selected)
-            ImGui::SetItemDefaultFocus();  // You may set the initial focus
-                                           // when opening the combo
-                                           // (scrolling + for keyboard
-                                           // navigation support)
-        }
-        ImGui::EndCombo();
-      }
+      //if (ImGui::BeginCombo("Target Light to Debug",
+      //                      debugLights[uiSettings.debugLight])) {
+      //  const char* currentItem = debugLights[uiSettings.debugLight];
+      //  for (int n = 0; n < sizeof(debugLights) / sizeof(debugLights[0]); n++) {
+      //    bool is_selected = (currentItem == debugLights[n]);
+      //    if (ImGui::Selectable(debugLights[n], is_selected)) {
+      //      uiSettings.debugLight = n;
+      //    }
+      //    if (is_selected)
+      //      ImGui::SetItemDefaultFocus();  // You may set the initial focus
+      //                                     // when opening the combo
+      //                                     // (scrolling + for keyboard
+      //                                     // navigation support)
+      //  }
+      //  ImGui::EndCombo();
+      //}
 
       if (ImGui::BeginCombo("Debug View Inputs",
                             debugInputs[uiSettings.debugOutput])) {
@@ -3689,19 +3673,15 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updateLightsUBO() {
-    glm::mat4 depthProjectionMatrix = glm::perspective(
-        glm::radians(sceneParams.lights[0].lightFOV), 1.0f,
-        sceneParams.lights[0].zNear, sceneParams.lights[0].zFar);
-    glm::mat4 depthViewMatrix =
-        glm::lookAt(glm::vec3(sceneParams.lights[0].position), glm::vec3(0.0f),
-                    glm::vec3(0, 1, 0));
-
-    uboMatrices.lightSpace = depthProjectionMatrix * depthViewMatrix;
+    for (int i = 0; i < lights.size(); i++) {
+      if (lights[i].lightType == 0) /*Directional Light*/ {
+        uboMatrices.lightSpace[i] = lights[i].lightSpace;
+        shadowParams.depthMVP[i + 1] = lights[i].lightSpace;
+      }
+    }
 
     shadowParams.depthMVP[0] =
         camera.matrices.perspective * camera.matrices.view;
-
-    shadowParams.depthMVP[1] = uboMatrices.lightSpace;
 
     memcpy(dynamicUniformBuffers[currentFrameIndex].shadow.mapped,
            &shadowParams, sizeof(shadowParams));
@@ -3725,25 +3705,11 @@ class ForwardRenderer : public BaseRenderer {
   }
 
   void updateSceneParams() {
-    // Area Light
-    sceneParams.lights[0].color = glm::vec4(1.0f, 1.0f, 1.0f, 2.8f);
-    sceneParams.lights[0].position = glm::vec4(-50.0f, -90.0f, 0.0f, 0.0f);
-    sceneParams.lights[0].rotation = glm::vec4(5.0f, 10.0f, 0.0f, 0.0f);
-    sceneParams.lights[0].zNear = 16.0f;
-    sceneParams.lights[0].zFar = 128.0f;
-    sceneParams.lights[0].lightFOV = 90.0f;
-    sceneParams.lights[0].lightType = 0;
-
-    sceneParams.lights[1].color = glm::vec4(1.0f, 1.0f, 1.0f, 0.8f);
-    sceneParams.lights[1].position = glm::vec4(0.0f, -3.0f, 0.0f, 0.0f);
-    sceneParams.lights[1].rotation = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
-    sceneParams.lights[1].zNear = 10.0f;
-    sceneParams.lights[1].zFar = 60.0f;
-    sceneParams.lights[1].lightFOV = glm::cos(glm::radians(45.0f));
-    sceneParams.lights[1].lightType = uiSettings.lightType;
+    for (int i = 0; i < lights.size(); i++) {
+      sceneParams.lights[i] = lights[i].lightInfo;
+    }
 
     sceneParams.debugViewInputs = uiSettings.debugOutput;
-    sceneParams.debugViewLight = uiSettings.debugLight;
     sceneParams.scaleIBLAmbient = uiSettings.IBLstrength;
     memcpy(dynamicUniformBuffers[currentFrameIndex].params.mapped, &sceneParams,
            sizeof(SceneParams));
@@ -3817,6 +3783,15 @@ class ForwardRenderer : public BaseRenderer {
     dynamicModels[index].transform.updateRotation(
         glm::vec3(0.0f, -90.0f, 0.0f));
     createMaterialBuffer();
+    lights.clear();
+    auto mainLight = vks::light::Light();
+    mainLight.createDirectionalLight(glm::vec4(1.0f, 1.0f, 1.0f, 2.8f),
+                                     glm::vec3(5.0f, 9.0f, 0.0f),
+        glm::vec3(0.0f), 90.0f, 1.0f,
+                                     16.0f,
+                                     128.0f);
+    lights.push_back(mainLight);
+
     if (!firstTime) {
       setupDescriptors(true);
     }

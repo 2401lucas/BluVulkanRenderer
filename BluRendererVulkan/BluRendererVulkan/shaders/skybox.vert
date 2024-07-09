@@ -7,6 +7,7 @@ layout (location = 2) in vec2 inUV;
 layout (binding = 0) uniform UBO 
 {
     mat4 models[16];
+	mat4 lightSpace[2];
     mat4 projection;
 } ubo;
 
