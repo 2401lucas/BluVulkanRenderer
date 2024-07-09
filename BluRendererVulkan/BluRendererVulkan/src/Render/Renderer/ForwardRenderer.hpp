@@ -234,11 +234,12 @@ class ForwardRenderer : public BaseRenderer {
   std::vector<vks::light::Light> lights;
   struct SceneParams {
     vks::light::GPULightInfo lights[MAX_LIGHTS];
+    float lightCount;
     float prefilteredCubeMipLevels;
     float debugViewInputs = 0.0f;
     float debugViewLight = 0.0f;
     float scaleIBLAmbient = 1.0f;
-  } sceneParams; //TODO: NOT UPDATE EVERY FRAME
+  } sceneParams;  // TODO: NOT UPDATE EVERY FRAME
 #endif
 
   ForwardRenderer() : BaseRenderer() {
@@ -249,7 +250,7 @@ class ForwardRenderer : public BaseRenderer {
     camera.setPosition(glm::vec3(0.0f, 1.0f, 0.0f));
     camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
     camera.setPerspective(60.0f, (float)getWidth() / (float)getHeight(), 1.0f,
-                          500.0f);
+                          512.0f);
 
     enabledInstanceExtensions.push_back(
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
@@ -778,22 +779,23 @@ class ForwardRenderer : public BaseRenderer {
     }*/
 
     if (ImGui::CollapsingHeader("Rendering Settings")) {
-      //if (ImGui::BeginCombo("Target Light to Debug",
-      //                      debugLights[uiSettings.debugLight])) {
-      //  const char* currentItem = debugLights[uiSettings.debugLight];
-      //  for (int n = 0; n < sizeof(debugLights) / sizeof(debugLights[0]); n++) {
-      //    bool is_selected = (currentItem == debugLights[n]);
-      //    if (ImGui::Selectable(debugLights[n], is_selected)) {
-      //      uiSettings.debugLight = n;
-      //    }
-      //    if (is_selected)
-      //      ImGui::SetItemDefaultFocus();  // You may set the initial focus
-      //                                     // when opening the combo
-      //                                     // (scrolling + for keyboard
-      //                                     // navigation support)
-      //  }
-      //  ImGui::EndCombo();
-      //}
+      // if (ImGui::BeginCombo("Target Light to Debug",
+      //                       debugLights[uiSettings.debugLight])) {
+      //   const char* currentItem = debugLights[uiSettings.debugLight];
+      //   for (int n = 0; n < sizeof(debugLights) / sizeof(debugLights[0]);
+      //   n++) {
+      //     bool is_selected = (currentItem == debugLights[n]);
+      //     if (ImGui::Selectable(debugLights[n], is_selected)) {
+      //       uiSettings.debugLight = n;
+      //     }
+      //     if (is_selected)
+      //       ImGui::SetItemDefaultFocus();  // You may set the initial focus
+      //                                      // when opening the combo
+      //                                      // (scrolling + for keyboard
+      //                                      // navigation support)
+      //   }
+      //   ImGui::EndCombo();
+      // }
 
       if (ImGui::BeginCombo("Debug View Inputs",
                             debugInputs[uiSettings.debugOutput])) {
@@ -3708,7 +3710,7 @@ class ForwardRenderer : public BaseRenderer {
     for (int i = 0; i < lights.size(); i++) {
       sceneParams.lights[i] = lights[i].lightInfo;
     }
-
+    sceneParams.lightCount = lights.size();
     sceneParams.debugViewInputs = uiSettings.debugOutput;
     sceneParams.scaleIBLAmbient = uiSettings.IBLstrength;
     memcpy(dynamicUniformBuffers[currentFrameIndex].params.mapped, &sceneParams,
@@ -3785,12 +3787,15 @@ class ForwardRenderer : public BaseRenderer {
     createMaterialBuffer();
     lights.clear();
     auto mainLight = vks::light::Light();
-    mainLight.createDirectionalLight(glm::vec4(1.0f, 1.0f, 1.0f, 2.8f),
-                                     glm::vec3(5.0f, 9.0f, 0.0f),
-        glm::vec3(0.0f), 90.0f, 1.0f,
-                                     16.0f,
-                                     128.0f);
+    mainLight.createDirectionalLight(
+        glm::vec4(1.0f, 1.0f, 1.0f, 2.8f), glm::vec3(5.0f, 9.0f, 0.0f),
+        glm::vec3(0.0f), 90.0f, 1.0f, 16.0f, 128.0f);
     lights.push_back(mainLight);
+    auto spotLight = vks::light::Light();
+    spotLight.createSpotLight(
+        glm::vec4(1.0f, 0.4f, 0.8f, 10.0f), glm::vec3(-20.0f, 2.0f, 0.0f),
+        glm::vec3(0.0f, -1.0f, 0.0f), 35.0f, 1.0f, 0.08f, 0.00032f);
+    lights.push_back(spotLight);
 
     if (!firstTime) {
       setupDescriptors(true);
@@ -3816,7 +3821,7 @@ class ForwardRenderer : public BaseRenderer {
 
     skybox.loadFromFile(getAssetPath() + "models/cube.gltf", vulkanDevice,
                         graphicsQueue, glTFLoadingFlags);
-    skybox.transform.updateScale(glm::vec3(10.0f));
+    skybox.transform.updateScale(glm::vec3(15.0f));
 
     textures.environmentCube.loadFromFile(
         getAssetPath() + "textures/hdr/pisa_cube.ktx",

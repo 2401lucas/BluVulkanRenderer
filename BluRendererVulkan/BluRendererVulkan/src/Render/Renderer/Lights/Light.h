@@ -60,7 +60,7 @@ struct Light {
     }
     // Spot Light
     else if (lightType == 2) {
-      lightInfo.position = glm::vec4(position, lightFOV);
+      lightInfo.position = glm::vec4(position, glm::radians(lightFOV));
       lightInfo.rotation = glm::vec4(rotation, 0.0f);
       lightInfo.lightFalloff =
           glm::vec4(lightConst, lightLinear, lightQuadratic, 0.0f);

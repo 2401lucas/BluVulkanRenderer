@@ -26,6 +26,7 @@ struct LightSource {
 
 layout (set = 0, binding = 1) uniform UBOParams {
 	LightSource lights[2];
+	float lightCount;
 	float prefilteredCubeMipLevels;
 	float debugViewInputs;
 	float debugViewLight;
@@ -458,8 +459,7 @@ void main()
 	color += ibl;
 
 	vec3 Lo = vec3(0.0);
-	//TODO: NOT HARDCODE I LIMIT
-	for(int i = 0; i < 1; i++) {
+	for(int i = 0; i < int(uboParams.lightCount); i++) {
 		int lightType = int(uboParams.lights[i].color.w);
 		switch(lightType) {
 			case 0:
