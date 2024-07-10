@@ -445,6 +445,7 @@ void Model::destroy() {
     vkFreeMemory(device->logicalDevice, indices.memory, nullptr);
     indices.buffer = VK_NULL_HANDLE;
   }
+  materialBuffer.destroy();
   for (auto texture : textures) {
     texture.destroy();
   }
@@ -466,7 +467,7 @@ void Model::destroy() {
 
 void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
                      uint32_t nodeIndex, const tinygltf::Model &model,
-                     LoaderInfo &loaderInfo, float globalscale) {
+                     LoaderInfo &loaderInfo) {
   vkglTF::Node *newNode = new Node{};
   newNode->index = nodeIndex;
   newNode->parent = parent;
@@ -497,7 +498,7 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
   if (node.children.size() > 0) {
     for (size_t i = 0; i < node.children.size(); i++) {
       loadNode(newNode, model.nodes[node.children[i]], node.children[i], model,
-               loaderInfo, globalscale);
+               loaderInfo);
     }
   }
 
@@ -670,12 +671,14 @@ void Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node,
           vert.normal = glm::normalize(glm::vec3(
               bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride])
                             : glm::vec3(0.0f)));
-          vert.uv0 = bufferTexCoordSet0
-                        ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
-                        : glm::vec2(0.0f);
-          vert.uv1 = bufferTexCoordSet1
+          vert.uv0 =
+              bufferTexCoordSet0
+                  ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride])
+                  : glm::vec2(0.0f);
+          vert.uv1 =
+              bufferTexCoordSet1
                   ? glm::make_vec2(&bufferTexCoordSet1[v * uv0ByteStride])
-                        : glm::vec2(0.0f);
+                  : glm::vec2(0.0f);
           vert.tangent = bufferTangent
                              ? glm::vec4(glm::make_vec4(&bufferTangent[v * 4]))
                              : glm::vec4(0.0f);
@@ -1165,11 +1168,9 @@ void Model::loadAnimations(tinygltf::Model &gltfModel) {
 }
 
 void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
-                         VkQueue transferQueue, uint32_t fileLoadingFlags,
-                         float scale) {
+                         VkQueue transferQueue, uint32_t fileLoadingFlags) {
   tinygltf::Model gltfModel;
   tinygltf::TinyGLTF gltfContext;
-
   std::string error, warning;
 
   this->device = device;
@@ -1213,11 +1214,13 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     // TODO: scene handling with no default scene
     for (size_t i = 0; i < scene.nodes.size(); i++) {
       const tinygltf::Node node = gltfModel.nodes[scene.nodes[i]];
-      loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo, scale);
+      loadNode(nullptr, node, scene.nodes[i], gltfModel, loaderInfo);
     }
+
     if (gltfModel.animations.size() > 0) {
       loadAnimations(gltfModel);
     }
+
     loadSkins(gltfModel);
 
     for (auto node : linearNodes) {
@@ -1235,8 +1238,9 @@ void Model::loadFromFile(std::string filename, vks::VulkanDevice *device,
     std::cerr << "Could not load gltf file: " << error << std::endl;
     return;
   }
+  // TODO: PRIO 4
+  //  Pre-Calculations for requested features
 
-  // Pre-Calculations for requested features
   if ((fileLoadingFlags & FileLoadingFlags::PreTransformVertices) ||
       (fileLoadingFlags & FileLoadingFlags::PreMultiplyVertexColors) ||
       (fileLoadingFlags & FileLoadingFlags::FlipY)) {
@@ -1361,6 +1365,7 @@ void Model::drawNode(Node *node, VkCommandBuffer commandBuffer) {
 }
 
 void Model::draw(VkCommandBuffer commandBuffer) {
+  // Occ. Check with Dimensions?
   const VkDeviceSize offsets[1] = {0};
   vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertices.buffer, offsets);
   vkCmdBindIndexBuffer(commandBuffer, indices.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -1590,4 +1595,44 @@ vkglTF::Vertex::getPipelineVertexInputState(
   return &pipelineVertexInputStateCreateInfo;
 }
 
+void Transform::updatePosition(glm::vec3 newPos) {
+  position = newPos;
+  posMat = glm::translate(glm::mat4(1.0f), position);
+  calculateTransformMat();
+}
+
+void Transform::updateRotation(glm::vec3 newRot) {
+  rotation = newRot;
+  glm::mat4 rotMat = glm::mat4(1.0f);
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.x),
+                       glm::vec3(1.0f, 0.0f, 0.0f));  // Pitch
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.y),
+                       glm::vec3(0.0f, 1.0f, 0.0f));  // Yaw
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.z),
+                       glm::vec3(0.0f, 0.0f, 1.0f));  // Roll
+  calculateTransformMat();
+}
+
+void Transform::updatePositionAndRotation(glm::vec3 newPos, glm::vec3 newRot) {
+  position = newPos;
+  rotation = newRot;
+  posMat = glm::translate(glm::mat4(1.0f), position);
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.x),
+                       glm::vec3(1.0f, 0.0f, 0.0f));  // Pitch
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.y),
+                       glm::vec3(0.0f, 1.0f, 0.0f));  // Yaw
+  rotMat = glm::rotate(rotMat, glm::radians(rotation.z),
+                       glm::vec3(0.0f, 0.0f, 1.0f));  // Roll
+  calculateTransformMat();
+}
+
+void Transform::updateScale(glm::vec3 newScale) {
+  scale = newScale;
+  scaleMat = glm::scale(glm::mat4(1.0f), scale);
+  calculateTransformMat();
+}
+
+void Transform::calculateTransformMat() {
+  transformMat = posMat * rotMat * scaleMat;
+}
 }  // namespace vkglTF

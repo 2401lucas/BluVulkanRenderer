@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "VulkanInitializers.hpp"
 #include "vulkan/vulkan.h"
+#include "VulkanInitializers.hpp"
 
 // Custom define for better code readability
 #define VK_FLAGS_NONE 0

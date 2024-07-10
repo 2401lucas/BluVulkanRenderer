@@ -27,6 +27,7 @@ class vkImGUI {
   ImGuiStyle vulkanStyle;
 
  public:
+  const char* styles[4] = {"Vulkan", "Classic", "Dark", "Light" };
   int selectedStyle = 0;
   VkPhysicalDeviceDriverProperties driverProperties = {};
 

@@ -1,5 +1,7 @@
 #include "VulkanTools.h"
 
+#include <array>
+
 const std::string getAssetPath() { return "./assets/"; }
 
 const std::string getShaderBasePath() { return "/shaders/"; }

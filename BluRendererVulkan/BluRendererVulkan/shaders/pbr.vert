@@ -10,8 +10,9 @@ layout (location = 6) in vec4 inColor0;
 
 layout (set = 0, binding = 0) uniform UBO 
 {
+	mat4 model[16];
+	mat4 lightSpace[2];
 	mat4 projection;
-	mat4 model;
 	mat4 view;
 	vec3 camPos;
 } ubo;
@@ -24,11 +25,23 @@ layout (set = 2, binding = 0) uniform UBONode {
 	uint jointCount;
 } node;
 
+layout (push_constant) uniform PushConstants {
+	int materialIndex;
+	int transformIndex;
+} pushConstants;
+
 layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outNormal;
 layout (location = 2) out vec2 outUV0;
 layout (location = 3) out vec2 outUV1;
 layout (location = 4) out vec4 outColor0;
+layout (location = 5) out vec4 outShadowCoord;
+
+const mat4 biasMat = mat4( 
+	0.5, 0.0, 0.0, 0.0,
+	0.0, 0.5, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.5, 0.5, 0.0, 1.0 );
 
 void main() 
 {
@@ -43,15 +56,17 @@ void main()
 			inWeight0.z * node.jointMatrix[inJoint0.z] +
 			inWeight0.w * node.jointMatrix[inJoint0.w];
 
-		locPos = ubo.model * node.matrix * skinMat * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix * skinMat))) * inNormal);
+		locPos = ubo.model[pushConstants.transformIndex] * node.matrix * skinMat * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex] * node.matrix * skinMat))) * inNormal);
 	} else {
-		locPos = ubo.model * node.matrix * vec4(inPos, 1.0);
-		outNormal = normalize(transpose(inverse(mat3(ubo.model * node.matrix))) * inNormal);
+		//Static model meshes are pre-transformed
+		locPos = ubo.model[pushConstants.transformIndex] * vec4(inPos, 1.0);
+		outNormal = normalize(transpose(inverse(mat3(ubo.model[pushConstants.transformIndex]))) * inNormal);
 	}
-	locPos.y = -locPos.y;
 	outWorldPos = locPos.xyz / locPos.w;
 	outUV0 = inUV0;
 	outUV1 = inUV1;
 	gl_Position =  ubo.projection * ubo.view * vec4(outWorldPos, 1.0);
+
+	outShadowCoord = ( biasMat * ubo.lightSpace[0] * (ubo.model[pushConstants.transformIndex])) * vec4(inPos, 1.0);
 }

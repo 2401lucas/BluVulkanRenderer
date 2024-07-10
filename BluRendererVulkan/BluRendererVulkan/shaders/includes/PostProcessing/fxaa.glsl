@@ -1,5 +1,5 @@
 #ifndef FXAA
-    #define FXAA 1
+    #define FXAA 0
 #endif
 #ifndef FXAA_DISABLE
     #define FXAA_DISABLE 0
@@ -19,7 +19,6 @@
 #ifndef FXAA_DEBUG_OFFSET
     #define FXAA_DEBUG_OFFSET 0
 #endif
-
 
 #ifndef FXAA_PRESET
     #define FXAA_PRESET 5
@@ -104,28 +103,22 @@
 
 // Estimates Luminances from RG
 float fxaaLuma(vec3 rgb) {
-    return rgb.y * (0.587/0.299) + rgb.x;
+    //return rgb.y * (0.587/0.299) + rgb.x;
     //return 0.299*rgb.x + 0.587*rgb.y + 0.114*rgb.z;
-    //return 0.2126*rgb.x + 0.7152*rgb.y + 0.0722*rgb.z;
-}
-
-vec3 ApplyFilter(vec3 rgb){
-#if TONEMAP
-    return ApplyTonemap(rgb);
-#else
-    return rgb;
-#endif
+    return 0.2126*rgb.x + 0.7152*rgb.y + 0.0722*rgb.z;
 }
 
 // Sample center & surrounding pixels, compare luminance and average 
-vec3 ApplyFXAA(vec3 rgbC) {
+vec3 applyFXAA() {
+    vec3 rgbC = texture(screenTexture, fragTexCord).rgb;
     #if FXAA_DISABLE
-        return rgbC;
+        return outColor = vec4(rgbC, 0.0);
     #endif
-    vec3 rgbN = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(0,-1)).rgb);
-    vec3 rgbS = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(0,1)).rgb);
-    vec3 rgbE = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(1,0)).rgb);
-    vec3 rgbW = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(-1,0)).rgb);
+
+    vec3 rgbN = textureOffset(screenTexture, fragTexCord, ivec2(0,-1)).rgb;
+    vec3 rgbS = textureOffset(screenTexture, fragTexCord, ivec2(0,1)).rgb;
+    vec3 rgbE = textureOffset(screenTexture, fragTexCord, ivec2(1,0)).rgb;
+    vec3 rgbW = textureOffset(screenTexture, fragTexCord, ivec2(-1,0)).rgb;
 
     float lumaC = fxaaLuma(rgbC);
     float lumaN = fxaaLuma(rgbN);
@@ -178,10 +171,10 @@ vec3 ApplyFXAA(vec3 rgbC) {
     #endif
 
     //Neighbors 
-    vec3 rgbNW = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(-1,-1)).rgb);
-    vec3 rgbNE = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(1,-1)).rgb);
-    vec3 rgbSW = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(-1,1)).rgb);
-    vec3 rgbSE = ApplyFilter(textureOffset(screenTexture, fragTexCord, ivec2(1,1)).rgb);
+    vec3 rgbNW = textureOffset(screenTexture, fragTexCord, ivec2(-1,-1)).rgb;
+    vec3 rgbNE = textureOffset(screenTexture, fragTexCord, ivec2(1,-1)).rgb;
+    vec3 rgbSW = textureOffset(screenTexture, fragTexCord, ivec2(-1,1)).rgb;
+    vec3 rgbSE = textureOffset(screenTexture, fragTexCord, ivec2(1,1)).rgb;
 
     #if (FXAA_SUBPIX_FASTER == 0) && (FXAA_SUBPIX > 0)
         rgbL += (rgbNW + rgbNE + rgbSW + rgbSE);
@@ -270,14 +263,14 @@ vec3 ApplyFXAA(vec3 rgbC) {
     for(int i = 0; i < FXAA_SEARCH_STEPS; i++) {
         #if FXAA_SEARCH_ACCELERATION == 1
             if(!doneN) lumaEndN = 
-                fxaaLuma(ApplyFilter(texture(screenTexture, posN.xy).rgb));
+                fxaaLuma(texture(screenTexture, posN.xy).rgb);
             if(!doneP) lumaEndP = 
-                fxaaLuma(ApplyFilter(texture(screenTexture, posP.xy).rgb));
+                fxaaLuma(texture(screenTexture, posP.xy).rgb);
         #else
             if(!doneN) lumaEndN = 
-                fxaaLuma(ApplyFilter(textureGrad(screenTexture, posN.xy, offNP, offNP).rgb));
+                fxaaLuma(textureGrad(screenTexture, posN.xy, offNP, offNP).rgb);
             if(!doneP) lumaEndP = 
-                fxaaLuma(ApplyFilter(textureGrad(screenTexture, posP.xy, offNP, offNP).rgb));
+                fxaaLuma(textureGrad(screenTexture, posP.xy, offNP, offNP).rgb);
         #endif
         doneN = doneN || (abs(lumaEndN - lumaN) >= gradientN);
         doneP = doneP || (abs(lumaEndP - lumaN) >= gradientN);
@@ -321,11 +314,10 @@ vec3 ApplyFXAA(vec3 rgbC) {
             return mix(FxaaToVec3(lumaO), vec3(0.2, 0.6, 1.0), oy);
 
         return FxaaToVec3(lumaO);
-        ;
     #endif
 
-    vec3 rgbF = ApplyFilter(texture(screenTexture, vec2(fragTexCord.x + (horzSpan ? 0.0 : subPixelOffset),
-        fragTexCord.y + (horzSpan ? subPixelOffset : 0.0))).rgb);
+    vec3 rgbF = texture(screenTexture, vec2(fragTexCord.x + (horzSpan ? 0.0 : subPixelOffset),
+        fragTexCord.y + (horzSpan ? subPixelOffset : 0.0))).rgb;
 
     #if FXAA_SUBPIX == 0
         return rgbF;

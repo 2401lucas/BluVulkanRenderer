@@ -95,7 +95,37 @@ STATIC?--------------
 Descriptor Layouts
 DYNAMIC?-------------
 
+make adding depth passes in pp passes easier and better
+culling
 
+KNOWN PROBLEMS:
+Add ImGui keyboard input
+Change models / 
+Resize Window crashes - VUID-VkPresentInfoKHR-pImageIndices-01430 once when resizing window, but no crash
+// TODO ORDER?
+LIGHTS (Area works without shadows)
+Generate IBL inside
+INDEXING SHADOWMAP NOT WORKING
+Shadows --------------------------------------------------------------
 Realtime Ambient Occlusion(GTAO or HBAO)
-Shadows 
-I CHANGED THE UV0/UV1 to UV & TANGENT
+Bloom?
+MULTI THREADING
+-MODEL LOADING-> glTF reading raw file is slow as square balls rolling up a hill
+FIX FXAA _ TOO BLURRY
+
+
+Multi-threaded Render API?
+
+
+LIGHTS->
+	COLOR
+	zNear(Range? not sure) & zFar(Falloff)
+
+GetIntensity()
+	IF(length(LIGHTPOS - PIXELPOS) >  zFar) -> 0
+	ELSE IF (length(LIGHTPOS - PIXELPOS) - 0.005 > shadowMap(xy)) NO SHADOW, CALC LIGHT FALLOFF?
+	ELSE -> 0
+
+ambient 
+
+

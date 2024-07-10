@@ -87,6 +87,7 @@ void vkImGUI::init(float width, float height) {
 }
 
 void vkImGUI::setStyle(uint32_t index) {
+  selectedStyle = index;
   switch (index) {
     case 0: {
       ImGuiStyle& style = ImGui::GetStyle();

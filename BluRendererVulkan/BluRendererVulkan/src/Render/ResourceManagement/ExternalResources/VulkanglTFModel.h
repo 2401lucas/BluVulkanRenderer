@@ -19,8 +19,10 @@
 #include <glm/gtx/string_cast.hpp>
 
 #define TINYGLTF_NO_STB_IMAGE_WRITE
+#define TINYGLTF_USE_CPP14
 
-#include "../../../libraries/GLTF/tiny_gltf.h"
+//#include "../../../libraries/GLTF/tiny_gltf.h"
+#include "../../../libraries/GLTF/tiny_gltf_exp.h" // sajson : faster but readonly
 #include "../../Renderer/BaseRenderer.h"
 
 // Changing this value here also requires changing it in the vertex shader
@@ -227,6 +229,29 @@ struct Vertex {
       const std::vector<VertexComponent> components);
 };
 
+class Transform {
+ public:
+  vks::VulkanDevice* device;
+  glm::vec3 position = glm::vec3(0);
+  glm::vec3 rotation = glm::vec3(0);
+  glm::vec3 scale = glm::vec3(0);
+
+  glm::mat4 posMat = glm::mat4(1.0f);
+  glm::mat4 rotMat = glm::mat4(1.0f);
+  glm::mat4 scaleMat = glm::mat4(1.0f);
+  glm::mat4 transformMat = glm::mat4(1.0f);
+
+ private:
+  bool updated = false;
+
+ public:
+  void updatePosition(glm::vec3 newPos);
+  void updateRotation(glm::vec3 newRot);
+  void updatePositionAndRotation(glm::vec3 newPos, glm::vec3 newRot);
+  void updateScale(glm::vec3 newScale);
+  void calculateTransformMat();
+};
+
 enum FileLoadingFlags {
   None = 0x00000000,
   PreTransformVertices = 0x00000001,
@@ -262,7 +287,10 @@ class Model {
   std::vector<Animation> animations;
   std::vector<std::string> extensions;
 
+  vks::Buffer materialBuffer;
   std::string filePath;
+
+  Transform transform;
 
   struct Dimensions {
     glm::vec3 min = glm::vec3(FLT_MAX);
@@ -279,7 +307,7 @@ class Model {
   void destroy();
   void loadNode(vkglTF::Node* parent, const tinygltf::Node& node,
                 uint32_t nodeIndex, const tinygltf::Model& model,
-                LoaderInfo& loaderInfo, float globalscale);
+                LoaderInfo& loaderInfo);
   void getNodeProps(const tinygltf::Node& node, const tinygltf::Model& model,
                     size_t& vertexCount, size_t& indexCount);
   void loadSkins(tinygltf::Model& gltfModel);
@@ -291,8 +319,7 @@ class Model {
   void loadAnimations(tinygltf::Model& gltfModel);
   void loadFromFile(std::string filename, vks::VulkanDevice* device,
                     VkQueue transferQueue,
-                    uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None,
-                    float scale = 1.0f);
+                    uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None);
   void drawNode(Node* node, VkCommandBuffer commandBuffer);
   void draw(VkCommandBuffer commandBuffer);
   void calculateBoundingBox(Node* node, Node* parent);
