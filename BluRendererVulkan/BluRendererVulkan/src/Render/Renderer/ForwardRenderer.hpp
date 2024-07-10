@@ -760,6 +760,7 @@ class ForwardRenderer : public BaseRenderer {
     }
 
     if (ImGui::CollapsingHeader("Light Settings")) {
+      ImGui::DragFloat("Ibl Intensity", &uiSettings.IBLstrength, 0.1f, 0.0f, 2.0f);
       ImGui::Indent();
       for (uint32_t i = 0; i < lights.size(); i++) {
         if (ImGui::CollapsingHeader(
@@ -3863,13 +3864,13 @@ class ForwardRenderer : public BaseRenderer {
     lights.clear();
     auto mainLight = vks::light::Light();
     mainLight.createDirectionalLight(
-        glm::vec4(1.0f, 1.0f, 1.0f, 2.8f), glm::vec3(0.4f, 0.6f, 0.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 2.8f), glm::vec3(0.4f, 0.7f, 0.0f),
         glm::vec3(0.0f), 90.0f, 1.0f, 16.0f, 128.0f);
     lights.push_back(mainLight);
     auto spotLight = vks::light::Light();
     spotLight.createSpotLight(
-        glm::vec4(1.0f, 0.4f, 0.8f, 10.0f), glm::vec3(-20.0f, 2.0f, 0.0f),
-        glm::vec3(0.0f, -1.0f, 0.0f), 35.0f, 1.0f, 0.08f, 0.00032f);
+        glm::vec4(1.0f, 0.4f, 0.8f, 10.0f), glm::vec3(-20.0f, -2.0f, 0.0f),
+        glm::vec3(0.0f, 1.0f, 0.0f), 35.0f, 1.0f, 0.08f, 0.00032f);
     lights.push_back(spotLight);
 
     if (!firstTime) {

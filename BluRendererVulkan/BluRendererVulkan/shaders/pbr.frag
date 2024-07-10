@@ -330,7 +330,7 @@ vec3 CalculateSpotLight(LightSource light, PBRInfo pbrInputs) {
 	//light.lightFalloff[2] Quadratic
 	float attenuation = (1.0 / ( light.lightFalloff[0] + light.lightFalloff[1] * distance + light.lightFalloff[2] * (distance * distance)));
 
-	return (attenuation * (diffuse + specular) * inRadiance * pbrInputs.NdotL);
+	return (attenuation * (diffuse + specular) * inRadiance);
 }
 
 void main()
@@ -463,7 +463,7 @@ void main()
 		int lightType = int(uboParams.lights[i].color.w);
 		switch(lightType) {
 			case 0:
-			float shadow = (1.0 - filterPCF(inShadowCoords / inShadowCoords.w));
+				float shadow = (1.0 - filterPCF(inShadowCoords / inShadowCoords.w));
 				Lo += CalculateDirLight(uboParams.lights[i], pbrInputs) * shadow;
 				break;
 			case 1:
