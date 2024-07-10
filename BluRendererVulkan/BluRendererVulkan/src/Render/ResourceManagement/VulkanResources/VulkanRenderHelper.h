@@ -14,7 +14,12 @@ vks::VulkanRenderTarget* createColorDepthRenderTarget(
 void recreateColorDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
                                              uint32_t imageCount,
                                              uint32_t width, uint32_t height);
-vks::VulkanRenderTarget* createRenderTarget();
+void recreateColorRenderTargetResources(vks::VulkanRenderTarget* newTarget,
+                                             uint32_t imageCount,
+                                             uint32_t width, uint32_t height);
+void recreateDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
+                                             uint32_t imageCount,
+                                             uint32_t width, uint32_t height);
 
 void createImageFromBuffer(vks::VulkanRenderTarget* target, void** imageData,
                            float dataSize, uint32_t width, uint32_t height,

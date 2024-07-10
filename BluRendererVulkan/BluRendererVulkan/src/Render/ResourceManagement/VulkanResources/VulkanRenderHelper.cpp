@@ -81,83 +81,7 @@ vks::VulkanRenderTarget* createDepthRenderTarget(
   VK_CHECK_RESULT(vkCreateSampler(device->logicalDevice, &samplerInfo, nullptr,
                                   &newTarget->sampler));
 
-  // Depth attachment
-  VkImageCreateInfo image = vks::initializers::imageCreateInfo();
-  image.imageType = VK_IMAGE_TYPE_2D;
-  image.format = depthFormat;
-  image.extent.width = depthMapWidth;
-  image.extent.height = depthMapHeight;
-  image.extent.depth = 1;
-  image.mipLevels = 1;
-  image.arrayLayers = 1;
-  image.samples = VK_SAMPLE_COUNT_1_BIT;
-  image.tiling = VK_IMAGE_TILING_OPTIMAL;
-  // We will sample directly from the Depth attachment
-  image.usage =
-      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-
-  VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
-  VkMemoryRequirements memReqs;
-
-  VkImageViewCreateInfo depthStencilView =
-      vks::initializers::imageViewCreateInfo();
-  depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  depthStencilView.format = depthFormat;
-  depthStencilView.flags = 0;
-  depthStencilView.subresourceRange = {};
-  depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-  depthStencilView.subresourceRange.baseMipLevel = 0;
-  depthStencilView.subresourceRange.levelCount = 1;
-  depthStencilView.subresourceRange.baseArrayLayer = 0;
-  depthStencilView.subresourceRange.layerCount = 1;
-
-  newTarget->framebuffers.resize(imageCount);
-  for (uint32_t i = 0; i < imageCount; i++) {
-    VK_CHECK_RESULT(vkCreateImage(device->logicalDevice, &image, nullptr,
-                                  &newTarget->framebuffers[i].depth.image));
-    vkGetImageMemoryRequirements(device->logicalDevice,
-                                 newTarget->framebuffers[i].depth.image,
-                                 &memReqs);
-    memAlloc.allocationSize = memReqs.size;
-    memAlloc.memoryTypeIndex = device->getMemoryType(
-        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VK_CHECK_RESULT(vkAllocateMemory(device->logicalDevice, &memAlloc, nullptr,
-                                     &newTarget->framebuffers[i].depth.memory));
-    VK_CHECK_RESULT(vkBindImageMemory(
-        device->logicalDevice, newTarget->framebuffers[i].depth.image,
-        newTarget->framebuffers[i].depth.memory, 0));
-
-    depthStencilView.image = newTarget->framebuffers[i].depth.image;
-    VK_CHECK_RESULT(vkCreateImageView(device->logicalDevice, &depthStencilView,
-                                      nullptr,
-                                      &newTarget->framebuffers[i].depth.view));
-  }
-
-  for (uint32_t i = 0; i < imageCount; i++) {
-    VkImageView attachments[1];
-    attachments[0] = newTarget->framebuffers[i].depth.view;
-
-    VkFramebufferCreateInfo fbufCreateInfo =
-        vks::initializers::framebufferCreateInfo();
-    fbufCreateInfo.renderPass = newTarget->renderPass;
-    fbufCreateInfo.attachmentCount = 1;
-    fbufCreateInfo.pAttachments = attachments;
-    fbufCreateInfo.width = depthMapWidth;
-    fbufCreateInfo.height = depthMapHeight;
-    fbufCreateInfo.layers = 1;
-
-    VK_CHECK_RESULT(
-        vkCreateFramebuffer(device->logicalDevice, &fbufCreateInfo, nullptr,
-                            &newTarget->framebuffers[i].framebuffer));
-
-    // Fill a descriptor for later use in a descriptor set
-    newTarget->framebuffers[i].descriptor.imageLayout =
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-    newTarget->framebuffers[i].descriptor.imageView =
-        newTarget->framebuffers[i].depth.view;
-    newTarget->framebuffers[i].descriptor.sampler = newTarget->sampler;
-  }
-
+  recreateDepthRenderTargetResources(newTarget, imageCount, depthMapWidth, depthMapHeight);
   return newTarget;
 }
 
@@ -405,7 +329,104 @@ void recreateColorDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
   }
 }
 
-vks::VulkanRenderTarget* createRenderTarget() { return nullptr; }
+void recreateColorRenderTargetResources(vks::VulkanRenderTarget* newTarget,
+                                        uint32_t imageCount, uint32_t width,
+                                        uint32_t height) {}
+
+void recreateDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
+                                        uint32_t imageCount, uint32_t width,
+                                        uint32_t height) {
+  for (size_t i = 0; i < newTarget->framebuffers.size(); i++) {
+    vkDestroyImage(newTarget->device->logicalDevice,
+                   newTarget->framebuffers[i].depth.image, nullptr);
+    vkDestroyImageView(newTarget->device->logicalDevice,
+                       newTarget->framebuffers[i].depth.view, nullptr);
+    vkFreeMemory(newTarget->device->logicalDevice,
+                 newTarget->framebuffers[i].depth.memory, nullptr);
+    vkDestroyFramebuffer(newTarget->device->logicalDevice,
+                         newTarget->framebuffers[i].framebuffer, nullptr);
+  }
+
+  // Depth attachment
+  VkImageCreateInfo image = vks::initializers::imageCreateInfo();
+  image.imageType = VK_IMAGE_TYPE_2D;
+  image.format = newTarget->depthFormat;
+  image.extent.width = width;
+  image.extent.height = height;
+  image.extent.depth = 1;
+  image.mipLevels = 1;
+  image.arrayLayers = 1;
+  image.samples = VK_SAMPLE_COUNT_1_BIT;
+  image.tiling = VK_IMAGE_TILING_OPTIMAL;
+  // We will sample directly from the Depth attachment
+  image.usage =
+      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+  VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
+  VkMemoryRequirements memReqs;
+
+  VkImageViewCreateInfo depthStencilView =
+      vks::initializers::imageViewCreateInfo();
+  depthStencilView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+  depthStencilView.format = newTarget->depthFormat;
+  depthStencilView.flags = 0;
+  depthStencilView.subresourceRange = {};
+  depthStencilView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+  depthStencilView.subresourceRange.baseMipLevel = 0;
+  depthStencilView.subresourceRange.levelCount = 1;
+  depthStencilView.subresourceRange.baseArrayLayer = 0;
+  depthStencilView.subresourceRange.layerCount = 1;
+
+  newTarget->framebuffers.resize(imageCount);
+  for (uint32_t i = 0; i < imageCount; i++) {
+    VK_CHECK_RESULT(vkCreateImage(newTarget->device->logicalDevice, &image,
+                                  nullptr,
+                                  &newTarget->framebuffers[i].depth.image));
+    vkGetImageMemoryRequirements(newTarget->device->logicalDevice,
+                                 newTarget->framebuffers[i].depth.image,
+                                 &memReqs);
+    memAlloc.allocationSize = memReqs.size;
+    memAlloc.memoryTypeIndex = newTarget->device->getMemoryType(
+        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VK_CHECK_RESULT(vkAllocateMemory(newTarget->device->logicalDevice,
+                                     &memAlloc, nullptr,
+                                     &newTarget->framebuffers[i].depth.memory));
+    VK_CHECK_RESULT(vkBindImageMemory(newTarget->device->logicalDevice,
+                                      newTarget->framebuffers[i].depth.image,
+                                      newTarget->framebuffers[i].depth.memory,
+                                      0));
+
+    depthStencilView.image = newTarget->framebuffers[i].depth.image;
+    VK_CHECK_RESULT(vkCreateImageView(newTarget->device->logicalDevice,
+                                      &depthStencilView, nullptr,
+                                      &newTarget->framebuffers[i].depth.view));
+  }
+
+  for (uint32_t i = 0; i < imageCount; i++) {
+    VkImageView attachments[1];
+    attachments[0] = newTarget->framebuffers[i].depth.view;
+
+    VkFramebufferCreateInfo fbufCreateInfo =
+        vks::initializers::framebufferCreateInfo();
+    fbufCreateInfo.renderPass = newTarget->renderPass;
+    fbufCreateInfo.attachmentCount = 1;
+    fbufCreateInfo.pAttachments = attachments;
+    fbufCreateInfo.width = width;
+    fbufCreateInfo.height = height;
+    fbufCreateInfo.layers = 1;
+
+    VK_CHECK_RESULT(
+        vkCreateFramebuffer(newTarget->device->logicalDevice, &fbufCreateInfo,
+                            nullptr, &newTarget->framebuffers[i].framebuffer));
+
+    // Fill a descriptor for later use in a descriptor set
+    newTarget->framebuffers[i].descriptor.imageLayout =
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    newTarget->framebuffers[i].descriptor.imageView =
+        newTarget->framebuffers[i].depth.view;
+    newTarget->framebuffers[i].descriptor.sampler = newTarget->sampler;
+  }
+}
 
 void createImageFromBuffer(vks::VulkanRenderTarget* target, void** imageData,
                            float dataSize, uint32_t width, uint32_t height,

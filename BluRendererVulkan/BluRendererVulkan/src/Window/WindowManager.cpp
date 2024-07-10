@@ -5,15 +5,16 @@
 WindowManager::WindowManager(const char* name, int width, int height) {
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE); 
+  glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE); 
   window = glfwCreateWindow(width, height, name, nullptr, nullptr);
 
   // glfwSetWindowUserPointer(window, nullptr);
 
   glfwMakeContextCurrent(window);
-  glfwSwapInterval(1);
+   
+  //glfwSwapInterval(1); //Vsync
 
-  // TODO: 6 CALLBACK FOR WINDOW RESIZE & MINIMIZING
-  // glfwSetFramebufferSizeCallback();
 }
 
 WindowManager::~WindowManager() {

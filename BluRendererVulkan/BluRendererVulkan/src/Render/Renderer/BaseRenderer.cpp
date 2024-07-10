@@ -556,6 +556,10 @@ int BaseRenderer::rateDeviceSuitability(VkPhysicalDevice device) {
 
 void BaseRenderer::setupWindow() {
   window = new WindowManager((title + name).c_str(), width, height);
+  int destWidth, destHeight;
+  glfwGetFramebufferSize(window->getWindow(), &destWidth, &destHeight);
+  width = destWidth;
+  height = destHeight;
 }
 
 void BaseRenderer::prepare() {
@@ -725,7 +729,7 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   }
   handleMouseMove(xpos, ypos);
 
-  if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) || glfwWindowShouldClose(window)) {
     PostQuitMessage(0);
   }
 

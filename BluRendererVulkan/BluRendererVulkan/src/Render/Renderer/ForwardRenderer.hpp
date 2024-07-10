@@ -760,7 +760,8 @@ class ForwardRenderer : public BaseRenderer {
     }
 
     if (ImGui::CollapsingHeader("Light Settings")) {
-      ImGui::DragFloat("Ibl Intensity", &uiSettings.IBLstrength, 0.1f, 0.0f, 2.0f);
+      ImGui::DragFloat("Ibl Intensity", &uiSettings.IBLstrength, 0.1f, 0.0f,
+                       2.0f);
       ImGui::Indent();
       for (uint32_t i = 0; i < lights.size(); i++) {
         if (ImGui::CollapsingHeader(
@@ -809,8 +810,8 @@ class ForwardRenderer : public BaseRenderer {
               updateLight = true;
 
             ImGui::Text("Light Falloff");
-            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f, 0.01f,
-                                 1.0f))
+            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f,
+                                 0.01f, 1.0f))
               updateLight = true;
             if (ImGui::DragFloat("Linear", &lights[i].lightLinear, 0.01f, 0.0f,
                                  1.0f))
@@ -834,8 +835,8 @@ class ForwardRenderer : public BaseRenderer {
               updateLight = true;
 
             ImGui::Text("Light Falloff");
-            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f, 0.01f,
-                                 1.0f))
+            if (ImGui::DragFloat("Constant", &lights[i].lightConst, 0.01f,
+                                 0.01f, 1.0f))
               updateLight = true;
             if (ImGui::DragFloat("Linear", &lights[i].lightLinear, 0.01f, 0.0f,
                                  1.0f))
@@ -1483,6 +1484,16 @@ class ForwardRenderer : public BaseRenderer {
   void windowResized() override {
     BaseRenderer::windowResized();
 
+    vks::rendering::recreateDepthRenderTargetResources(
+        renderTargets.depthPrepass, swapChain.imageCount, getWidth(),
+        getHeight());
+    vks::rendering::recreateColorDepthRenderTargetResources(
+        renderTargets.mainPass, swapChain.imageCount, getWidth(), getHeight());
+    vks::rendering::recreateColorDepthRenderTargetResources(
+        renderTargets.aoPass, swapChain.imageCount, getWidth(), getHeight());
+    vks::rendering::recreateColorDepthRenderTargetResources(
+        renderTargets.aaPass, swapChain.imageCount, getWidth(), getHeight());
+
     setupDescriptors();
   }
 
@@ -1869,69 +1880,85 @@ class ForwardRenderer : public BaseRenderer {
     // Post Processing
 
     {
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(
-          vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
-                                      &descriptorSetLayouts.postProcessing));
+      if (descriptorSetLayouts.postProcessing == VK_NULL_HANDLE) {
+        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(
+            vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr,
+                                        &descriptorSetLayouts.postProcessing));
 
-      VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-      VkDescriptorSetAllocateInfo allocInfo =
-          vks::initializers::descriptorSetAllocateInfo(
-              descriptorPool, &descriptorSetLayouts.postProcessing, 1);
-    }
+        VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
+        VkDescriptorSetAllocateInfo allocInfo =
+            vks::initializers::descriptorSetAllocateInfo(
+                descriptorPool, &descriptorSetLayouts.postProcessing, 1);
 
-    {
-      // renderTargets.aoPass
-      std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-          {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-          {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-           VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
-      };
+        // renderTargets.aoPass
+        setLayoutBindings = {
+            {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+        };
+        descriptorSetLayoutCI.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
+        descriptorSetLayoutCI.bindingCount =
+            static_cast<uint32_t>(setLayoutBindings.size());
+        VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
+            device, &descriptorSetLayoutCI, nullptr,
+            &renderTargets.aoPass->descriptorSetLayout));
 
-      VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
-      descriptorSetLayoutCI.sType =
-          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      descriptorSetLayoutCI.pBindings = setLayoutBindings.data();
-      descriptorSetLayoutCI.bindingCount =
-          static_cast<uint32_t>(setLayoutBindings.size());
-      VK_CHECK_RESULT(vkCreateDescriptorSetLayout(
-          device, &descriptorSetLayoutCI, nullptr,
-          &renderTargets.aoPass->descriptorSetLayout));
+        allocInfo = vks::initializers::descriptorSetAllocateInfo(
+            descriptorPool, &renderTargets.aoPass->descriptorSetLayout, 1);
 
-      VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
-      VkDescriptorSetAllocateInfo allocInfo =
-          vks::initializers::descriptorSetAllocateInfo(
-              descriptorPool, &renderTargets.aoPass->descriptorSetLayout, 1);
+        renderTargets.aoPass->descriptorSets.resize(
+            dynamicDescriptorSets.size());
+        renderTargets.aoPass->screenTextureDescriptorSets.resize(
+            dynamicDescriptorSets.size());
 
-      renderTargets.aoPass->descriptorSets.resize(dynamicDescriptorSets.size());
-      renderTargets.aoPass->screenTextureDescriptorSets.resize(
-          dynamicDescriptorSets.size());
+        for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+          descriptorSetAllocInfo.sType =
+              VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+          descriptorSetAllocInfo.descriptorPool = descriptorPool;
+          descriptorSetAllocInfo.pSetLayouts =
+              &descriptorSetLayouts.postProcessing;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(vkAllocateDescriptorSets(
+              device, &descriptorSetAllocInfo,
+              &renderTargets.aoPass->screenTextureDescriptorSets[i]));
 
+          descriptorSetAllocInfo.pSetLayouts =
+              &renderTargets.aoPass->descriptorSetLayout;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(vkAllocateDescriptorSets(
+              device, &descriptorSetAllocInfo,
+              &renderTargets.aoPass->descriptorSets[i]));
+        }
+
+        renderTargets.aaPass->screenTextureDescriptorSets.resize(
+            dynamicDescriptorSets.size());
+        for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
+          descriptorSetAllocInfo.pSetLayouts =
+              &descriptorSetLayouts.postProcessing;
+          descriptorSetAllocInfo.descriptorSetCount = 1;
+          VK_CHECK_RESULT(vkAllocateDescriptorSets(
+              device, &descriptorSetAllocInfo,
+              &renderTargets.aaPass->screenTextureDescriptorSets[i]));
+        }
+      }
       for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts =
-            &descriptorSetLayouts.postProcessing;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo,
-            &renderTargets.aoPass->screenTextureDescriptorSets[i]));
-
         std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
             renderTargets.aoPass->screenTextureDescriptorSets[i],
@@ -1947,16 +1974,6 @@ class ForwardRenderer : public BaseRenderer {
       }
 
       for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts =
-            &renderTargets.aoPass->descriptorSetLayout;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(
-            vkAllocateDescriptorSets(device, &descriptorSetAllocInfo,
-                                     &renderTargets.aoPass->descriptorSets[i]));
-
         std::array<VkWriteDescriptorSet, 3> writeDescriptorSets{};
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
             renderTargets.aoPass->descriptorSets[i],
@@ -1976,21 +1993,7 @@ class ForwardRenderer : public BaseRenderer {
       }
 
       // renderpass.AA
-
-      renderTargets.aaPass->screenTextureDescriptorSets.resize(
-          dynamicDescriptorSets.size());
-
       for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-        descriptorSetAllocInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptorSetAllocInfo.descriptorPool = descriptorPool;
-        descriptorSetAllocInfo.pSetLayouts =
-            &descriptorSetLayouts.postProcessing;
-        descriptorSetAllocInfo.descriptorSetCount = 1;
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device, &descriptorSetAllocInfo,
-            &renderTargets.aaPass->screenTextureDescriptorSets[i]));
-
         std::array<VkWriteDescriptorSet, 2> writeDescriptorSets{};
         writeDescriptorSets[0] = vks::initializers::writeDescriptorSet(
             renderTargets.aaPass->screenTextureDescriptorSets[i],
@@ -3925,7 +3928,7 @@ class ForwardRenderer : public BaseRenderer {
   void preparePasses() {
     // PREPASSES
     renderTargets.depthPrepass = vks::rendering::createDepthRenderTarget(
-        vulkanDevice, VK_FORMAT_D16_UNORM, VK_FILTER_LINEAR,
+        vulkanDevice, VK_FORMAT_D32_SFLOAT, VK_FILTER_LINEAR,
         swapChain.imageCount, getWidth(), getHeight(),
         "shaders/depthPass.vert.spv");
     renderTargets.shadowPasses.push_back(
