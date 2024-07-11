@@ -207,7 +207,7 @@ class ForwardRenderer : public BaseRenderer {
     glm::vec2 fovScale = glm::vec2(1.0f);
     float zNear = 1;
     float zFar = 500;
-    float kernelSize = 16;
+    float kernelSize = 64;
     float radius = 0.5f;
     float aaType = 0;
     float aoType = 0;
@@ -224,7 +224,8 @@ class ForwardRenderer : public BaseRenderer {
     glm::mat4 lightSpace[MAX_LIGHTS];
     glm::mat4 projection;
     glm::mat4 view;
-    glm::vec3 camPos;
+    glm::vec4 camPos;
+    glm::vec2 screenSize;
   } uboMatrices;
 
   const char* debugInputs[12] = {"None", "Color Map", "Normals", "AO Map", "Emissive Map", "Metallic Map", "Roughness Map", "F", "G", "D", "IBL Contribution",
@@ -910,7 +911,13 @@ class ForwardRenderer : public BaseRenderer {
         }
         ImGui::EndCombo();
       }
+
+      if (ImGui::DragFloat("SSAO Radius", &postProcessingParams.radius, 0.1f,
+                           0.0f, 10.0f)) {
+        updatePostProcessingParams();
+      }
     }
+
     if (ImGui::CollapsingHeader("UI Settings")) {
       if (ImGui::BeginCombo("UI style", imGui->styles[imGui->selectedStyle])) {
         const char* currentItem = imGui->styles[imGui->selectedStyle];
@@ -1000,9 +1007,9 @@ class ForwardRenderer : public BaseRenderer {
   void buildSceneCommandBuffer() {
     VkCommandBufferInheritanceInfo inheritanceInfo =
         vks::initializers::commandBufferInheritanceInfo();
-    inheritanceInfo.renderPass = renderTargets.aoPass->renderPass;
+    inheritanceInfo.renderPass = renderTargets.aaPass->renderPass;
     inheritanceInfo.framebuffer =
-        renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
+        renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
 
     VkCommandBufferBeginInfo cmdBufInfo =
         vks::initializers::commandBufferBeginInfo();
@@ -1328,8 +1335,11 @@ class ForwardRenderer : public BaseRenderer {
       vkCmdEndRenderPass(currentCommandBuffer);
       secondaryCmdBufs.clear();
     }
+
     renderPassBeginInfo.renderArea.extent.width = shadowMapSize;
     renderPassBeginInfo.renderArea.extent.height = shadowMapSize;
+    renderPassBeginInfo.clearValueCount = 1;
+    renderPassBeginInfo.pClearValues = &clearValues[1];
     // Shadows Rendering
     {
       renderPassBeginInfo.renderPass =
@@ -1357,11 +1367,60 @@ class ForwardRenderer : public BaseRenderer {
     renderPassBeginInfo.clearValueCount = 2;
     renderPassBeginInfo.pClearValues = clearValues;
 
+    renderPassBeginInfo.renderPass = renderTargets.aoPass->renderPass;
+    renderPassBeginInfo.framebuffer =
+        renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
+
+    vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
+                         VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+
+    VkCommandBufferInheritanceInfo inheritanceInfo =
+        vks::initializers::commandBufferInheritanceInfo();
+    inheritanceInfo.renderPass = renderTargets.aoPass->renderPass;
+    inheritanceInfo.framebuffer =
+        renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
+
+    cmdBufInfo = vks::initializers::commandBufferBeginInfo();
+    cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+    cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
+
+    VkCommandBuffer curBuf = commandBuffers.ao[currentFrameIndex];
+    vkResetCommandBuffer(curBuf, 0);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
+
+    VkViewport viewport = vks::initializers::viewport(
+        (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
+    vkCmdSetViewport(curBuf, 0, 1, &viewport);
+    VkRect2D scissor = vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
+    vkCmdSetScissor(curBuf, 0, 1, &scissor);
+
+    VkDeviceSize offsets[1] = {0};
+
+    const std::vector<VkDescriptorSet> descriptorsets = {
+        renderTargets.aoPass->screenTextureDescriptorSets[currentFrameIndex],
+        renderTargets.aoPass->descriptorSets[currentFrameIndex]};
+
+    vkCmdBindDescriptorSets(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            renderTargets.aoPass->pipelineLayout, 0,
+                            static_cast<uint32_t>(descriptorsets.size()),
+                            descriptorsets.data(), 0, NULL);
+    vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      renderTargets.aoPass->pipeline);
+    vkCmdDraw(curBuf, 3, 1, 0, 0);
+    VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
+    secondaryCmdBufs.push_back(curBuf);
+    // Execute render commands from the secondary command buffer
+    vkCmdExecuteCommands(currentCommandBuffer,
+                         static_cast<uint32_t>(secondaryCmdBufs.size()),
+                         secondaryCmdBufs.data());
+    secondaryCmdBufs.clear();
+    vkCmdEndRenderPass(currentCommandBuffer);
+
     // Scene Rendering
     {
-      renderPassBeginInfo.renderPass = renderTargets.aoPass->renderPass;
+      renderPassBeginInfo.renderPass = renderTargets.aaPass->renderPass;
       renderPassBeginInfo.framebuffer =
-          renderTargets.aoPass->framebuffers[currentFrameIndex].framebuffer;
+          renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
@@ -1382,64 +1441,14 @@ class ForwardRenderer : public BaseRenderer {
     {
       // Foreach Post Processing Pass render into the next
       // Then, Render final image into Swapchain image
-      renderPassBeginInfo.renderPass = renderTargets.aaPass->renderPass;
-      renderPassBeginInfo.framebuffer =
-          renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
-
-      vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
-                           VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
-
-      VkCommandBufferInheritanceInfo inheritanceInfo =
-          vks::initializers::commandBufferInheritanceInfo();
-      inheritanceInfo.renderPass = renderTargets.aaPass->renderPass;
-      inheritanceInfo.framebuffer =
-          renderTargets.aaPass->framebuffers[currentFrameIndex].framebuffer;
-
-      VkCommandBufferBeginInfo cmdBufInfo =
-          vks::initializers::commandBufferBeginInfo();
-      cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-      cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
-
-      VkCommandBuffer curBuf = commandBuffers.ao[currentFrameIndex];
-      vkResetCommandBuffer(curBuf, 0);
-      VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
-
-      VkViewport viewport = vks::initializers::viewport(
-          (float)getWidth(), (float)getHeight(), 0.0f, 1.0f);
-      vkCmdSetViewport(curBuf, 0, 1, &viewport);
-      VkRect2D scissor =
-          vks::initializers::rect2D(getWidth(), getHeight(), 0, 0);
-      vkCmdSetScissor(curBuf, 0, 1, &scissor);
-
-      VkDeviceSize offsets[1] = {0};
-
-      const std::vector<VkDescriptorSet> descriptorsets = {
-          renderTargets.aoPass->screenTextureDescriptorSets[currentFrameIndex],
-          renderTargets.aoPass->descriptorSets[currentFrameIndex]};
-
-      vkCmdBindDescriptorSets(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              renderTargets.aoPass->pipelineLayout, 0,
-                              static_cast<uint32_t>(descriptorsets.size()),
-                              descriptorsets.data(), 0, NULL);
-      vkCmdBindPipeline(curBuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        renderTargets.aoPass->pipeline);
-      vkCmdDraw(curBuf, 3, 1, 0, 0);
-      VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
-      secondaryCmdBufs.push_back(curBuf);
-      // Execute render commands from the secondary command buffer
-      vkCmdExecuteCommands(currentCommandBuffer,
-                           static_cast<uint32_t>(secondaryCmdBufs.size()),
-                           secondaryCmdBufs.data());
-      secondaryCmdBufs.clear();
-      vkCmdEndRenderPass(currentCommandBuffer);
-      //------------------------------------------------------------------------------------------
       renderPassBeginInfo.renderPass = renderPass;
       renderPassBeginInfo.framebuffer = frameBuffers[currentFrameIndex];
 
       vkCmdBeginRenderPass(currentCommandBuffer, &renderPassBeginInfo,
                            VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
 
-      inheritanceInfo = vks::initializers::commandBufferInheritanceInfo();
+      VkCommandBufferInheritanceInfo inheritanceInfo =
+          vks::initializers::commandBufferInheritanceInfo();
       inheritanceInfo.renderPass = renderPass;
       inheritanceInfo.framebuffer = frameBuffers[currentFrameIndex];
 
@@ -1447,7 +1456,7 @@ class ForwardRenderer : public BaseRenderer {
       cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
       cmdBufInfo.pInheritanceInfo = &inheritanceInfo;
 
-      curBuf = commandBuffers.aa[currentFrameIndex];
+      VkCommandBuffer curBuf = commandBuffers.aa[currentFrameIndex];
       vkResetCommandBuffer(curBuf, 0);
       VK_CHECK_RESULT(vkBeginCommandBuffer(curBuf, &cmdBufInfo));
 
@@ -1463,7 +1472,6 @@ class ForwardRenderer : public BaseRenderer {
                         renderTargets.aaPass->pipeline);
       vkCmdDraw(curBuf, 3, 1, 0, 0);
       VK_CHECK_RESULT(vkEndCommandBuffer(curBuf));
-      ;
 
       buildUICommandBuffer();
 
@@ -1512,7 +1520,7 @@ class ForwardRenderer : public BaseRenderer {
       // Screen Texture
       imageSamplerCount += 3;
       // Shadows?
-      meshCount += 6;
+      meshCount += 7;
       dynamicDescriptorSets.resize(swapChain.imageCount);
       for (auto& model : dynamicModels) {
         for (auto& material : model.materials) {
@@ -1563,6 +1571,8 @@ class ForwardRenderer : public BaseRenderer {
              VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
             {5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
              VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+            {6, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+             VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
         };
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
         descriptorSetLayoutCI.sType =
@@ -1586,7 +1596,7 @@ class ForwardRenderer : public BaseRenderer {
         }
       }
       for (auto i = 0; i < dynamicDescriptorSets.size(); i++) {
-        std::array<VkWriteDescriptorSet, 6> writeDescriptorSets{};
+        std::array<VkWriteDescriptorSet, 7> writeDescriptorSets{};
 
         writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeDescriptorSets[0].descriptorType =
@@ -1639,6 +1649,15 @@ class ForwardRenderer : public BaseRenderer {
         writeDescriptorSets[5].dstBinding = 5;
         writeDescriptorSets[5].pImageInfo =
             &renderTargets.shadowPasses[0]->framebuffers[i].descriptor;
+
+        writeDescriptorSets[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDescriptorSets[6].descriptorType =
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writeDescriptorSets[6].descriptorCount = 1;
+        writeDescriptorSets[6].dstSet = dynamicDescriptorSets[i].scene;
+        writeDescriptorSets[6].dstBinding = 6;
+        writeDescriptorSets[6].pImageInfo =
+            &renderTargets.aoPass->framebuffers[i].descriptor;
 
         vkUpdateDescriptorSets(
             device, static_cast<uint32_t>(writeDescriptorSets.size()),
@@ -2145,7 +2164,7 @@ class ForwardRenderer : public BaseRenderer {
     VkGraphicsPipelineCreateInfo pipelineCI{};
     pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCI.layout = pipelineLayouts.scene;
-    pipelineCI.renderPass = renderTargets.aoPass->renderPass;
+    pipelineCI.renderPass = renderTargets.aaPass->renderPass;
     pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
     pipelineCI.pVertexInputState = &vertexInputStateCI;
     pipelineCI.pRasterizationState = &rasterizationStateCI;
@@ -2231,7 +2250,7 @@ class ForwardRenderer : public BaseRenderer {
                                            nullptr, &pipelineLayouts.skybox));
     VkGraphicsPipelineCreateInfo pipelineCI =
         vks::initializers::graphicsPipelineCreateInfo(
-            pipelineLayouts.skybox, renderTargets.aoPass->renderPass);
+            pipelineLayouts.skybox, renderTargets.aaPass->renderPass);
 
     pipelineCI.pInputAssemblyState = &inputAssemblyState;
     pipelineCI.pRasterizationState = &rasterizationState;
@@ -2286,7 +2305,7 @@ class ForwardRenderer : public BaseRenderer {
                                &renderTargets.aoPass->pipelineLayout));
 
     postProcessingpipelineCI = vks::initializers::graphicsPipelineCreateInfo(
-        renderTargets.aoPass->pipelineLayout, renderTargets.aaPass->renderPass);
+        renderTargets.aoPass->pipelineLayout, renderTargets.aoPass->renderPass);
 
     shaderStages[0] = loadShader(renderTargets.aoPass->vertexShaderPath,
                                  VK_SHADER_STAGE_VERTEX_BIT);
@@ -3626,17 +3645,18 @@ class ForwardRenderer : public BaseRenderer {
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        &renderTargets.aoPass->passBuffers[0], sizeof(float) * 48));
+        &renderTargets.aoPass->passBuffers[0], sizeof(float) * 64 * 3));
     renderTargets.aoPass->passBuffers[0].map();
 
-    float mSSAOKernel[48];
-    for (int i = 0; i < 16; i++) {
+    // Hemisphere points
+    float mSSAOKernel[64 * 3];
+    for (int i = 0; i < 64; i++) {
       int index = i * 3;
       mSSAOKernel[index] = math::random::randomRange(-1.0f, 1.0f);
       mSSAOKernel[index + 1] = math::random::randomRange(-1.0f, 1.0f);
       mSSAOKernel[index + 2] = math::random::randomRange(0.0f, 1.0f);
 
-      float scale = (float)i / 16.0f;
+      float scale = (float)i / 64.0f;
       float scaleMul = math::linear::lerp(0.1f, 1.0f, scale * scale);
 
       mSSAOKernel[index] *= scaleMul;
@@ -3772,7 +3792,8 @@ class ForwardRenderer : public BaseRenderer {
     uboMatrices.projection = camera.matrices.perspective;
     uboMatrices.view = camera.matrices.view;
     glm::mat4 cv = glm::inverse(camera.matrices.view);
-    uboMatrices.camPos = glm::vec3(cv[3]);
+    uboMatrices.camPos = glm::vec4(cv[3]);
+    uboMatrices.screenSize = glm::vec2((float)getWidth(), (float)getHeight());
 
     skybox.transform.transformMat =
         glm::mat4(glm::mat3(camera.matrices.view)) * skybox.transform.scaleMat;
@@ -3941,31 +3962,34 @@ class ForwardRenderer : public BaseRenderer {
             swapChain.imageCount, shadowMapSize, shadowMapSize,
             "shaders/shadow.vert.spv"));
 
+    renderTargets.aoPass = vks::rendering::createColorDepthRenderTarget(
+        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
+        getWidth(), getHeight(), "shaders/ambientOcclusion.vert.spv",
+        "shaders/ambientOcclusion.frag.spv");
+
+    // Random Image
+    {
+      float noiseTextureData[192];
+      float zero = 0.0f;
+      float min = -1.0f;
+      float max = 1.0f;
+      for (int i = 0; i < 64; i++) {
+        int index = i * 3;
+        noiseTextureData[index] = math::random::randomRange(min, max);
+        noiseTextureData[index + 1] = math::random::randomRange(min, max);
+        noiseTextureData[index + 2] = math::random::randomRange(min, max);
+      }
+      vks::rendering::createImageFromBuffer(
+          renderTargets.aoPass, (void**)noiseTextureData,
+          sizeof(noiseTextureData), 8, 8, swapChain.colorFormat, graphicsQueue);
+    }
+
     // RENDERING
     renderTargets.mainPass = vks::rendering::createColorDepthRenderTarget(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
         getWidth(), getHeight(), "", "");
 
     // POSTPROCESSING
-    renderTargets.aoPass = vks::rendering::createColorDepthRenderTarget(
-        vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,
-        getWidth(), getHeight(), "shaders/ambientOcclusion.vert.spv",
-        "shaders/ambientOcclusion.frag.spv");
-
-    float noiseTextureData[192];
-    float zero = 0.0f;
-    float min = -1.0f;
-    float max = 1.0f;
-    for (int i = 0; i < 64; i++) {
-      int index = i * 3;
-      noiseTextureData[index] = math::random::randomRange(min, max);
-      noiseTextureData[index + 1] = math::random::randomRange(min, max);
-      noiseTextureData[index + 2] = 0.0f;
-    }
-
-    vks::rendering::createImageFromBuffer(
-        renderTargets.aoPass, (void**)noiseTextureData,
-        sizeof(noiseTextureData), 8, 8, swapChain.colorFormat, graphicsQueue);
 
     renderTargets.aaPass = vks::rendering::createColorDepthRenderTarget(
         vulkanDevice, swapChain.colorFormat, depthFormat, swapChain.imageCount,

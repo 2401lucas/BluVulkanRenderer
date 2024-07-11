@@ -23,8 +23,6 @@ float randomRange(float min, float max) {
 }  // namespace random
 
 namespace linear {
-float lerp(float min, float max, float mix) {
-  return (1 - mix) * min + mix * max;
-}
+float lerp(float min, float max, float mix) { return min + mix * (max - min); }
 }  // namespace linear
 }  // namespace math

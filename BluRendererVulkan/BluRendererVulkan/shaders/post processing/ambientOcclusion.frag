@@ -19,8 +19,6 @@ layout (binding = 0) uniform UBO
     bool enableBloom;
 } ubo;
 
-layout(binding = 1) uniform sampler2D screenTexture;
-
 layout (location = 0) out vec4 outColor;
 
 layout (set = 1, binding = 0) uniform AOSampling 
@@ -34,6 +32,6 @@ layout(set = 1, binding = 2) uniform sampler2D depthTexture;
 #include "../includes/PostProcessing/ssao.glsl"
 
 void main(){
-    outColor = vec4(ApplySSAO(texture(screenTexture, fragTexCoord).rgb), 0.0);
+    outColor = vec4(ApplySSAO(), 0.0);
     //outColor = vec4(texture(screenTexture, fragTexCoord).rgb, 0.0);
 }

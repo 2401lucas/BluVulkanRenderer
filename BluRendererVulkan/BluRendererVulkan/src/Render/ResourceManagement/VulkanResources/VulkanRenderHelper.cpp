@@ -81,7 +81,8 @@ vks::VulkanRenderTarget* createDepthRenderTarget(
   VK_CHECK_RESULT(vkCreateSampler(device->logicalDevice, &samplerInfo, nullptr,
                                   &newTarget->sampler));
 
-  recreateDepthRenderTargetResources(newTarget, imageCount, depthMapWidth, depthMapHeight);
+  recreateDepthRenderTargetResources(newTarget, imageCount, depthMapWidth,
+                                     depthMapHeight);
   return newTarget;
 }
 
@@ -179,6 +180,89 @@ VulkanRenderTarget* createColorDepthRenderTarget(
                                   &newTarget->sampler));
 
   recreateColorDepthRenderTargetResources(newTarget, imageCount, width, height);
+  return newTarget;
+}
+
+vks::VulkanRenderTarget* createColorRenderTarget(
+    VulkanDevice* device, VkFormat colorFormat, uint32_t imageCount,
+    float width, float height, std::string vertexShaderPath,
+    std::string fragmentShaderPath) {
+  VulkanRenderTarget* newTarget = new VulkanRenderTarget();
+  newTarget->device = device;
+  newTarget->vertexShaderPath = vertexShaderPath;
+  newTarget->fragmentShaderPath = fragmentShaderPath;
+  newTarget->colorFormat = colorFormat;
+
+  std::array<VkAttachmentDescription, 1> attchmentDescriptions = {};
+  // Color attachment
+  attchmentDescriptions[0].format = colorFormat;
+  attchmentDescriptions[0].samples = VK_SAMPLE_COUNT_1_BIT;
+  attchmentDescriptions[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  attchmentDescriptions[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  attchmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  attchmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  attchmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  attchmentDescriptions[0].finalLayout =
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  VkAttachmentReference colorReference = {
+      0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+
+  VkSubpassDescription subpassDescription = {};
+  subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+  subpassDescription.colorAttachmentCount = 1;
+  subpassDescription.pColorAttachments = &colorReference;
+
+  // Use subpass dependencies for layout transitions
+  std::array<VkSubpassDependency, 2> dependencies;
+
+  dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+  dependencies[0].dstSubpass = 0;
+  dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+  dependencies[1].srcSubpass = 0;
+  dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+  dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+  dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+  // Create the actual renderpass
+  VkRenderPassCreateInfo renderPassInfo = {};
+  renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+  renderPassInfo.attachmentCount =
+      static_cast<uint32_t>(attchmentDescriptions.size());
+  renderPassInfo.pAttachments = attchmentDescriptions.data();
+  renderPassInfo.subpassCount = 1;
+  renderPassInfo.pSubpasses = &subpassDescription;
+  renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+  renderPassInfo.pDependencies = dependencies.data();
+
+  VK_CHECK_RESULT(vkCreateRenderPass(device->logicalDevice, &renderPassInfo,
+                                     nullptr, &newTarget->renderPass));
+
+  // Create sampler to sample from the color attachments
+  VkSamplerCreateInfo samplerInfo = vks::initializers::samplerCreateInfo();
+  samplerInfo.magFilter = VK_FILTER_LINEAR;
+  samplerInfo.minFilter = VK_FILTER_LINEAR;
+  samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  samplerInfo.addressModeV = samplerInfo.addressModeU;
+  samplerInfo.addressModeW = samplerInfo.addressModeU;
+  samplerInfo.mipLodBias = 0.0f;
+  samplerInfo.maxAnisotropy = 1.0f;
+  samplerInfo.minLod = 0.0f;
+  samplerInfo.maxLod = 1.0f;
+  samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+  VK_CHECK_RESULT(vkCreateSampler(device->logicalDevice, &samplerInfo, nullptr,
+                                  &newTarget->sampler));
+
+  recreateColorRenderTargetResources(newTarget, imageCount, width, height);
+
   return newTarget;
 }
 
@@ -329,10 +413,6 @@ void recreateColorDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
   }
 }
 
-void recreateColorRenderTargetResources(vks::VulkanRenderTarget* newTarget,
-                                        uint32_t imageCount, uint32_t width,
-                                        uint32_t height) {}
-
 void recreateDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
                                         uint32_t imageCount, uint32_t width,
                                         uint32_t height) {
@@ -424,6 +504,102 @@ void recreateDepthRenderTargetResources(vks::VulkanRenderTarget* newTarget,
         VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     newTarget->framebuffers[i].descriptor.imageView =
         newTarget->framebuffers[i].depth.view;
+    newTarget->framebuffers[i].descriptor.sampler = newTarget->sampler;
+  }
+}
+
+void recreateColorRenderTargetResources(vks::VulkanRenderTarget* newTarget,
+                                        uint32_t imageCount, uint32_t width,
+                                        uint32_t height) {
+  for (size_t i = 0; i < newTarget->framebuffers.size(); i++) {
+    vkDestroyImage(newTarget->device->logicalDevice,
+                   newTarget->framebuffers[i].color.image, nullptr);
+    vkDestroyImageView(newTarget->device->logicalDevice,
+                       newTarget->framebuffers[i].color.view, nullptr);
+    vkFreeMemory(newTarget->device->logicalDevice,
+                 newTarget->framebuffers[i].color.memory, nullptr);
+    vkDestroyFramebuffer(newTarget->device->logicalDevice,
+                         newTarget->framebuffers[i].framebuffer, nullptr);
+  }
+
+  std::array<VkImageView, 2> offscreenAttachments;
+  // Color attachment
+  VkImageCreateInfo image = vks::initializers::imageCreateInfo();
+  image.imageType = VK_IMAGE_TYPE_2D;
+  image.format = newTarget->colorFormat;
+  image.extent.width = width;
+  image.extent.height = height;
+  image.extent.depth = 1;
+  image.mipLevels = 1;
+  image.arrayLayers = 1;
+  image.samples = VK_SAMPLE_COUNT_1_BIT;
+  image.tiling = VK_IMAGE_TILING_OPTIMAL;
+  // We will sample directly from the color attachment
+  image.usage =
+      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+  VkMemoryAllocateInfo memAlloc = vks::initializers::memoryAllocateInfo();
+  VkMemoryRequirements memReqs;
+
+  VkImageViewCreateInfo colorImageView =
+      vks::initializers::imageViewCreateInfo();
+  colorImageView.viewType = VK_IMAGE_VIEW_TYPE_2D;
+  colorImageView.format = newTarget->colorFormat;
+  colorImageView.flags = 0;
+  colorImageView.subresourceRange = {};
+  colorImageView.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  colorImageView.subresourceRange.baseMipLevel = 0;
+  colorImageView.subresourceRange.levelCount = 1;
+  colorImageView.subresourceRange.baseArrayLayer = 0;
+  colorImageView.subresourceRange.layerCount = 1;
+
+  newTarget->framebuffers.resize(imageCount);
+  for (uint32_t i = 0; i < imageCount; i++) {
+    VK_CHECK_RESULT(vkCreateImage(newTarget->device->logicalDevice, &image,
+                                  nullptr,
+                                  &newTarget->framebuffers[i].color.image));
+    vkGetImageMemoryRequirements(newTarget->device->logicalDevice,
+                                 newTarget->framebuffers[i].color.image,
+                                 &memReqs);
+    memAlloc.allocationSize = memReqs.size;
+    memAlloc.memoryTypeIndex = newTarget->device->getMemoryType(
+        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VK_CHECK_RESULT(vkAllocateMemory(newTarget->device->logicalDevice,
+                                     &memAlloc, nullptr,
+                                     &newTarget->framebuffers[i].color.memory));
+    VK_CHECK_RESULT(vkBindImageMemory(newTarget->device->logicalDevice,
+                                      newTarget->framebuffers[i].color.image,
+                                      newTarget->framebuffers[i].color.memory,
+                                      0));
+
+    colorImageView.image = newTarget->framebuffers[i].color.image;
+    VK_CHECK_RESULT(vkCreateImageView(newTarget->device->logicalDevice,
+                                      &colorImageView, nullptr,
+                                      &newTarget->framebuffers[i].color.view));
+  }
+
+  for (uint32_t i = 0; i < imageCount; i++) {
+    VkImageView attachments[1];
+    attachments[0] = newTarget->framebuffers[i].color.view;
+
+    VkFramebufferCreateInfo fbufCreateInfo =
+        vks::initializers::framebufferCreateInfo();
+    fbufCreateInfo.renderPass = newTarget->renderPass;
+    fbufCreateInfo.attachmentCount = 1;
+    fbufCreateInfo.pAttachments = attachments;
+    fbufCreateInfo.width = width;
+    fbufCreateInfo.height = height;
+    fbufCreateInfo.layers = 1;
+
+    VK_CHECK_RESULT(
+        vkCreateFramebuffer(newTarget->device->logicalDevice, &fbufCreateInfo,
+                            nullptr, &newTarget->framebuffers[i].framebuffer));
+
+    // Fill a descriptor for later use in a descriptor set
+    newTarget->framebuffers[i].descriptor.imageLayout =
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    newTarget->framebuffers[i].descriptor.imageView =
+        newTarget->framebuffers[i].color.view;
     newTarget->framebuffers[i].descriptor.sampler = newTarget->sampler;
   }
 }

@@ -14,7 +14,8 @@ layout (set = 0, binding = 0) uniform UBO {
 	mat4 lightSpace[2];
 	mat4 projection;
 	mat4 view;
-	vec3 camPos;
+	vec4 camPos;
+	vec2 screenSize;
 } ubo;
 
 struct LightSource {
@@ -37,6 +38,7 @@ layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube prefilteredMap;
 layout (set = 0, binding = 4) uniform sampler2D samplerBRDFLUT;
 layout (set = 0, binding = 5) uniform sampler2D shadowMap;
+layout (set = 0, binding = 6) uniform sampler2D ssaoMap;
 
 // Material bindings
 
@@ -422,7 +424,7 @@ void main()
 
 	vec3 n = (material.normalTextureSet > -1) ? getNormal(material) : normalize(inNormal);
 	n.y *= -1.0f;
-	vec3 v = normalize(ubo.camPos - inWorldPos);    // Vector from surface point to camera
+	vec3 v = normalize(ubo.camPos.xyz - inWorldPos);    // Vector from surface point to camera
 	//vec3 l = normalize(-inWorldPos - vec3(0.0,10.0,0.0));     // Vector from surface point to light
 	vec3 l = vec3(0.0f);
 	//vec3 h = normalize(l+v);                        // Half vector between both l and v
@@ -455,7 +457,7 @@ void main()
 	vec3 color = vec3(0.0);
 
 	//Lights
-	vec3 ibl = getIBLContribution(pbrInputs, reflection);
+	vec3 ibl = getIBLContribution(pbrInputs, reflection) * texture(ssaoMap, (gl_FragCoord.xy / ubo.screenSize)).rgb;
 	color += ibl;
 
 	vec3 Lo = vec3(0.0);
@@ -503,7 +505,7 @@ void main()
 				outColor.rgb = (material.normalTextureSet > -1) ? texture(normalMap, material.normalTextureSet == 0 ? inUV0 : inUV1).rgb : normalize(inNormal);
 				break;
 			case 3:
-				outColor.rgb = (material.occlusionTextureSet > -1) ? texture(aoMap, material.occlusionTextureSet == 0 ? inUV0 : inUV1).rrr : vec3(0.0f);
+				outColor.rgb = (material.occlusionTextureSet > -1) ? texture(aoMap, material.occlusionTextureSet == 0 ? inUV0 : inUV1).rrr : texture(ssaoMap, (gl_FragCoord.xy / ubo.screenSize.xy)).rgb;
 				break;
 			case 4:
 				outColor.rgb = (material.emissiveTextureSet > -1) ? texture(emissiveMap, material.emissiveTextureSet == 0 ? inUV0 : inUV1).rgb : vec3(0.0f);
