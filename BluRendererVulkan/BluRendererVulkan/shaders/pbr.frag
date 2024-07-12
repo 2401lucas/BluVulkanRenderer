@@ -32,6 +32,7 @@ layout (set = 0, binding = 1) uniform UBOParams {
 	float debugViewInputs;
 	float debugViewLight;
 	float scaleIBLAmbient;
+	float usePCF;
 } uboParams;
 
 layout (set = 0, binding = 2) uniform samplerCube samplerIrradiance;
@@ -465,7 +466,11 @@ void main()
 		int lightType = int(uboParams.lights[i].color.w);
 		switch(lightType) {
 			case 0:
-				float shadow = (1.0 - filterPCF(inShadowCoords / inShadowCoords.w));
+				float shadow;
+				if(int(uboParams.usePCF) == 1) {
+					shadow = (1.0 - filterPCF(inShadowCoords / inShadowCoords.w)); }
+				else {
+					shadow = (1.0 - calculateShadow(inShadowCoords / inShadowCoords.w, vec2(0))); }
 				Lo += CalculateDirLight(uboParams.lights[i], pbrInputs) * shadow;
 				break;
 			case 1:

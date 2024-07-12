@@ -26,7 +26,7 @@ struct UISettings {
   int aaMode = 0;
   float IBLstrength = 1;
   int debugOutput = 0;
-  // bool usePcfFiltering = false;
+  bool usePcfFiltering = true;
 } uiSettings;
 
 class ForwardRenderer : public BaseRenderer {
@@ -240,6 +240,7 @@ class ForwardRenderer : public BaseRenderer {
     float debugViewInputs = 0.0f;
     float debugViewLight = 0.0f;
     float scaleIBLAmbient = 1.0f;
+    float usePCF = 1;
   } sceneParams;  // TODO: NOT UPDATE EVERY FRAME
 #endif
 
@@ -915,6 +916,10 @@ class ForwardRenderer : public BaseRenderer {
       if (ImGui::DragFloat("SSAO Radius", &postProcessingParams.radius, 0.1f,
                            0.0f, 10.0f)) {
         updatePostProcessingParams();
+      }
+      if (ImGui::Checkbox("Use Shadow PCF Filtering",
+                          &uiSettings.usePcfFiltering)) {
+        sceneParams.usePCF = uiSettings.usePcfFiltering ? 1 : 0;
       }
     }
 
