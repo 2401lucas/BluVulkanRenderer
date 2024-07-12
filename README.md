@@ -1,7 +1,8 @@
 # BluRenderer - A Vulkan Renderer (WIP)
 [Read more about my project here](https://2401-lucas-github-io.vercel.app/)
 
-![image](https://github.com/2401lucas/BluVulkanRenderer/assets/32739337/02cc82d1-0f9f-42bb-b2e6-63f9150d4069)
+![image](https://github.com/user-attachments/assets/63469291-7188-43a8-beb7-3e16d88190cb)
+
 
 ### Current & Future Features
 - [x] Forward Rendering
