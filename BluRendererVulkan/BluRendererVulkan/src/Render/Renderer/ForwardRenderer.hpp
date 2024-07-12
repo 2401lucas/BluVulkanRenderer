@@ -832,7 +832,7 @@ class ForwardRenderer : public BaseRenderer {
               updateLight = true;
 
             if (ImGui::DragFloat("FOV", &lights[i].lightFOV, 1.0f, 1.0f,
-                                 135.0f))
+                                 180.0f))
               updateLight = true;
 
             ImGui::Text("Light Falloff");

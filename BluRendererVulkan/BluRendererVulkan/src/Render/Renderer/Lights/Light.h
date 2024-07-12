@@ -9,6 +9,7 @@ namespace vks {
 namespace light {
 const char* debugLightType[3] = {"Directional", "Area", "Spot"};
 
+//TODO: Compress light falloff into single float
 struct GPULightInfo {
   glm::vec4 color;
   glm::vec4 position;
@@ -60,7 +61,7 @@ struct Light {
     }
     // Spot Light
     else if (lightType == 2) {
-      lightInfo.position = glm::vec4(position, glm::radians(lightFOV));
+      lightInfo.position = glm::vec4(position, 1 - lightFOV / 180.0f);
       lightInfo.rotation = glm::vec4(rotation, 0.0f);
       lightInfo.lightFalloff =
           glm::vec4(lightConst, lightLinear, lightQuadratic, 0.0f);
