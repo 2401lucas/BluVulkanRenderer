@@ -14,8 +14,9 @@
 - [x] [FXAA from Nvidia White Paper](https://developer.download.nvidia.com/assets/gamedev/files/sdk/11/FXAA_WhitePaper.pdf) 
 - [x] Fast Approximate Anti-Aliasing (FXAA)
 - [x] Tonemapping HDR->SDR
-- [x] Compute Shader SSAO w/ Depth Prepass
 - [x] Debug Shader Views
+- [x] Fragment Shader SSAO
+- [ ] Compute Shader SSAO
 - [ ] Multi-threaded Command Buffer Recording
 - [ ] Model class Refactor for GPU Instancing
 - [ ] Compute Culling (Frustrum & Occlusion)
