@@ -6,8 +6,7 @@ const std::string getAssetPath() { return "./assets/"; }
 
 const std::string getShaderBasePath() { return "/shaders/"; }
 
-namespace vks {
-namespace tools {
+namespace core_internal::rendering::tools {
 bool errorModeSilent = false;
 
 std::string errorString(VkResult errorCode) {
@@ -347,6 +346,4 @@ size_t alignedSize(size_t value, size_t alignment) {
 VkDeviceSize alignedVkSize(VkDeviceSize value, VkDeviceSize alignment) {
   return (value + alignment - 1) & ~(alignment - 1);
 }
-
-}  // namespace tools
-}  // namespace vks
+}  // namespace core_internal::rendering::tools

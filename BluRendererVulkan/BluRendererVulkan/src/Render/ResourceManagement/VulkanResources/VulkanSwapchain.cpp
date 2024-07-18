@@ -1,8 +1,9 @@
-#include "SwapChain.h"
+#include "VulkanSwapchain.h"
 
 #include "../VulkanResources/VulkanTools.h"
 
-void SwapChain::initSurface(GLFWwindow* window) {
+namespace core_internal::rendering::vulkan {
+void VulkanSwapchain::initSurface(GLFWwindow* window) {
   VK_CHECK_RESULT(glfwCreateWindowSurface(instance, window, nullptr, &surface));
   uint32_t queueCount;
   vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, NULL);
@@ -106,15 +107,16 @@ void SwapChain::initSurface(GLFWwindow* window) {
   colorSpace = selectedFormat.colorSpace;
 }
 
-void SwapChain::connect(VkInstance instance, VkPhysicalDevice physicalDevice,
-                        VkDevice device) {
+void VulkanSwapchain::connect(VkInstance instance,
+                              VkPhysicalDevice physicalDevice,
+                              VkDevice device) {
   this->instance = instance;
   this->physicalDevice = physicalDevice;
   this->device = device;
 }
 
-void SwapChain::create(uint32_t* width, uint32_t* height, bool vsync,
-                       bool fullscreen) {
+void VulkanSwapchain::create(int* width, int* height, bool vsync,
+                             bool fullscreen) {
   VkSwapchainKHR oldSwapchain = swapChain;
 
   VkSurfaceCapabilitiesKHR surfCaps;
@@ -265,15 +267,15 @@ void SwapChain::create(uint32_t* width, uint32_t* height, bool vsync,
   }
 }
 
-VkResult SwapChain::acquireNextImage(VkSemaphore presentCompleteSemaphore,
-                                     uint32_t* imageIndex) {
+VkResult VulkanSwapchain::acquireNextImage(VkSemaphore presentCompleteSemaphore,
+                                           uint32_t* imageIndex) {
   return vkAcquireNextImageKHR(device, swapChain, UINT64_MAX,
                                presentCompleteSemaphore, (VkFence) nullptr,
                                imageIndex);
 }
 
-VkResult SwapChain::queuePresent(VkQueue queue, uint32_t imageIndex,
-                                 VkSemaphore* waitSemaphore) {
+VkResult VulkanSwapchain::queuePresent(VkQueue queue, uint32_t imageIndex,
+                                       VkSemaphore* waitSemaphore) {
   VkPresentInfoKHR presentInfo = {};
   presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   presentInfo.pNext = NULL;
@@ -289,7 +291,7 @@ VkResult SwapChain::queuePresent(VkQueue queue, uint32_t imageIndex,
   return vkQueuePresentKHR(queue, &presentInfo);
 }
 
-void SwapChain::cleanup() {
+void VulkanSwapchain::cleanup() {
   if (swapChain != VK_NULL_HANDLE) {
     for (uint32_t i = 0; i < imageCount; i++) {
       vkDestroyImageView(device, buffers[i].view, nullptr);
@@ -302,3 +304,4 @@ void SwapChain::cleanup() {
   surface = VK_NULL_HANDLE;
   swapChain = VK_NULL_HANDLE;
 }
+}  // namespace vks

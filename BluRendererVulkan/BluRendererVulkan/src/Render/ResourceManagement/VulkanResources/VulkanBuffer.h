@@ -5,6 +5,7 @@
 #include "VulkanTools.h"
 #include "vulkan/vulkan.h"
 
+//TODO: REFACTOR BUFFER TO BE API AGNOSTIC?
 namespace vks {
 /**
  * @brief Encapsulates access to a Vulkan buffer backed up by device memory

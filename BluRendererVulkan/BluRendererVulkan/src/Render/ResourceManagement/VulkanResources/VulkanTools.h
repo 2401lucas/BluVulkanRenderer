@@ -16,8 +16,8 @@
 #include <string>
 #include <vector>
 
-#include "vulkan/vulkan.h"
 #include "VulkanInitializers.hpp"
+#include "vulkan/vulkan.h"
 
 // Custom define for better code readability
 #define VK_FLAGS_NONE 0
@@ -29,7 +29,8 @@
   {                                                                         \
     VkResult res = (f);                                                     \
     if (res != VK_SUCCESS) {                                                \
-      std::cout << "Fatal : VkResult is \"" << vks::tools::errorString(res) \
+      std::cout << "Fatal : VkResult is \""                                 \
+                << core_internal::rendering::tools::errorString(res) \
                 << "\" in " << __FILE__ << " at line " << __LINE__ << "\n"; \
       assert(res == VK_SUCCESS);                                            \
     }                                                                       \
@@ -38,8 +39,7 @@
 const std::string getAssetPath();
 const std::string getShaderBasePath();
 
-namespace vks {
-namespace tools {
+namespace core_internal::rendering::tools {
 /** @brief Disable message boxes on fatal errors */
 extern bool errorModeSilent;
 
@@ -59,7 +59,7 @@ VkBool32 getSupportedDepthFormat(VkPhysicalDevice physicalDevice,
 VkBool32 getSupportedDepthStencilFormat(VkPhysicalDevice physicalDevice,
                                         VkFormat* depthStencilFormat);
 
-// Returns tru a given format support LINEAR filtering
+// Returns if a given format support LINEAR filtering
 VkBool32 formatIsFilterable(VkPhysicalDevice physicalDevice, VkFormat format,
                             VkImageTiling tiling);
 // Returns true if a given format has a stencil part
@@ -101,5 +101,12 @@ bool fileExists(const std::string& filename);
 
 uint32_t alignedSize(uint32_t value, uint32_t alignment);
 VkDeviceSize alignedVkSize(VkDeviceSize value, VkDeviceSize alignment);
-}  // namespace tools
-}  // namespace vks
+}  // namespace core_internal::rendering::tools
+
+namespace core_internal::rendering::debug {
+void setup(VkInstance instance);
+void setupDebugging(VkInstance instance);
+VkDebugUtilsMessengerCreateInfoEXT setupDebugingMessengerCreateInfo();
+
+
+}

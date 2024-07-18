@@ -5,51 +5,62 @@
 #include <algorithm>
 #include <exception>
 
+#if defined(_WIN32)
+#define VK_USE_PLATFORM_WIN32_KHR
+#elif defined(__linux__)
+#define VK_USE_PLATFORM_XCB_KHR
+#endif
+
 #include "VulkanBuffer.h"
 #include "VulkanTools.h"
 #include "vulkan/vulkan.h"
 
-namespace vks {
+namespace core_internal::rendering::vulkan {
 class VulkanDevice {
  public:
-  /** @brief Physical device representation */
-  VkPhysicalDevice physicalDevice;
-  /** @brief Logical device representation (application's view of the device) */
-  VkDevice logicalDevice;
-  /** @brief Properties of the physical device including limits that the
-   * application can check against */
-  VkPhysicalDeviceProperties properties;
-  /** @brief Features of the physical device that an application can use to
-   * check if a feature is supported */
-  VkPhysicalDeviceFeatures features;
-  /** @brief Features that have been enabled for use on the physical device */
-  VkPhysicalDeviceFeatures enabledFeatures;
-  /** @brief Memory types and heaps of the physical device */
-  VkPhysicalDeviceMemoryProperties memoryProperties;
-  /** @brief Queue family properties of the physical device */
-  std::vector<VkQueueFamilyProperties> queueFamilyProperties;
-  /** @brief List of extensions supported by the device */
+  uint32_t apiVersion = VK_API_VERSION_1_0;
+  std::vector<std::string> supportedInstanceExtensions;
   std::vector<std::string> supportedExtensions;
-  /** @brief Default command pool for the graphics queue family index */
-  VkCommandPool commandPool = VK_NULL_HANDLE;
-  /** @brief Contains queue family indices */
+
+  VkInstance instance;
+  VkPhysicalDevice physicalDevice;
+  VkDevice logicalDevice;
+  VkPhysicalDeviceProperties physicalDeviceProperties;
+  VkPhysicalDeviceFeatures physicalDeviceFeatures;
+  VkPhysicalDeviceFeatures physicalDeviceEnabledFeatures;
+  VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+  std::vector<VkQueueFamilyProperties> queueFamilyProperties;
+  std::vector<VkShaderModule> shaderModules;
+
   struct {
     uint32_t graphics;
     uint32_t compute;
     uint32_t transfer;
   } queueFamilyIndices;
-  operator VkDevice() const { return logicalDevice; };
-  explicit VulkanDevice(VkPhysicalDevice physicalDevice);
+
+  explicit VulkanDevice(const char *name, bool useValidation,
+                        std::vector<const char *> enabledDeviceExtensions,
+                        std::vector<const char *> enabledInstanceExtensions,
+                        void *pNextChain = nullptr);
   ~VulkanDevice();
+
+  // Helper---------------------------------------------------------------------------------------
   uint32_t getMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties,
                          VkBool32 *memTypeFound = nullptr) const;
   uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
-  VkResult createLogicalDevice(
-      VkPhysicalDeviceFeatures enabledFeatures,
-      std::vector<const char *> enabledExtensions, void *pNextChain,
-      bool useSwapChain = true,
-      VkQueueFlags requestedQueueTypes = VK_QUEUE_GRAPHICS_BIT |
-                                         VK_QUEUE_COMPUTE_BIT);
+  VkPhysicalDevice choosePhysicalDevice(std::vector<VkPhysicalDevice> devices);
+  int rateDeviceSuitability(VkPhysicalDevice device);
+  bool extensionSupported(std::string extension);
+  VkFormat getSupportedDepthFormat(bool checkSamplingSupport);
+  void waitIdle();
+
+  // Vulkan_Resource_Management---------------------------------------------------------------------------------------
+  VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
+                                             VkShaderStageFlagBits stage);
+
+
+
+
   VkResult createBuffer(VkBufferUsageFlags usageFlags,
                         VkMemoryPropertyFlags memoryPropertyFlags,
                         VkDeviceSize size, VkBuffer *buffer,
@@ -58,21 +69,5 @@ class VulkanDevice {
                         VkMemoryPropertyFlags memoryPropertyFlags,
                         vks::Buffer *buffer, VkDeviceSize size,
                         void *data = nullptr);
-  void copyBuffer(vks::Buffer *src, vks::Buffer *dst, VkQueue queue,
-                  VkBufferCopy *copyRegion = nullptr);
-  VkCommandPool createCommandPool(
-      uint32_t queueFamilyIndex,
-      VkCommandPoolCreateFlags createFlags =
-          VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-  VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level,
-                                      VkCommandPool pool, bool begin = false);
-  VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level,
-                                      bool begin = false);
-  void flushCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue,
-                          VkCommandPool pool, bool free = true);
-  void flushCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue,
-                          bool free = true);
-  bool extensionSupported(std::string extension);
-  VkFormat getSupportedDepthFormat(bool checkSamplingSupport);
 };
-}  // namespace vks
+}  // namespace core_internal::rendering::vulkan
