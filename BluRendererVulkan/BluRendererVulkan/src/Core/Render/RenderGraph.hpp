@@ -173,9 +173,9 @@ class RenderGraph {
 
   RenderBufferResource *setFinalOutput(const std::string &name);
 
-#ifdef RENDERER_DEBUG
+#ifdef DEBUG_RENDERGRAPH
   void printRenderGraph();
-#endif  // RENDERER_DEBUG
+#endif  // DEBUG_RENDERGRAPH
 
   void bake();
 

@@ -5,18 +5,17 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/trigonometric.hpp>
 
-namespace vks {
-namespace light {
-const char* debugLightType[3] = {"Directional", "Area", "Spot"};
-
-//TODO: Compress light falloff into single float
+namespace core_internal::components {
+// TODO: Compress light falloff into single float
 struct GPULightInfo {
   glm::vec4 color;
   glm::vec4 position;
   glm::vec4 rotation;
   glm::vec4 lightFalloff;
 };
+}  // namespace core_internal::components
 
+namespace core::components {
 struct Light {
   glm::vec4 color;  // XYZ - RGB, W - Intensity
   glm::vec3 position;
@@ -36,10 +35,10 @@ struct Light {
   glm::mat4 depthViewMatrix;
   glm::mat4 lightSpace;
 
-  GPULightInfo lightInfo;
+  core_internal::components::GPULightInfo lightInfo;
 
   void updateLight() {
-    lightInfo = GPULightInfo();
+    lightInfo = core_internal::components::GPULightInfo();
     lightInfo.color = glm::vec4(glm::vec3(color) * color.w, lightType);
 
     // Directional Light
@@ -69,9 +68,9 @@ struct Light {
   }
 
   // Directional Light: TODO, figure out shadows
-  void createDirectionalLight(glm::vec4 col, glm::vec3 dir,
-                              glm::vec3 target, float fov,
-                              float aspect, float zNear, float zFar) {
+  void createDirectionalLight(glm::vec4 col, glm::vec3 dir, glm::vec3 target,
+                              float fov, float aspect, float zNear,
+                              float zFar) {
     lightType = 0;
     color = col;
     rotation = dir;
@@ -109,5 +108,4 @@ struct Light {
     updateLight();
   }
 };
-}  // namespace light
-}  // namespace vks
+}  // namespace core::components

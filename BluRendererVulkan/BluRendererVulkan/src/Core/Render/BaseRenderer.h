@@ -1,5 +1,11 @@
 #pragma once
 
+#ifdef DEBUG_ALL
+#define DEBUG_RENDERER
+#define DEBUG_RENDERGRAPH
+#define DEBUG_ENGINE
+#endif
+
 #include <chrono>
 
 #define GLM_FORCE_RADIANS
@@ -12,11 +18,10 @@
 #include <GLFW/glfw3native.h>
 #include <imgui.h>
 
-#include "../../Window/WindowManager.h"
-#include "../ResourceManagement/VulkanResources/VulkanDevice.h"
-#include "../ResourceManagement/VulkanResources/VulkanSwapchain.h"
-#include "Camera/Camera.hpp"
+#include "../Window/WindowManager.h"
 #include "RenderGraph.hpp"
+#include "ResourceManagement/VulkanResources/VulkanDevice.h"
+#include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 
 // Needs an interface with the engine to receive info
 class BaseRenderer {
@@ -76,19 +81,38 @@ class BaseRenderer {
     glm::vec2 position;
   } mouseState;
 
+  BaseRenderer();
+  virtual ~BaseRenderer();
+
   // (Virtual)
   virtual void nextFrame();
-  // (Pure virtual) Render function to be implemented by the sample
-  // application
-  virtual void render() = 0;
   // (Pure Virtual) Called when the window has been resized
   virtual void windowResized() = 0;
-  //(Pure Virtual) Used to set features to enable on the device
+  //(Pure Virtual) Used to request features
   virtual void getEnabledFeatures() = 0;
-  // (Pure Virtual) Used to enable extensions based on the supported extension
-  // listing
+  // (Pure Virtual) Used to request extensions
   virtual void getEnabledExtensions() = 0;
+  // (Pure virtual) Called every frame? maybe should be considered pre-render
+  // for updating buffers and such. I think a flow of
+  // Engine::CollectRenderData->Renderer::PreRenderUpdateData->BaseRenderer::StartRenderGraph
+  // Need to keep in mind how to multi-thread and sync work. I do not know.
+  // Unless:
+  // Engine updates data to pointer in mem, then renderer locks & reads
+  // data while engine builds next frame to update with another pointer. Once
+  // renderer is done reading & unlocks mem, engine can lock, copy and unlock
+  // mem.
+  // OR:
+  // Ping pong between memory pointers (This is the way, no memory
+  // copying and allows for engine to work) In this case, multiple threads can
+  // read from the same pointer(assuming no writes) which can be defined with
+  // https://en.wikipedia.org/wiki/Immutable_object
+  // This still leaves Q
+  // submission to the RenderGraph but maybe we could define it to the
+  // rendergraph (I like this)
+  virtual void render() = 0;
+
   virtual void prepare();
+
   void prepareFrame();
   void submitFrame();
 
@@ -96,11 +120,7 @@ class BaseRenderer {
   core_internal::rendering::vulkan::VulkanDevice* vulkanDevice;
   core_internal::rendering::vulkan::VulkanSwapchain* vulkanSwapchain;
 
-  Camera camera;
   float frameTimer = 1.0f;
-
-  BaseRenderer();
-  virtual ~BaseRenderer();
 
   void start();
   int getWidth();
@@ -115,7 +135,3 @@ class BaseRenderer {
 // float timerSpeed = 0.25f;
 // (Virtual) Move?
 // virtual void createPipelineCache();
-// MOVE TO DEVICE
-// Loads a SPIR-V shader file for the given shader stage
-// VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
-//                                            VkShaderStageFlagBits stage);

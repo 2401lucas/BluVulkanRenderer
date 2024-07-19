@@ -64,9 +64,6 @@ void BaseRenderer::start() { renderLoop(); }
 
 void BaseRenderer::nextFrame() {
   auto tStart = std::chrono::high_resolution_clock::now();
-  if (viewUpdated) {
-    viewUpdated = false;
-  }
   windowManager->handleEvents();
   polledEvents(windowManager->getWindow());
   render();
@@ -77,17 +74,7 @@ void BaseRenderer::nextFrame() {
   auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 
   frameTimer = (float)tDiff / 1000.0f;
-  camera.update(frameTimer);
-  if (camera.moving()) {
-    viewUpdated = true;
-  }
-  // Convert to clamped timer value
-  // if (!paused) {
-  // timer += timerSpeed * frameTimer;
-  // if (timer > 1.0) {
-  //   timer -= 1.0f;
-  // }
-  // }
+
   float fpsTimer =
       (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp)
                   .count());
@@ -123,7 +110,8 @@ void BaseRenderer::renderLoop() {
 }
 
 void BaseRenderer::prepareFrame() { renderGraph->prepareFrame(); }
-
+// Instead of submit, this should be validate frame or something, leave Q
+// dispatching to inherited class
 void BaseRenderer::submitFrame() {
   // Needs multiple Q submits, maybe just verify their outputs and dispatch Q
   // submits elsewhere
@@ -174,7 +162,7 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
-  if (glfwGetKey(window, GLFW_KEY_F2)) {
+ /* if (glfwGetKey(window, GLFW_KEY_F2)) {
     if (camera.type == Camera::CameraType::lookat) {
       camera.type = Camera::CameraType::firstperson;
     } else {
@@ -210,7 +198,7 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
     camera.keys.up = true;
   } else {
     camera.keys.up = false;
-  }
+  }*/
 }
 
 void BaseRenderer::windowResize() {

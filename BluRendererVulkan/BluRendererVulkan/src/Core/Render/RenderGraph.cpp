@@ -227,9 +227,9 @@ void RenderGraph::generateResourceBuckets() {
   // Insert & Cache index
 }
 
-#ifdef RENDERER_DEBUG
+#ifdef DEBUG_RENDERGRAPH
 void RenderGraph::printRenderGraph() {}
-#endif  // RENDERER_DEBUG
+#endif  // DEBUG_RENDERGRAPH
 
 // Baking and any process related to this is not well optimized, baking only
 // happens when the pipeline is changed and I am OK with this being slow. I may

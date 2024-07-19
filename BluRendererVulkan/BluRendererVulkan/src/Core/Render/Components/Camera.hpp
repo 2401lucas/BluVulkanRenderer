@@ -4,6 +4,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+namespace core_internal::components {
+struct GPUCameraInfo {};
+}  // namespace core_internal::components
+
+namespace core::components {
 class Camera {
  private:
   float fov;
@@ -42,9 +47,7 @@ class Camera {
     }
   };
 
-  void calculateAABB() {
-
-  }
+  void calculateAABB() {}
 
  public:
   enum CameraType { lookat, firstperson };
@@ -238,3 +241,4 @@ class Camera {
     return retVal;
   }
 };
+}  // namespace core::components
