@@ -21,7 +21,7 @@
 // Needs an interface with the engine to receive info
 class BaseRenderer {
  private:
-  // Window Info
+  // Window Info (Initially set upon swapchain creation)
   int width;
   int height;
 
@@ -41,13 +41,6 @@ class BaseRenderer {
 
   // Entry point for the main render loop
   void renderLoop();
-
-  // I don't know what to do with this, if not used often, or only on VkDevice,
-  // should maybe exist there?
-  VkResult createInstance();
-  // Should this exist here ? Should probably go into device creation
-  VkPhysicalDevice choosePhysicalDevice(std::vector<VkPhysicalDevice>);
-  int rateDeviceSuitability(VkPhysicalDevice);
 
  protected:
   bool prepared = false;

@@ -11,7 +11,9 @@ BaseRenderer::BaseRenderer() {
   vulkanDevice = new core_internal::rendering::vulkan::VulkanDevice(
       windowTitle.c_str(), settings.validation, enabledDeviceExtensions,
       enabledInstanceExtensions);
-  vulkanSwapchain = new core_internal::rendering::vulkan::VulkanSwapchain();
+  vulkanSwapchain = new core_internal::rendering::vulkan::VulkanSwapchain(
+      vulkanDevice, windowManager->getWindow());
+  vulkanSwapchain->create(&width, &height, settings.vsync, settings.fullscreen);
   renderGraph = new core_internal::rendering::RenderGraph();
 }
 
@@ -123,6 +125,8 @@ void BaseRenderer::renderLoop() {
 void BaseRenderer::prepareFrame() { renderGraph->prepareFrame(); }
 
 void BaseRenderer::submitFrame() {
+  // Needs multiple Q submits, maybe just verify their outputs and dispatch Q
+  // submits elsewhere
   VkResult result = renderGraph->submitFrame();
   // Recreate the swapchain if it's no longer compatible with the surface
   // (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)

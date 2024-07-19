@@ -58,9 +58,6 @@ class VulkanDevice {
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);
 
-
-
-
   VkResult createBuffer(VkBufferUsageFlags usageFlags,
                         VkMemoryPropertyFlags memoryPropertyFlags,
                         VkDeviceSize size, VkBuffer *buffer,
