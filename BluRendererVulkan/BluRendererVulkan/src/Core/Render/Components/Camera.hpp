@@ -4,11 +4,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-namespace core_internal::components {
+namespace core_internal::rendering::components {
 struct GPUCameraInfo {};
-}  // namespace core_internal::components
+}  // namespace core_internal::rendering::components
 
-namespace core::components {
+namespace core::engine::components {
 class Camera {
  private:
   float fov;
@@ -62,6 +62,8 @@ class Camera {
 
   bool updated = true;
   bool flipY = false;
+
+  core_internal::components::GPUCameraInfo* gpuInfo;
 
   struct {
     glm::mat4 perspective;
@@ -241,4 +243,4 @@ class Camera {
     return retVal;
   }
 };
-}  // namespace core::components
+}  // namespace core::engine::components

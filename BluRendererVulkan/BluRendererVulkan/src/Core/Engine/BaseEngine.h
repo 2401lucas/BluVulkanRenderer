@@ -1,7 +1,13 @@
 #pragma once
 #include <vector>
 
+#include "../Render/Components/Camera.hpp"
+
 namespace core_internal::engine {
+// Base Engine Class
+// EXAMPLES: (Derived Class becomes more of a game manager than an actual engine?)
+// Game Engine: Child Script Updates
+// Physics Engine: Modifying huge list of objects with minimal materials.
 class BaseEngine {
  private:
   std::vector<void*> renderInfo;
@@ -9,6 +15,8 @@ class BaseEngine {
   void* audio;
 
  protected:
+  core::engine::components::Camera camera;
+
   BaseEngine();
   ~BaseEngine();
 
@@ -18,9 +26,8 @@ class BaseEngine {
   virtual void update(float deltaTime) = 0;
 
  public:
+  void onResized(float aspectRatio);
   void beginUpdate(float deltaTime);
   void beginFixedUpdate();
-
-
 };
 }  // namespace core_internal::engine

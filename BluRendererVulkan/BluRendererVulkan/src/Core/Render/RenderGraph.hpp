@@ -152,6 +152,7 @@ class RenderGraph {
 
   void prepareFrame();
   VkResult submitFrame();
+  void onResized();
 
   // Should outside updated resources be managed by RenderGraph, or by outside
   // classes

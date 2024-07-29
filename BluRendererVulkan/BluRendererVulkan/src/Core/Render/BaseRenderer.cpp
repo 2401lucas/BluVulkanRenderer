@@ -10,11 +10,12 @@ BaseRenderer::BaseRenderer() {
 
   vulkanDevice = new core_internal::rendering::vulkan::VulkanDevice(
       windowTitle.c_str(), settings.validation, enabledDeviceExtensions,
-      enabledInstanceExtensions);
+      enabledInstanceExtensions, pNextChain);
   vulkanSwapchain = new core_internal::rendering::vulkan::VulkanSwapchain(
       vulkanDevice, windowManager->getWindow());
   vulkanSwapchain->create(&width, &height, settings.vsync, settings.fullscreen);
   renderGraph = new core_internal::rendering::RenderGraph();
+  buildEngine();
 }
 
 BaseRenderer::~BaseRenderer() {
@@ -64,6 +65,9 @@ void BaseRenderer::start() { renderLoop(); }
 
 void BaseRenderer::nextFrame() {
   auto tStart = std::chrono::high_resolution_clock::now();
+
+  // engine->beginFixedUpdate(deltaTime);
+  engine->beginUpdate(deltaTime);
   windowManager->handleEvents();
   polledEvents(windowManager->getWindow());
   render();
@@ -71,9 +75,9 @@ void BaseRenderer::nextFrame() {
   frameCounter++;
   // currentFrameIndex = (currentFrameIndex + 1) % vulkanSwapchain->imageCount;
   auto tEnd = std::chrono::high_resolution_clock::now();
-  auto tDiff = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
+  deltaTime = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 
-  frameTimer = (float)tDiff / 1000.0f;
+  frameTimer = (float)deltaTime / 1000.0f;
 
   float fpsTimer =
       (float)(std::chrono::duration<double, std::milli>(tEnd - lastTimestamp)
@@ -162,43 +166,43 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
- /* if (glfwGetKey(window, GLFW_KEY_F2)) {
-    if (camera.type == Camera::CameraType::lookat) {
-      camera.type = Camera::CameraType::firstperson;
-    } else {
-      camera.type = Camera::CameraType::lookat;
-    }
-  }
-  if (glfwGetKey(window, GLFW_KEY_W)) {
-    camera.keys.forward = true;
-  } else {
-    camera.keys.forward = false;
-  }
-  if (glfwGetKey(window, GLFW_KEY_S)) {
-    camera.keys.backward = true;
-  } else {
-    camera.keys.backward = false;
-  }
-  if (glfwGetKey(window, GLFW_KEY_A)) {
-    camera.keys.left = true;
-  } else {
-    camera.keys.left = false;
-  }
-  if (glfwGetKey(window, GLFW_KEY_D)) {
-    camera.keys.right = true;
-  } else {
-    camera.keys.right = false;
-  }
-  if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) {
-    camera.keys.down = true;
-  } else {
-    camera.keys.down = false;
-  }
-  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) {
-    camera.keys.up = true;
-  } else {
-    camera.keys.up = false;
-  }*/
+  /* if (glfwGetKey(window, GLFW_KEY_F2)) {
+     if (camera.type == Camera::CameraType::lookat) {
+       camera.type = Camera::CameraType::firstperson;
+     } else {
+       camera.type = Camera::CameraType::lookat;
+     }
+   }
+   if (glfwGetKey(window, GLFW_KEY_W)) {
+     camera.keys.forward = true;
+   } else {
+     camera.keys.forward = false;
+   }
+   if (glfwGetKey(window, GLFW_KEY_S)) {
+     camera.keys.backward = true;
+   } else {
+     camera.keys.backward = false;
+   }
+   if (glfwGetKey(window, GLFW_KEY_A)) {
+     camera.keys.left = true;
+   } else {
+     camera.keys.left = false;
+   }
+   if (glfwGetKey(window, GLFW_KEY_D)) {
+     camera.keys.right = true;
+   } else {
+     camera.keys.right = false;
+   }
+   if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) {
+     camera.keys.down = true;
+   } else {
+     camera.keys.down = false;
+   }
+   if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) {
+     camera.keys.up = true;
+   } else {
+     camera.keys.up = false;
+   }*/
 }
 
 void BaseRenderer::windowResize() {
@@ -224,10 +228,10 @@ void BaseRenderer::windowResize() {
   vulkanSwapchain->create(&width, &height, settings.vsync, settings.fullscreen);
 
   if ((width > 0.0f) && (height > 0.0f)) {
-    camera.updateAspectRatio((float)width / (float)height);
+    engine->onResized((float)width / (float)height);
+    renderGraph->onResized();
   }
 
-  // Notify derived class
   windowResized();
 
   prepared = true;

@@ -5,7 +5,7 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/trigonometric.hpp>
 
-namespace core_internal::components {
+namespace core_internal::rendering::components {
 // TODO: Compress light falloff into single float
 struct GPULightInfo {
   glm::vec4 color;
@@ -13,9 +13,9 @@ struct GPULightInfo {
   glm::vec4 rotation;
   glm::vec4 lightFalloff;
 };
-}  // namespace core_internal::components
+}  // namespace core_internal::rendering::components
 
-namespace core::components {
+namespace core::engine::components {
 struct Light {
   glm::vec4 color;  // XYZ - RGB, W - Intensity
   glm::vec3 position;
@@ -108,4 +108,4 @@ struct Light {
     updateLight();
   }
 };
-}  // namespace core::components
+}  // namespace core::engine::components

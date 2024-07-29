@@ -18,6 +18,7 @@
 #include <GLFW/glfw3native.h>
 #include <imgui.h>
 
+#include "../Engine/BaseEngine.h"
 #include "../Window/WindowManager.h"
 #include "RenderGraph.hpp"
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
@@ -31,13 +32,12 @@ class BaseRenderer {
   int height;
 
   WindowManager* windowManager;
-  core_internal::rendering::RenderGraph* renderGraph;
 
-  // Debug
   uint32_t frameCounter = 0;
   uint32_t lastFPS = 0;
   std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp,
       tPrevEnd;
+  float deltaTime = 0;
 
   // Core
   void windowResize();
@@ -56,8 +56,12 @@ class BaseRenderer {
   std::string windowTitle = "Blu Renderer";
   std::string name = "Blu Renderer";
 
+  void* pNextChain = nullptr;
   std::vector<const char*> enabledDeviceExtensions;
   std::vector<const char*> enabledInstanceExtensions;
+
+  core_internal::engine::BaseEngine* engine;
+  core_internal::rendering::RenderGraph* renderGraph;
 
   struct Settings {
     // Activates validation layers (and message output) when set to true
@@ -92,6 +96,8 @@ class BaseRenderer {
   virtual void getEnabledFeatures() = 0;
   // (Pure Virtual) Used to request extensions
   virtual void getEnabledExtensions() = 0;
+  // (Pure virtual)
+  virtual void buildEngine() = 0;
   // (Pure virtual) Called every frame? maybe should be considered pre-render
   // for updating buffers and such. I think a flow of
   // Engine::CollectRenderData->Renderer::PreRenderUpdateData->BaseRenderer::StartRenderGraph

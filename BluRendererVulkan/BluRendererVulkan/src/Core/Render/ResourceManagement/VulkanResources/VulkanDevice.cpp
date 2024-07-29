@@ -11,7 +11,7 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
   VkApplicationInfo appInfo = {};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = name;
-  appInfo.pEngineName = name;
+  appInfo.pEngineName = "Blu: Vulkan";
   appInfo.apiVersion = apiVersion;
 
   std::vector<const char *> instanceExtensions = {
@@ -217,8 +217,6 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
   deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
   deviceCreateInfo.pEnabledFeatures = &physicalDeviceEnabledFeatures;
 
-  // If a pNext(Chain) has been passed, we need to add it to the device
-  // creation info
   VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
   if (pNextChain) {
     physicalDeviceFeatures2.sType =
