@@ -149,7 +149,20 @@ void RenderGraph::validateData() {
   }
 }
 
+// ok so what does this need to do
+// - Check for Cyclic Dependencies
+// - Assign Dependency Layer
+// - 
+// Final Output: RenderPasses sorted by Dependency Layer,
 void RenderGraph::generateDependencyChain() {
+  // Recursive search each child passes, assigning value based on depth
+  // If currently assigned DependencyLayer is less than new DependencyLayer new
+  // value is used
+  for (uint32_t i = 0; i < renderGraphPasses.size(); i++) {
+    // Start the search from every node
+    dependencySearch(i, 0);
+  }
+
   // Need to check for cyclic dependencies
   // Adjecency list is redundant because we track what textures are referenced
   // by what passes Creates adjecency list based on outputs, tracking if a
@@ -164,15 +177,6 @@ void RenderGraph::generateDependencyChain() {
         renderGraphPasses[passId]->checkQueue(i, baseRenderPass->getQueue());
       }
     }
-  }
-
-  // Group by dependency chain
-  // For each pass
-  // Recursive search each child passes, assigning value based on depth
-  // If pass.DependencyLayer < depthValue: pass.DependencyLayer = depthValue
-  for (uint32_t i = 0; i < renderGraphPasses.size(); i++) {
-    // Start the search from every node
-    dependencySearch(i, 0);
   }
 
   // This leaves us with each pass being assigned a Dependency Layer, passes

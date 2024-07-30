@@ -13,6 +13,8 @@ class RenderGraphPass;
 
 enum class AttachmentSizeRelative {
   Swapchain,
+  SwapchainRelative,
+  AbsoluteValue,
 };
 
 enum RenderGraphQueueFlagBits {
@@ -72,9 +74,6 @@ class RenderBufferResource : public RenderResource {
   RenderBufferResource();
 };
 
-// Below this line requires refactoring, proceed with caution
-//------------------------------------------------------------------------------------------------------------------------------------------------
-
 class RenderGraphPass {
  private:
   RenderGraph *graph;
@@ -94,6 +93,7 @@ class RenderGraphPass {
   std::function<void()> getCommandBuffer_cb;
 
  public:
+  // Acyclic Dependency Layer
   uint32_t dependencyLayer = -1;
 
   void addAttachmentInput(const std::string &name);
