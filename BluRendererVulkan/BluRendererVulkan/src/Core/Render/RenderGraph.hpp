@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include "ResourceManagement/VulkanResources/VulkanDevice.h"
+#include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
+
 // TODO: Remove vulkan specific resources
 namespace core_internal::rendering {
 class RenderGraph;
@@ -43,19 +46,36 @@ struct AttachmentInfo {
   uint32_t samples = 1;
   uint32_t levels = 1;
   uint32_t layers = 1;
-  bool staticData = false;  // Static data can still be updated upon request
+  bool persistant = false;  // Static data can still be updated upon request
+
+  bool operator==(AttachmentInfo &info) {
+    return sizeRelative == info.sizeRelative && sizeX == info.sizeX &&
+           sizeY == info.sizeY && format == info.format &&
+           samples == info.samples && levels == info.levels &&
+           layers == info.layers;
+  }
 };
 
 struct BufferInfo {
   VkDeviceSize size = 0;
   VkBufferUsageFlags usage = 0;
-  bool staticData = false;  // Static data can still be updated upon request
+  bool persistant = false;  // Static data can still be updated upon request
+
+  bool operator==(BufferInfo &info) {
+    return size == info.size && usage == info.usage;
+  }
 };
 
 class RenderResource {
  public:
+  // Used for Generating Dependency Layers
   std::vector<uint32_t> usedInPasses;
+  // Used for Resource Lifespan
+  uint32_t maxDependencyRange = -1;
+  uint32_t minDependencyRange = 0xffffffff;
+
   bool persistant = false;
+  uint32_t resourceIndex = -1;
 
   RenderResource(uint32_t index) { usedInPasses.push_back(index); }
   void registerPass(uint32_t index) { usedInPasses.push_back(index); }
@@ -63,13 +83,14 @@ class RenderResource {
 
 class RenderTextureResource : public RenderResource {
  public:
+  AttachmentInfo renderTextureInfo;
+
   RenderTextureResource();
 };
 
 class RenderBufferResource : public RenderResource {
  public:
-  VkDeviceSize size;
-  VkBufferUsageFlags usage;
+  BufferInfo renderBufferInfo;
 
   RenderBufferResource();
 };
@@ -77,9 +98,8 @@ class RenderBufferResource : public RenderResource {
 class RenderGraphPass {
  private:
   RenderGraph *graph;
-  uint32_t index;
   RenderGraphQueueFlags queue = RENDER_GRAPH_GRAPHICS_QUEUE;
-  std::vector<uint32_t> passesToSync;
+  uint32_t index;
 
   std::vector<RenderTextureResource *> inputTextureAttachments;
   std::vector<RenderBufferResource *> inputStorageAttachments;
@@ -120,24 +140,60 @@ class RenderGraphPass {
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION
 class RenderGraph {
  private:
-  // vks::VulkanDevice *device;
+  core_internal::rendering::vulkan::VulkanDevice *device;
+  core_internal::rendering::vulkan::VulkanSwapchain *swapchain;
 
   // Registered Resources
   std::vector<RenderGraphPass *> renderGraphPasses;
-  std::unordered_map<std::string, RenderResource *> blackboard;
+  std::unordered_map<std::string, RenderTextureResource *> textureBlackboard;
+  std::unordered_map<std::string, RenderBufferResource *> bufferBlackboard;
 
   // Unsure about format
   RenderTextureResource *finalOutput = nullptr;
 
   struct ResourceReservation {
-    VkDeviceSize size;
-    RenderGraphMemoryTypeFlags flag;
     std::vector<bool> dependencyReservation;
+
+    ResourceReservation() = default;
+
+    ResourceReservation(uint32_t dependencyMin, uint32_t dependencyMax) {
+      dependencyReservation.insert(dependencyReservation.end(), false,
+                                   dependencyMax);
+
+      for (uint32_t i = dependencyMin; i < dependencyMax; i++) {
+        dependencyReservation[i] = true;
+      }
+    }
+  };
+
+  struct TextureResourceReservation : public ResourceReservation {
+    AttachmentInfo texInfo;
+
+    TextureResourceReservation() = default;
+
+    TextureResourceReservation(AttachmentInfo texInfo, uint32_t dependencyMin,
+                               uint32_t dependencyMax)
+        : ResourceReservation(dependencyMin, dependencyMax), texInfo(texInfo) {}
+  };
+
+  struct BufferResourceReservation : public ResourceReservation {
+    BufferInfo bufInfo;
+
+    BufferResourceReservation() = default;
+
+    BufferResourceReservation(BufferInfo bufInfo, uint32_t dependencyMin,
+                              uint32_t dependencyMax)
+        : ResourceReservation(dependencyMin, dependencyMax), bufInfo(bufInfo) {}
   };
 
   // Baked Resources
-  /* std::vector<vks::Buffer *> buffers;
-   std::vector<vks::Texture *> textures;*/
+  struct GeneratedRenderGraph {};
+  struct AllocatedTexture {};
+  struct AllocatedBuffer {};
+
+   std::vector<GeneratedRenderGraph *> genRenderGraph;
+   std::vector<AllocatedBuffer *> bakedBuffers;
+   std::vector<AllocatedTexture *> bakedTextures;
 
   void validateData();
 

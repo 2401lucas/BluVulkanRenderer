@@ -16,7 +16,6 @@
 #include <string>
 #include <vector>
 
-#include "VulkanInitializers.hpp"
 #include "vulkan/vulkan.h"
 
 // Custom define for better code readability
@@ -29,7 +28,7 @@
   {                                                                         \
     VkResult res = (f);                                                     \
     if (res != VK_SUCCESS) {                                                \
-      std::cout << "Fatal : VkResult is \""                                 \
+      std::cerr << "Fatal : VkResult is \""                                 \
                 << core_internal::rendering::tools::errorString(res) \
                 << "\" in " << __FILE__ << " at line " << __LINE__ << "\n"; \
       assert(res == VK_SUCCESS);                                            \

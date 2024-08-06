@@ -44,8 +44,18 @@ class DemoRenderer : public BaseRenderer {
   void prepareExternalBuffers() {}
 
   void buildRenderGraph() {
+    auto antiAliasingPass = renderGraph->addPass(
+        "AntiAliasingPass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+    antiAliasingPass->addColorOutput(
+        "AAOut", {.sizeRelative = core_internal::rendering::
+                      AttachmentSizeRelative::SwapchainRelative,
+                  .sizeX = 0.5,
+                  .sizeY = 0.5,
+                  .format = VK_FORMAT_R16_SFLOAT});
+
     auto mainPass =
         renderGraph->addPass("Mainpass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+    mainPass->addAttachmentInput("AAOut");
     mainPass->addColorOutput("MainColorOutput",
                              {.format = vulkanSwapchain->colorFormat});
     renderGraph->setFinalOutput("MainColorOutput");
