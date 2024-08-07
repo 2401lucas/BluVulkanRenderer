@@ -180,25 +180,7 @@ void RenderGraph::dependencySearch(const uint32_t& passIndex,
   }
 }
 
-// Some of the logic this will need:
-// Smart Texture allocation for non frame persistant data:
-// Request Texture of <Size, Format> for <range of time>, if another texture
-// exists and is free during that time reserve the texture, else create a new
-// texture. TextureIndex of that texture is saved, and is required when
-// building descriptor sets for that pass.
-// Should be persistant/static and dynamic memory
-// Persistant/static still has the ability to be upated, but is
-// expected to be updated less frequently. This data will persist thru frames
-// and potentially RenderGraph updates, the size of this data is static
-// requiring a realloc/copy if it changes.
-// Dynamic is expected to be updated frequently, in the future could also auto
-// manage/resize buffer without need to copy all info
 void RenderGraph::generateResourceBuckets() {
-  std::vector<BufferResourceReservation> bufferBucket;
-  std::vector<BufferResourceReservation> persistantBufferBucket;
-  std::vector<TextureResourceReservation> textureBucket;
-  std::vector<TextureResourceReservation> persistantTextureBucket;
-
   for (auto& resource : textureBlackboard) {
     if (resource.second->persistant) {
       resource.second->resourceIndex = persistantTextureBucket.size();
@@ -284,14 +266,28 @@ void RenderGraph::generateResourceBuckets() {
       }
     }
   }
-
-  //Generate Resources
-
 }
 
-#ifdef DEBUG_RENDERGRAPH
+void RenderGraph::generateResources() {
+  auto& fifCount = swapchain->imageCount;
+
+  for (auto& buf : persistantBufferBucket) {
+    device->createBuffer(buf.bufInfo.usage, buf.bufInfo.size,
+                         buf.bufInfo.memory,
+                         (buf.bufInfo.forceSingleInstance ? 1 : fifCount));
+  }
+}
+
+// Output should resemble
+// Buffer "BufferName"
+// BufferSize X
+// BufferUsage X
+// BufferReservation
+// [X] [X] [X] [ ] [X] [X] [ ]
+// or
+// 0-2, 4-5
+// Texture Should be similar
 void RenderGraph::printRenderGraph() {}
-#endif  // DEBUG_RENDERGRAPH
 
 // Baking and any process related to this is not well optimized, baking only
 // happens when the pipeline is changed and I am OK with this being slow. I
@@ -309,18 +305,34 @@ void RenderGraph::bake() {
   // once done copy new tex to old tex? Or maybe pingpong 2 textures at the
   // cost of a little VRAM, but saving the copy time)
   generateDependencyChain();
-
   generateResourceBuckets();
+  // printRenderGraph();
 
-  // Figure out where to put memory barriers
+  // GPU RESOURCES
+  // BUFFERS
+  //  Buffers Refer to raw data stored on the GPU
+  // IMAGES
+  //   Images refer to what renderpasses use as output/input
+  // TEXTURES
+  //   referes to what models use for colours
+
+  // For Resource Generation
+  // Needs:
+  // One resource Per Frame
+  // Persitant Mapped Data needs to be accessible
+  // Persitant data will need to be resizeable
+  // Non Persistant data not accessible
+  // Foreach resource, device->create()
+  // For Textures, support different filetypes(ktx, dds, png & jpeg)
+  // For Textures, support Cubemaps, Tex2D
+  generateResources();
+
+  generateMemoryBarriers();
+  generateDescriptorSets();
 
   // Smart Descriptor Set Creation? Hash sets for reuse? or a descriptor set
   // just for externally managed resources. Could have one for
   // models+luts(Maybe seperate?) Textures are frag only, buffers could be
   // Vert | Frag | Both
 }
-
-RenderBufferResource::RenderBufferResource() : RenderResource(0) {}
-
-RenderTextureResource::RenderTextureResource() : RenderResource(0) {}
 }  // namespace core_internal::rendering

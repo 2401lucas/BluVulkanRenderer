@@ -1,9 +1,9 @@
 #pragma once
 
-#define DEBUG_ALL
-#define DEBUG_RENDERGRAPH
-#define DEBUG_RENDERER
-#define DEBUG_ENGINE
+#define DEBUG_ALL 1
+//#define DEBUG_RENDERGRAPH
+//#define DEBUG_RENDERER
+//#define DEBUG_ENGINE
 
 #include "BaseRenderer.h"
 #include "Components/Camera.hpp"

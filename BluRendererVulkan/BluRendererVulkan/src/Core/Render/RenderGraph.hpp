@@ -8,6 +8,7 @@
 
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
+#include "ResourceManagement/VulkanResources/VulkanTexture.h"
 
 // TODO: Remove vulkan specific resources
 namespace core_internal::rendering {
@@ -38,6 +39,10 @@ enum RenderGraphMemoryTypeFlagBits {
 };
 using RenderGraphMemoryTypeFlags = uint32_t;
 
+// Since both AttachmentInfo & BufferInfo are unchanged once created, could
+// store a hash for faster comparisions. However at the moment I am only
+// consirned with Runtime performance, and am OK with a slower rendergraph
+// creation/baking process
 struct AttachmentInfo {
   AttachmentSizeRelative sizeRelative = AttachmentSizeRelative::Swapchain;
   float sizeX = 1.0f;
@@ -59,10 +64,16 @@ struct AttachmentInfo {
 struct BufferInfo {
   VkDeviceSize size = 0;
   VkBufferUsageFlags usage = 0;
+  VkMemoryPropertyFlags memory = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
   bool persistant = false;  // Static data can still be updated upon request
+  // If data is Persistant, this forces one buffer to be shared for each frame
+  // in flight
+  bool forceSingleInstance = false;
 
   bool operator==(BufferInfo &info) {
-    return size == info.size && usage == info.usage;
+    return size == info.size && usage == info.usage && memory == info.memory;
   }
 };
 
@@ -138,6 +149,9 @@ class RenderGraphPass {
 };
 
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION
+// Since this is controlling all frame resources, it should be able to keep
+// track of exact VRAM size and other relevant info. Should have it's own
+// toggleable Debug UI
 class RenderGraph {
  private:
   core_internal::rendering::vulkan::VulkanDevice *device;
@@ -151,6 +165,11 @@ class RenderGraph {
   // Unsure about format
   RenderTextureResource *finalOutput = nullptr;
 
+  // Memory Aliasing (Could create ResourceManager to offload lower level logic
+  // from RenderGraph, however I think it would be overkill as all RenderingAPI
+  // specific code should be abstracted behind Buffer & Texture objects, maybe
+  // using a PreProcessor define or something. Would need a solution for
+  // recording command buffers)
   struct ResourceReservation {
     std::vector<bool> dependencyReservation;
 
@@ -186,14 +205,20 @@ class RenderGraph {
         : ResourceReservation(dependencyMin, dependencyMax), bufInfo(bufInfo) {}
   };
 
-  // Baked Resources
-  struct GeneratedRenderGraph {};
-  struct AllocatedTexture {};
-  struct AllocatedBuffer {};
+  std::vector<BufferResourceReservation> bufferBucket;
+  std::vector<BufferResourceReservation> persistantBufferBucket;
+  std::vector<TextureResourceReservation> textureBucket;
+  std::vector<TextureResourceReservation> persistantTextureBucket;
 
-   std::vector<GeneratedRenderGraph *> genRenderGraph;
-   std::vector<AllocatedBuffer *> bakedBuffers;
-   std::vector<AllocatedTexture *> bakedTextures;
+  // GPU Resources
+  std::vector<vks::Buffer *> persistantBakedBuffers;
+  std::vector<vks::Texture *> persistantBakedTextures;
+  std::vector<vks::Buffer *> bakedBuffers;
+  std::vector<vks::Texture *> bakedTextures;
+
+  // Rendering Resources
+  struct GeneratedRenderGraph {};
+  std::vector<GeneratedRenderGraph *> genRenderGraph;
 
   void validateData();
 
@@ -201,6 +226,9 @@ class RenderGraph {
   void dependencySearch(const uint32_t &nodeIndex, const uint32_t &depth);
 
   void generateResourceBuckets();
+  void generateResources();
+  void generateMemoryBarriers();
+  void generateDescriptorSets();
 
  public:
   RenderGraph();
@@ -230,9 +258,7 @@ class RenderGraph {
 
   RenderBufferResource *setFinalOutput(const std::string &name);
 
-#ifdef DEBUG_RENDERGRAPH
   void printRenderGraph();
-#endif  // DEBUG_RENDERGRAPH
 
   void bake();
 

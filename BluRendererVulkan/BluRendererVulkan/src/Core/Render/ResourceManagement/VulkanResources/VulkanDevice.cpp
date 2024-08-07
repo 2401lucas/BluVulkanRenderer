@@ -241,6 +241,13 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
 
   VK_CHECK_RESULT(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr,
                                  &logicalDevice));
+  VmaAllocatorCreateInfo vmaAllocInfo{};
+  vmaAllocInfo.device = logicalDevice;
+  vmaAllocInfo.physicalDevice = physicalDevice;
+  vmaAllocInfo.instance = instance;
+  vmaAllocInfo.vulkanApiVersion = apiVersion;
+
+  vmaCreateAllocator(&vmaAllocInfo, &allocator);
 }
 
 VulkanDevice::~VulkanDevice() {
@@ -248,6 +255,9 @@ VulkanDevice::~VulkanDevice() {
     vkDestroyShaderModule(logicalDevice, shaderModule, nullptr);
   }
 
+  if (allocator) {
+    vmaDestroyAllocator(allocator);
+  }
   if (logicalDevice) {
     vkDestroyDevice(logicalDevice, nullptr);
   }
@@ -362,7 +372,7 @@ uint32_t VulkanDevice::getQueueFamilyIndex(VkQueueFlags queueFlags) const {
 
 void VulkanDevice::waitIdle() { vkDeviceWaitIdle(logicalDevice); }
 
-VkPipelineShaderStageCreateInfo rendering::vulkan::VulkanDevice::loadShader(
+VkPipelineShaderStageCreateInfo VulkanDevice::loadShader(
     std::string fileName, VkShaderStageFlagBits stage) {
   VkPipelineShaderStageCreateInfo shaderStage = {};
   shaderStage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -404,5 +414,88 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
     }
   }
   throw std::runtime_error("Could not find a matching depth format");
+}
+
+vks::Buffer *VulkanDevice::createBuffer(
+    VkBufferUsageFlags usageFlags, VkDeviceSize size,
+    VkMemoryPropertyFlags memoryPropertyFlags, uint32_t instanceCount) {
+  VkBufferCreateInfo bufferCreateInfo{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = size,
+      .usage = usageFlags};
+
+  VmaAllocationCreateInfo allocInfo = {.usage = VMA_MEMORY_USAGE_AUTO};
+
+  VkBuffer buffer;
+  VmaAllocation alloc;
+  vmaCreateBuffer(allocator, &bufferCreateInfo, &allocInfo, &buffer, &alloc,
+                  nullptr);
+
+  auto newBuffer = new vks::Buffer();
+  newBuffer->size = size;
+  newBuffer->usageFlags = usageFlags;
+  newBuffer->memoryPropertyFlags = memoryPropertyFlags;
+
+  newBuffer->buffer.resize(instanceCount);
+  newBuffer->memory.resize(instanceCount);
+  newBuffer->descriptor.resize(instanceCount);
+  for (size_t i = 0; i < instanceCount; i++) {
+    VK_CHECK_RESULT(vkCreateBuffer(logicalDevice, &bufferCreateInfo, nullptr,
+                                   &newBuffer->buffer[i]));
+
+    VkMemoryRequirements memReqs{};
+    VkMemoryAllocateInfo memAlloc{.sType =
+                                      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    vkGetBufferMemoryRequirements(logicalDevice, newBuffer->buffer[i],
+                                  &memReqs);
+    memAlloc.allocationSize = memReqs.size;
+    // Find a memory type index that fits the properties of the buffer
+    memAlloc.memoryTypeIndex =
+        getMemoryType(memReqs.memoryTypeBits, memoryPropertyFlags);
+    // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also
+    // need to enable the appropriate flag during allocation
+    VkMemoryAllocateFlagsInfoKHR allocFlagsInfo{};
+    if (usageFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+      allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR;
+      allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+      memAlloc.pNext = &allocFlagsInfo;
+    }
+    VK_CHECK_RESULT(vkAllocateMemory(logicalDevice, &memAlloc, nullptr,
+                                     &newBuffer->memory[i]));
+    newBuffer->alignment = memReqs.alignment;
+
+    // newBuffer->setupDescriptor();
+  }
+}
+
+void *VulkanDevice::createImage(uint32_t width, uint32_t height,
+                                VkFormat format, VkImageTiling tiling,
+                                VkImageUsageFlags usage, uint32_t mipLevels,
+                                uint32_t arrayLayers, uint32_t depth,
+                                VkSampleCountFlagBits samples,
+                                VkImageLayout initialLayout,
+                                uint32_t instances) {
+  VkImageCreateInfo imgCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .imageType = VK_IMAGE_TYPE_2D,
+      .format = format,
+      .extent = {.width = width, .height = height, .depth = depth},
+      .mipLevels = mipLevels,
+      .arrayLayers = arrayLayers,
+      .samples = samples,
+      .tiling = tiling,
+      .usage = usage,
+      .initialLayout = initialLayout,
+  };
+
+  VmaAllocationCreateInfo allocCreateInfo = {};
+  allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+  allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+  //allocCreateInfo.priority = 1.0f;
+
+  VkImage img;
+  VmaAllocation alloc;
+  vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc,
+                 nullptr);
 }
 };  // namespace core_internal::rendering::vulkan
