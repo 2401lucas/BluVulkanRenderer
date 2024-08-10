@@ -48,7 +48,7 @@ struct AttachmentInfo {
   float sizeX = 1.0f;
   float sizeY = 1.0f;
   VkFormat format = VK_FORMAT_UNDEFINED;
-  uint32_t samples = 1;
+  uint32_t samples = VK_SAMPLE_COUNT_1_BIT;
   uint32_t levels = 1;
   uint32_t layers = 1;
   bool persistant = false;  // Static data can still be updated upon request

@@ -180,6 +180,10 @@ void RenderGraph::dependencySearch(const uint32_t& passIndex,
   }
 }
 
+// TODO: Pool not just identical objects
+//  We can allocate a large chunk of data, and suballocate smaller chunks too
+//  Update this to actually reserve smaller chunks of data in a linear way, not
+//  worrying about memory fragmentation
 void RenderGraph::generateResourceBuckets() {
   for (auto& resource : textureBlackboard) {
     if (resource.second->persistant) {

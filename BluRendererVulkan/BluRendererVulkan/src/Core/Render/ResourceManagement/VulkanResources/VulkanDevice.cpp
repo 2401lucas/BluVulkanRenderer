@@ -468,34 +468,179 @@ vks::Buffer *VulkanDevice::createBuffer(
   }
 }
 
-void *VulkanDevice::createImage(uint32_t width, uint32_t height,
-                                VkFormat format, VkImageTiling tiling,
-                                VkImageUsageFlags usage, uint32_t mipLevels,
-                                uint32_t arrayLayers, uint32_t depth,
-                                VkSampleCountFlagBits samples,
-                                VkImageLayout initialLayout,
-                                uint32_t instances) {
+Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
+                                 const VkMemoryPropertyFlagBits &memoryFlags,
+                                 bool renderResource) {
+  auto newImage = new Image();
   VkImageCreateInfo imgCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = VK_IMAGE_TYPE_2D,
-      .format = format,
-      .extent = {.width = width, .height = height, .depth = depth},
-      .mipLevels = mipLevels,
-      .arrayLayers = arrayLayers,
-      .samples = samples,
-      .tiling = tiling,
-      .usage = usage,
-      .initialLayout = initialLayout,
+      .format = imageCreateInfo.format,
+      .extent = {.width = imageCreateInfo.width,
+                 .height = imageCreateInfo.height,
+                 .depth = imageCreateInfo.depth},
+      .mipLevels = imageCreateInfo.mipLevels,
+      .arrayLayers = imageCreateInfo.arrayLayers,
+      .samples = imageCreateInfo.samples,
+      .tiling = imageCreateInfo.tiling,
+      .usage = imageCreateInfo.usage,
+      .initialLayout = imageCreateInfo.initialLayout,
+  };
+  // allocCreateInfo.priority = 1.0f; Read more about this to better understand
+  // advantages
+  VmaAllocationCreateInfo allocCreateInfo = {
+      .usage = VMA_MEMORY_USAGE_AUTO,
+      .preferredFlags = memoryFlags,
   };
 
-  VmaAllocationCreateInfo allocCreateInfo = {};
-  allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-  allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-  //allocCreateInfo.priority = 1.0f;
+  if (renderResource)
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+  else if (imageCreateInfo.requireMappedData)
+    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
-  VkImage img;
-  VmaAllocation alloc;
-  vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo, &img, &alloc,
-                 nullptr);
+  VmaAllocationInfo allocInfo;
+  VK_CHECK_RESULT(vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo,
+                                 &newImage->image, &newImage->deviceMemory,
+                                 &allocInfo));
+
+  newImage->mappedData = allocInfo.pMappedData;
+
+  if (imageCreateInfo.requireSampler) {
+    VkSamplerCreateInfo samplerCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = imageCreateInfo.samplerInfo.magFilter,
+        .minFilter = imageCreateInfo.samplerInfo.minFilter,
+        .mipmapMode = imageCreateInfo.samplerInfo.mipmapMode,
+        .addressModeU = imageCreateInfo.samplerInfo.addressModeU,
+        .addressModeV = imageCreateInfo.samplerInfo.addressModeV,
+        .addressModeW = imageCreateInfo.samplerInfo.addressModeW,
+        .mipLodBias = imageCreateInfo.samplerInfo.mipLodBias,
+        .maxAnisotropy = imageCreateInfo.samplerInfo.maxAnisotropy,
+        .minLod = imageCreateInfo.samplerInfo.minLod,
+        .maxLod = imageCreateInfo.samplerInfo.maxLod,
+        .borderColor = imageCreateInfo.samplerInfo.borderColor,
+    };
+    VK_CHECK_RESULT(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr,
+                                    &newImage->sampler));
+  }
+
+  if (imageCreateInfo.requireImageView) {
+    VkImageViewCreateInfo imageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .flags = imageCreateInfo.imageViewInfo.flags,
+        .image = newImage->image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = imageCreateInfo.format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        }};
+    VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
+                                      nullptr, &newImage->view));
+  }
+
+  if (renderResource) {
+    newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    newImage->descriptor.sampler = newImage->sampler;
+    newImage->descriptor.imageView = newImage->view;
+  }
+
+  return newImage;
 }
+
+std::vector<Image *> VulkanDevice::createAliasedImages(
+    std::vector<ImageInfo> imageCreateInfos) {
+  std::vector<Image *> newImages;
+
+  VkMemoryRequirements finalMemReq = {};
+  for (auto &imageCreateInfo : imageCreateInfos) {
+    auto newImage = new Image();
+    VkImageCreateInfo imgCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = imageCreateInfo.format,
+        .extent = {.width = imageCreateInfo.width,
+                   .height = imageCreateInfo.height,
+                   .depth = imageCreateInfo.depth},
+        .mipLevels = imageCreateInfo.mipLevels,
+        .arrayLayers = imageCreateInfo.arrayLayers,
+        .samples = imageCreateInfo.samples,
+        .tiling = imageCreateInfo.tiling,
+        .usage = imageCreateInfo.usage,
+        .initialLayout = imageCreateInfo.initialLayout,
+    };
+
+    VK_CHECK_RESULT(vkCreateImage(logicalDevice, &imgCreateInfo, nullptr,
+                                  &newImage->image));
+
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(logicalDevice, newImage->image, &memReq);
+
+    finalMemReq.size =
+        (finalMemReq.size < memReq.size) ? memReq.size : finalMemReq.size;
+    finalMemReq.alignment = (finalMemReq.alignment < memReq.alignment)
+                                ? memReq.alignment
+                                : finalMemReq.alignment;
+    finalMemReq.memoryTypeBits &= memReq.memoryTypeBits;
+
+    VkSamplerCreateInfo samplerCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = imageCreateInfo.samplerInfo.magFilter,
+        .minFilter = imageCreateInfo.samplerInfo.minFilter,
+        .mipmapMode = imageCreateInfo.samplerInfo.mipmapMode,
+        .addressModeU = imageCreateInfo.samplerInfo.addressModeU,
+        .addressModeV = imageCreateInfo.samplerInfo.addressModeV,
+        .addressModeW = imageCreateInfo.samplerInfo.addressModeW,
+        .mipLodBias = imageCreateInfo.samplerInfo.mipLodBias,
+        .maxAnisotropy = imageCreateInfo.samplerInfo.maxAnisotropy,
+        .minLod = imageCreateInfo.samplerInfo.minLod,
+        .maxLod = imageCreateInfo.samplerInfo.maxLod,
+        .borderColor = imageCreateInfo.samplerInfo.borderColor,
+    };
+    VK_CHECK_RESULT(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr,
+                                    &newImage->sampler));
+
+    VkImageViewCreateInfo imageViewCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .flags = imageCreateInfo.imageViewInfo.flags,
+        .image = newImage->image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = imageCreateInfo.format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        }};
+    VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
+                                      nullptr, &newImage->view));
+
+    newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    newImage->descriptor.sampler = newImage->sampler;
+    newImage->descriptor.imageView = newImage->view;
+
+    newImages.push_back(newImage);
+  }
+
+  VmaAllocationCreateInfo allocCreateInfo = {
+      .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+      .usage = VMA_MEMORY_USAGE_AUTO,
+      .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      // .allocCreateInfo.priority = 1.0f; Read more about this to better
+      // understand advantages
+  };
+  VmaAllocation alloc;
+  VK_CHECK_RESULT(vmaAllocateMemory(allocator, &finalMemReq, &allocCreateInfo,
+                                    &alloc, nullptr));
+
+  for (auto &image : newImages) {
+    image->deviceMemory = alloc;
+    VK_CHECK_RESULT(vmaBindImageMemory(allocator, alloc, image->image));
+  }
+
+  return newImages;
 };  // namespace core_internal::rendering::vulkan

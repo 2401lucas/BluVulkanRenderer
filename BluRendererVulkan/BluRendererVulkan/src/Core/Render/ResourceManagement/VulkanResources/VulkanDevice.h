@@ -19,9 +19,56 @@
 #include "vulkan/vulkan.h"
 
 namespace core_internal::rendering::vulkan {
+struct SamplerInfo {
+  VkFilter magFilter = VK_FILTER_LINEAR;
+  VkFilter minFilter = VK_FILTER_LINEAR;
+  VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+  VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  VkSamplerAddressMode addressModeV = samplerInfo.addressModeU;
+  VkSamplerAddressMode addressModeW = samplerInfo.addressModeU;
+  float mipLodBias = 0.0f;
+  float maxAnisotropy = 1.0f;
+  float minLod = 0.0f;
+  float maxLod = 1.0f;
+  VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+};
+
+struct ImageViewInfo {
+  VkImageCreateFlags flags;
+};
+
+struct ImageInfo {
+  uint32_t width;
+  uint32_t height;
+  VkFormat format;
+  VkImageTiling tiling;
+  VkImageUsageFlags usage;
+  uint32_t mipLevels = 1;
+  uint32_t arrayLayers = 1;
+  uint32_t depth = 1;
+  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+  VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  bool requireSampler;
+  bool requireImageView;
+  bool requireMappedData;
+  SamplerInfo samplerInfo;
+  ImageViewInfo imageViewInfo;
+};
+
+struct Image {
+  VkImage image = VK_NULL_HANDLE;
+  VkImageLayout imageLayout;
+  VmaAllocation deviceMemory = VK_NULL_HANDLE;
+  VkImageView view = VK_NULL_HANDLE;
+  VkSampler sampler = VK_NULL_HANDLE;
+  VkDescriptorImageInfo descriptor;
+  void *mappedData = nullptr;
+};
+
+struct Buffer {};
+
 // Vulkan Resources are self contained in VulkanDevice
 // VulkanDevice handles all resource creation/deletion
-//
 class VulkanDevice {
  public:
   uint32_t apiVersion = VK_API_VERSION_1_2;
@@ -69,12 +116,10 @@ class VulkanDevice {
                             VkMemoryPropertyFlags memoryPropertyFlags,
                             uint32_t instanceCount);
 
-  void *createImage(uint32_t width, uint32_t height, VkFormat format,
-                    VkImageTiling tiling, VkImageUsageFlags usage,
-                    uint32_t mipLevels = 1, uint32_t arrayLayers = 1,
-                    uint32_t depth = 1,
-                    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
-                    VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, uint32_t instances = 1);
-  void *createAliasedImages();
+  Image *createImage(const ImageInfo &imageCreateInfo,
+                     const VkMemoryPropertyFlagBits &memoryFlags,
+                     bool renderResource);
+  std::vector<Image *> createAliasedImages(
+      std::vector<ImageInfo> imageCreateInfos);
 };
 }  // namespace core_internal::rendering::vulkan
