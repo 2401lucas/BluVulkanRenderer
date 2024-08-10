@@ -24,8 +24,8 @@ struct SamplerInfo {
   VkFilter minFilter = VK_FILTER_LINEAR;
   VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
   VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  VkSamplerAddressMode addressModeV = samplerInfo.addressModeU;
-  VkSamplerAddressMode addressModeW = samplerInfo.addressModeU;
+  VkSamplerAddressMode addressModeV = addressModeU;
+  VkSamplerAddressMode addressModeW = addressModeU;
   float mipLodBias = 0.0f;
   float maxAnisotropy = 1.0f;
   float minLod = 0.0f;
@@ -53,12 +53,14 @@ struct ImageInfo {
   bool requireMappedData;
   SamplerInfo samplerInfo;
   ImageViewInfo imageViewInfo;
+  VkDeviceSize offset = 0;
 };
 
 struct Image {
   VkImage image = VK_NULL_HANDLE;
   VkImageLayout imageLayout;
   VmaAllocation deviceMemory = VK_NULL_HANDLE;
+  VkDeviceSize offset = 0;
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
   VkDescriptorImageInfo descriptor;

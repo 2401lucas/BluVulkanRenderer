@@ -622,6 +622,7 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
     newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     newImage->descriptor.sampler = newImage->sampler;
     newImage->descriptor.imageView = newImage->view;
+    newImage->offset = imageCreateInfo.offset;
 
     newImages.push_back(newImage);
   }
@@ -639,7 +640,8 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
 
   for (auto &image : newImages) {
     image->deviceMemory = alloc;
-    VK_CHECK_RESULT(vmaBindImageMemory(allocator, alloc, image->image));
+    VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, image->offset,
+                                        image->image, nullptr));
   }
 
   return newImages;
