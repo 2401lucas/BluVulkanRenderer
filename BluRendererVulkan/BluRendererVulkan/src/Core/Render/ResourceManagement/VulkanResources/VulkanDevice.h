@@ -54,6 +54,8 @@ struct ImageInfo {
   SamplerInfo samplerInfo;
   ImageViewInfo imageViewInfo;
   VkDeviceSize offset = 0;
+  // The only limitaion to having more than 32 dependency layers is this
+  unsigned long resourceLifespan;
 };
 
 struct Image {
@@ -72,6 +74,38 @@ struct Buffer {};
 // Vulkan Resources are self contained in VulkanDevice
 // VulkanDevice handles all resource creation/deletion
 class VulkanDevice {
+ private:
+  class ResourceReservation {
+   private:
+    // Divide Into Blocks
+    // Once memory is reserved it stays reserved, because we know exactly the
+    // lifespan we don't reserve where it is not used
+    struct MemoryBlock {
+      uint32_t size;
+      uint32_t offset;
+      MemoryBlock(uint32_t size, uint32_t offset)
+          : size(size), offset(offset) {}
+    };
+
+    struct MemoryReservation {
+      std::vector<MemoryBlock> freeStorage;
+      std::vector<MemoryBlock> usedStorage;
+      MemoryReservation(uint32_t size) {
+        freeStorage = std::vector<MemoryBlock>(1, MemoryBlock(size, 0));
+      }
+    };
+
+   public:
+    VkMemoryRequirements localMemReq;
+    std::vector<MemoryReservation> memory;
+    std::vector<std::pair<uint32_t, uint32_t>> resourceIndices;
+
+    ResourceReservation(VkMemoryRequirements, unsigned long range,
+                        uint32_t imgIndex);
+    bool tryReserve(VkMemoryRequirements, unsigned long range,
+                    uint32_t imgIndex);
+  };
+
  public:
   uint32_t apiVersion = VK_API_VERSION_1_2;
   std::vector<std::string> supportedInstanceExtensions;

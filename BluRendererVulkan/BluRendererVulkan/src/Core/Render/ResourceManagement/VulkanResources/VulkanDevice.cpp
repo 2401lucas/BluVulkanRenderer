@@ -1,5 +1,6 @@
 #include "VulkanDevice.h"
 
+#include <bit>
 #include <map>
 #include <unordered_set>
 
@@ -554,8 +555,8 @@ Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
 std::vector<Image *> VulkanDevice::createAliasedImages(
     std::vector<ImageInfo> imageCreateInfos) {
   std::vector<Image *> newImages;
+  std::vector<ResourceReservation> resourceReservations;
 
-  VkMemoryRequirements finalMemReq = {};
   for (auto &imageCreateInfo : imageCreateInfos) {
     auto newImage = new Image();
     VkImageCreateInfo imgCreateInfo = {
@@ -575,16 +576,6 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
 
     VK_CHECK_RESULT(vkCreateImage(logicalDevice, &imgCreateInfo, nullptr,
                                   &newImage->image));
-
-    VkMemoryRequirements memReq;
-    vkGetImageMemoryRequirements(logicalDevice, newImage->image, &memReq);
-
-    finalMemReq.size =
-        (finalMemReq.size < memReq.size) ? memReq.size : finalMemReq.size;
-    finalMemReq.alignment = (finalMemReq.alignment < memReq.alignment)
-                                ? memReq.alignment
-                                : finalMemReq.alignment;
-    finalMemReq.memoryTypeBits &= memReq.memoryTypeBits;
 
     VkSamplerCreateInfo samplerCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -624,6 +615,24 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
     newImage->descriptor.imageView = newImage->view;
     newImage->offset = imageCreateInfo.offset;
 
+    VkMemoryRequirements memReq;
+    vkGetImageMemoryRequirements(logicalDevice, newImage->image, &memReq);
+    uint32_t newImageIndex = newImages.size();
+    bool allocated = false;
+
+    for (auto reservation : resourceReservations) {
+      if (reservation.tryReserve(memReq, imageCreateInfo.resourceLifespan,
+                                 newImageIndex)) {
+        allocated = true;
+        break;
+      }
+    }
+
+    if (!allocated) {
+      resourceReservations.push_back(ResourceReservation(
+          memReq, imageCreateInfo.resourceLifespan, newImageIndex));
+    }
+
     newImages.push_back(newImage);
   }
 
@@ -634,15 +643,56 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
       // .allocCreateInfo.priority = 1.0f; Read more about this to better
       // understand advantages
   };
-  VmaAllocation alloc;
-  VK_CHECK_RESULT(vmaAllocateMemory(allocator, &finalMemReq, &allocCreateInfo,
-                                    &alloc, nullptr));
 
-  for (auto &image : newImages) {
-    image->deviceMemory = alloc;
-    VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, image->offset,
-                                        image->image, nullptr));
+  for (auto &reservation : resourceReservations) {
+    VmaAllocation alloc;
+    VK_CHECK_RESULT(vmaAllocateMemory(allocator, &reservation.localMemReq,
+                                      &allocCreateInfo, &alloc, nullptr));
+
+    for (auto &index : reservation.resourceIndices) {
+      newImages[index.first]->deviceMemory = alloc;
+      VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, index.second,
+                                          newImages[index.first]->image,
+                                          nullptr));
+    }
   }
 
   return newImages;
-};  // namespace core_internal::rendering::vulkan
+}
+
+VulkanDevice::ResourceReservation::ResourceReservation(
+    VkMemoryRequirements memReq, unsigned long range, uint32_t imgIndex) {
+  this->localMemReq = memReq;
+  memory = std::vector<MemoryReservation>(64, MemoryReservation(memReq.size));
+
+  tryReserve(memReq, range, imgIndex);
+}
+
+bool VulkanDevice::ResourceReservation::tryReserve(VkMemoryRequirements memReq,
+                                                   unsigned long range,
+                                                   uint32_t imgIndex) {
+  if (localMemReq.size < memReq.size) return false;
+
+  unsigned long firstUse, lastUse;
+  BitScanForward(&firstUse, range);
+  BitScanReverse(&lastUse, range);
+
+  for (auto it = memory.begin(); it != memory.end(); it++) {
+    for (auto &freeBlock : it->freeStorage) {
+      if (freeBlock.size >= memReq.size) {
+        uint32_t offset = freeBlock.offset;
+        it->usedStorage.push_back(MemoryBlock(memReq.size, offset));
+        freeBlock.size -= memReq.size;
+        freeBlock.offset = offset + memReq.size;
+        if (freeBlock.size == 0) {
+          memory.erase(it);
+        }
+        resourceIndices.push_back(std::make_pair(imgIndex, offset));
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+}  // namespace core_internal::rendering::vulkan

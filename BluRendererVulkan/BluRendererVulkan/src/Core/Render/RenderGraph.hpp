@@ -185,36 +185,8 @@ class RenderGraph {
     }
   };
 
-  struct TextureResourceReservation : public ResourceReservation {
-    AttachmentInfo texInfo;
-
-    TextureResourceReservation() = default;
-
-    TextureResourceReservation(AttachmentInfo texInfo, uint32_t dependencyMin,
-                               uint32_t dependencyMax)
-        : ResourceReservation(dependencyMin, dependencyMax), texInfo(texInfo) {}
-  };
-
-  struct BufferResourceReservation : public ResourceReservation {
-    BufferInfo bufInfo;
-
-    BufferResourceReservation() = default;
-
-    BufferResourceReservation(BufferInfo bufInfo, uint32_t dependencyMin,
-                              uint32_t dependencyMax)
-        : ResourceReservation(dependencyMin, dependencyMax), bufInfo(bufInfo) {}
-  };
-
-  std::vector<BufferResourceReservation> bufferBucket;
-  std::vector<BufferResourceReservation> persistantBufferBucket;
-  std::vector<TextureResourceReservation> textureBucket;
-  std::vector<TextureResourceReservation> persistantTextureBucket;
-
   // GPU Resources
-  std::vector<vks::Buffer *> persistantBakedBuffers;
-  std::vector<vks::Texture *> persistantBakedTextures;
-  std::vector<vks::Buffer *> bakedBuffers;
-  std::vector<vks::Texture *> bakedTextures;
+  std::vector<vulkan::Image *> renderImages;
 
   // Rendering Resources
   struct GeneratedRenderGraph {};
