@@ -12,8 +12,11 @@ void RenderGraphPass::addAttachmentInput(const std::string& name) {
   inputTextureAttachments.push_back(tex);
 }
 
-RenderTextureResource* RenderGraphPass::addColorOutput(
-    const std::string& name, const AttachmentInfo& info) {
+RenderTextureResource* RenderGraphPass::addColorOutput(const std::string& name,
+                                                       AttachmentInfo info) {
+  info.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
   auto tex = graph->createTexture(name, info);
   tex->registerPass(index);
 
@@ -166,12 +169,7 @@ void RenderGraph::dependencySearch(const uint32_t& passIndex,
   auto& outputResources = renderGraphPasses[passIndex]->getOutputAttachments();
 
   for (uint32_t j = 0; j < outputResources.size(); j++) {
-    if (outputResources[j]->minDependencyRange > depth) {
-      outputResources[j]->minDependencyRange = depth;
-    }
-    if (outputResources[j]->maxDependencyRange < depth) {
-      outputResources[j]->maxDependencyRange = depth;
-    }
+    outputResources[j]->resourceLifespan |= 1 << depth;
 
     auto& passes = outputResources[j]->usedInPasses;
     for (uint32_t k = 0; k < passes.size(); k++) {
@@ -180,49 +178,71 @@ void RenderGraph::dependencySearch(const uint32_t& passIndex,
   }
 }
 
-void RenderGraph::generateResourceBuckets() {
+void RenderGraph::generateResources() {
+  auto& fifCount = swapchain->imageCount;
+  std::vector<vulkan::ImageInfo> imageCreateInfos;
+  std::vector<vulkan::ImageInfo> renderImageCreateInfos;
+
   for (auto& resource : textureBlackboard) {
     if (resource.second->persistant) {
-      resource.second->resourceIndex = persistantTextureBucket.size();
-      persistantTextureBucket.push_back(TextureResourceReservation());
+      uint32_t width = getImageSize(
+          resource.second->renderTextureInfo.sizeRelative,
+          swapchain->imageWidth, resource.second->renderTextureInfo.sizeX);
+      uint32_t height = getImageSize(
+          resource.second->renderTextureInfo.sizeRelative,
+          swapchain->imageHeight, resource.second->renderTextureInfo.sizeY);
+
+      vulkan::ImageInfo info{
+          .width = width,
+          .height = height,
+          .format = resource.second->renderTextureInfo.format,
+          .tiling = VK_IMAGE_TILING_OPTIMAL,
+          .usage = resource.second->renderTextureInfo.usage,
+          .mipLevels = resource.second->renderTextureInfo.mipLevels,
+          .arrayLayers = resource.second->renderTextureInfo.arrayLayers,
+          .samples = resource.second->renderTextureInfo.samples,
+          .resourceLifespan = resource.second->resourceLifespan,
+          .requireSampler = resource.second->renderTextureInfo.requireSampler,
+          .requireImageView =
+              resource.second->renderTextureInfo.requireImageView,
+          .requireMappedData =
+              resource.second->renderTextureInfo.requireMappedData,
+      };
+      resource.second->resourceIndex =
+          imageCreateInfos.size();
+      imageCreateInfos.push_back(info);
     } else {
-      bool resourceAllocated = false;
-      for (uint32_t texId = 0; texId < textureBucket.size(); texId++) {
-        auto& tex = textureBucket[texId];
-        if (tex.texInfo != resource.second->renderTextureInfo) continue;
-        if (tex.dependencyReservation.size() <
-            resource.second->maxDependencyRange)
-          tex.dependencyReservation.insert(
-              tex.dependencyReservation.end(), false,
-              resource.second->maxDependencyRange -
-                  tex.dependencyReservation.size());
+      uint32_t width = getImageSize(
+          resource.second->renderTextureInfo.sizeRelative,
+          swapchain->imageWidth, resource.second->renderTextureInfo.sizeX);
+      uint32_t height = getImageSize(
+          resource.second->renderTextureInfo.sizeRelative,
+          swapchain->imageHeight, resource.second->renderTextureInfo.sizeY);
 
-        // If resource already reserved, continue
-        for (uint32_t i = resource.second->minDependencyRange;
-             i < resource.second->maxDependencyRange; i++) {
-          if (tex.dependencyReservation[i]) continue;
-        }
-
-        // If resource is free, claim for requested range
-        for (uint32_t i = resource.second->minDependencyRange;
-             i < resource.second->maxDependencyRange; i++) {
-          tex.dependencyReservation[i] = true;
-        }
-
-        resource.second->resourceIndex = texId;
-        resourceAllocated = true;
-        break;
-      }
-
-      if (!resourceAllocated) {
-        resource.second->resourceIndex = textureBucket.size();
-        textureBucket.push_back(
-            TextureResourceReservation(resource.second->renderTextureInfo,
-                                       resource.second->minDependencyRange,
-                                       resource.second->maxDependencyRange));
-      }
+      vulkan::ImageInfo info{
+          .width = width,
+          .height = height,
+          .format = resource.second->renderTextureInfo.format,
+          .tiling = VK_IMAGE_TILING_OPTIMAL,
+          .usage = resource.second->renderTextureInfo.usage,
+          .mipLevels = resource.second->renderTextureInfo.mipLevels,
+          .arrayLayers = resource.second->renderTextureInfo.arrayLayers,
+          .samples = resource.second->renderTextureInfo.samples,
+          .memoryFlags = resource.second->renderTextureInfo.memoryFlags,
+          .resourceLifespan = resource.second->resourceLifespan,
+          .requireSampler = true,
+          .requireImageView = true,
+      };
+      resource.second->resourceIndex = renderImageCreateInfos.size();
+      renderImageCreateInfos.push_back(info);
     }
   }
+
+  for (auto& image : imageCreateInfos) {
+    renderImages.push_back(device->createImage(image, false));
+  }
+
+  internalRenderImages = device->createAliasedImages(renderImageCreateInfos);
 
   for (auto& resource : bufferBlackboard) {
     if (resource.second->persistant) {
@@ -268,11 +288,16 @@ void RenderGraph::generateResourceBuckets() {
   }
 }
 
-void RenderGraph::generateResources() {
-  auto& fifCount = swapchain->imageCount;
-
-  for (auto tex : textureBucket) {
-    device->createAliasedImages();
+uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,
+                                   uint32_t swapchainSize, float size) {
+  switch (sizeRelative) {
+    case core_internal::rendering::AttachmentSizeRelative::SwapchainRelative:
+      return static_cast<uint32_t>((float)swapchainSize * size);
+    case core_internal::rendering::AttachmentSizeRelative::AbsoluteValue:
+      return static_cast<uint32_t>(size);
+    default:
+      DEBUG_ERROR("Missing getImageSize Implementation");
+      return -1;
   }
 }
 
@@ -281,8 +306,6 @@ void RenderGraph::generateResources() {
 // BufferSize X
 // BufferUsage X
 // BufferReservation
-// [X] [X] [X] [ ] [X] [X] [ ]
-// or
 // 0-2, 4-5
 // Texture Should be similar
 void RenderGraph::printRenderGraph() {}

@@ -1,9 +1,9 @@
 #pragma once
 
 #define DEBUG_ALL 1
-//#define DEBUG_RENDERGRAPH
-//#define DEBUG_RENDERER
-//#define DEBUG_ENGINE
+// #define DEBUG_RENDERGRAPH
+// #define DEBUG_RENDERER
+// #define DEBUG_ENGINE
 
 #include "BaseRenderer.h"
 #include "Components/Camera.hpp"
@@ -47,11 +47,13 @@ class DemoRenderer : public BaseRenderer {
     auto antiAliasingPass = renderGraph->addPass(
         "AntiAliasingPass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
     antiAliasingPass->addColorOutput(
-        "AAOut", {.sizeRelative = core_internal::rendering::
-                      AttachmentSizeRelative::SwapchainRelative,
-                  .sizeX = 0.5,
-                  .sizeY = 0.5,
-                  .format = VK_FORMAT_R16_SFLOAT});
+        "AAOut", {
+                     .sizeRelative = core_internal::rendering::
+                         AttachmentSizeRelative::SwapchainRelative,
+                     .sizeX = 0.5,
+                     .sizeY = 0.5,
+                     .format = VK_FORMAT_R16_SFLOAT,
+                 });
 
     auto mainPass =
         renderGraph->addPass("Mainpass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);

@@ -418,7 +418,6 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
 }
 
 Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
-                                 const VkMemoryPropertyFlagBits &memoryFlags,
                                  bool renderResource) {
   auto newImage = new Image();
   VkImageCreateInfo imgCreateInfo = {
@@ -439,7 +438,7 @@ Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
   // advantages
   VmaAllocationCreateInfo allocCreateInfo = {
       .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = memoryFlags,
+      .preferredFlags = imageCreateInfo.memoryFlags,
   };
 
   if (renderResource)
@@ -491,11 +490,9 @@ Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
                                       nullptr, &newImage->view));
   }
 
-  if (renderResource) {
-    newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    newImage->descriptor.sampler = newImage->sampler;
-    newImage->descriptor.imageView = newImage->view;
-  }
+  newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  newImage->descriptor.sampler = newImage->sampler;
+  newImage->descriptor.imageView = newImage->view;
 
   return newImage;
 }
@@ -597,6 +594,8 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
     VK_CHECK_RESULT(vmaAllocateMemory(allocator, &reservation.localMemReq,
                                       &allocCreateInfo, &alloc, nullptr));
 
+    // index.first is resource index
+    // index.second is resource offset
     for (auto &index : reservation.resourceIndices) {
       newImages[index.first]->deviceMemory = alloc;
       VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, index.second,

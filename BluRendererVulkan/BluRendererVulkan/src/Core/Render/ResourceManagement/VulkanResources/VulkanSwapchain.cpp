@@ -160,6 +160,9 @@ void VulkanSwapchain::create(int* width, int* height, bool vsync,
     *height = surfCaps.currentExtent.height;
   }
 
+  imageWidth = *width;
+  imageHeight = *height;
+
   VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
   if (!vsync) {

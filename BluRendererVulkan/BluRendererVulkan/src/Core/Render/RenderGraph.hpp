@@ -16,7 +16,6 @@ class RenderGraph;
 class RenderGraphPass;
 
 enum class AttachmentSizeRelative {
-  Swapchain,
   SwapchainRelative,
   AbsoluteValue,
 };
@@ -29,61 +28,52 @@ enum RenderGraphQueueFlagBits {
 using RenderGraphQueueFlags = uint32_t;
 
 enum RenderGraphMemoryTypeFlagBits {
-  RENDER_GRAPH_DEPTH_STENCIL_FRAME_MANAGED = 1 << 0,
-  RENDER_GRAPH_COLOR_PERSISTANT = 1 << 1,
-  RENDER_GRAPH_COLOR_FRAME_MANAGED = 1 << 2,
-  RENDER_GRAPH_UNIFORM_BUFFER_FRAME_MANAGED = 1 << 3,
-  RENDER_GRAPH_UNIFORM_BUFFER_PERSISTANT = 1 << 4,
-  RENDER_GRAPH_STORAGE_BUFFER_FRAME_MANAGED = 1 << 5,
-  RENDER_GRAPH_STORAGE_BUFFER_PERSISTANT = 1 << 6,
+  MEMORY_GPU_ONLY = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+  // Size Limit is small, bigger data should be uploaded with a staging buffer
+  MEMORY_CPU_TO_GPU = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+  MEMORY_GPU_TO_CPU = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                      VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
 };
 using RenderGraphMemoryTypeFlags = uint32_t;
 
-// Since both AttachmentInfo & BufferInfo are unchanged once created, could
-// store a hash for faster comparisions. However at the moment I am only
-// consirned with Runtime performance, and am OK with a slower rendergraph
-// creation/baking process
 struct AttachmentInfo {
-  AttachmentSizeRelative sizeRelative = AttachmentSizeRelative::Swapchain;
+  RenderGraphMemoryTypeFlags memoryFlags;
+  AttachmentSizeRelative sizeRelative =
+      AttachmentSizeRelative::SwapchainRelative;
   float sizeX = 1.0f;
   float sizeY = 1.0f;
   VkFormat format = VK_FORMAT_UNDEFINED;
-  uint32_t samples = VK_SAMPLE_COUNT_1_BIT;
-  uint32_t levels = 1;
-  uint32_t layers = 1;
+  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+  uint32_t mipLevels = 1;
+  uint32_t arrayLayers = 1;
+  uint32_t depth = 1;
+  VkImageUsageFlags usage;
+  bool requireSampler = false;
+  bool requireImageView = false;
+  bool requireMappedData = false;
   bool persistant = false;  // Static data can still be updated upon request
-
-  bool operator==(AttachmentInfo &info) {
-    return sizeRelative == info.sizeRelative && sizeX == info.sizeX &&
-           sizeY == info.sizeY && format == info.format &&
-           samples == info.samples && levels == info.levels &&
-           layers == info.layers;
-  }
 };
 
 struct BufferInfo {
   VkDeviceSize size = 0;
   VkBufferUsageFlags usage = 0;
-  VkMemoryPropertyFlags memory = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+  RenderGraphMemoryTypeFlags memoryFlags;
 
   bool persistant = false;  // Static data can still be updated upon request
   // If data is Persistant, this forces one buffer to be shared for each frame
   // in flight
   bool forceSingleInstance = false;
-
-  bool operator==(BufferInfo &info) {
-    return size == info.size && usage == info.usage && memory == info.memory;
-  }
 };
 
 class RenderResource {
  public:
   // Used for Generating Dependency Layers
   std::vector<uint32_t> usedInPasses;
-  // Used for Resource Lifespan
-  uint32_t maxDependencyRange = -1;
-  uint32_t minDependencyRange = 0xffffffff;
+  // Resource Lifespan only cares about first/last time used
+  unsigned long resourceLifespan;
 
   bool persistant = false;
   uint32_t resourceIndex = -1;
@@ -129,7 +119,7 @@ class RenderGraphPass {
 
   void addAttachmentInput(const std::string &name);
   RenderTextureResource *addColorOutput(const std::string &name,
-                                        const AttachmentInfo &info);
+                                        AttachmentInfo info);
 
   void setDepthStencilInput(const std::string &name);
   void setDepthStencilOutput(const std::string &name,
@@ -165,28 +155,11 @@ class RenderGraph {
   // Unsure about format
   RenderTextureResource *finalOutput = nullptr;
 
-  // Memory Aliasing (Could create ResourceManager to offload lower level logic
-  // from RenderGraph, however I think it would be overkill as all RenderingAPI
-  // specific code should be abstracted behind Buffer & Texture objects, maybe
-  // using a PreProcessor define or something. Would need a solution for
-  // recording command buffers)
-  struct ResourceReservation {
-    std::vector<bool> dependencyReservation;
-
-    ResourceReservation() = default;
-
-    ResourceReservation(uint32_t dependencyMin, uint32_t dependencyMax) {
-      dependencyReservation.insert(dependencyReservation.end(), false,
-                                   dependencyMax);
-
-      for (uint32_t i = dependencyMin; i < dependencyMax; i++) {
-        dependencyReservation[i] = true;
-      }
-    }
-  };
-
   // GPU Resources
   std::vector<vulkan::Image *> renderImages;
+  std::vector<vulkan::Buffer *> renderBuffers;
+  std::vector<vulkan::Image *> internalRenderImages;
+  std::vector<vulkan::Buffer *> internalRenderBuffers;
 
   // Rendering Resources
   struct GeneratedRenderGraph {};
@@ -196,9 +169,11 @@ class RenderGraph {
 
   void generateDependencyChain();
   void dependencySearch(const uint32_t &nodeIndex, const uint32_t &depth);
-
-  void generateResourceBuckets();
   void generateResources();
+
+  uint32_t getImageSize(AttachmentSizeRelative sizeRelative,
+                        uint32_t swapchainSize, float size);
+
   void generateMemoryBarriers();
   void generateDescriptorSets();
 

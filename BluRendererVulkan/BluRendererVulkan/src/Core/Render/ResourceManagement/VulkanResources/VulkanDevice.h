@@ -47,15 +47,16 @@ struct ImageInfo {
   uint32_t arrayLayers = 1;
   uint32_t depth = 1;
   VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+  VkMemoryPropertyFlags memoryFlags;
+  // The only limitaion to having more than 64 dependency layers is this
+  unsigned long resourceLifespan;
+  bool requireSampler = false;
+  bool requireImageView = false;
+  bool requireMappedData = false;
   VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  bool requireSampler;
-  bool requireImageView;
-  bool requireMappedData;
   SamplerInfo samplerInfo;
   ImageViewInfo imageViewInfo;
   VkDeviceSize offset = 0;
-  // The only limitaion to having more than 32 dependency layers is this
-  unsigned long resourceLifespan;
 };
 
 struct Image {
@@ -163,9 +164,7 @@ class VulkanDevice {
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);
 
-  Image *createImage(const ImageInfo &imageCreateInfo,
-                     const VkMemoryPropertyFlagBits &memoryFlags,
-                     bool renderResource);
+  Image *createImage(const ImageInfo &imageCreateInfo, bool renderResource);
   std::vector<Image *> createAliasedImages(
       std::vector<ImageInfo> imageCreateInfos);
   Buffer *createBuffer(const BufferInfo &bufferCreateInfo,
