@@ -182,6 +182,8 @@ void RenderGraph::generateResources() {
   auto& fifCount = swapchain->imageCount;
   std::vector<vulkan::ImageInfo> imageCreateInfos;
   std::vector<vulkan::ImageInfo> renderImageCreateInfos;
+  std::vector<vulkan::BufferInfo> bufferCreateInfos;
+  std::vector<vulkan::BufferInfo> renderBufferCreateInfos;
 
   for (auto& resource : textureBlackboard) {
     if (resource.second->persistant) {
@@ -208,8 +210,7 @@ void RenderGraph::generateResources() {
           .requireMappedData =
               resource.second->renderTextureInfo.requireMappedData,
       };
-      resource.second->resourceIndex =
-          imageCreateInfos.size();
+      resource.second->resourceIndex = imageCreateInfos.size();
       imageCreateInfos.push_back(info);
     } else {
       uint32_t width = getImageSize(
@@ -246,46 +247,36 @@ void RenderGraph::generateResources() {
 
   for (auto& resource : bufferBlackboard) {
     if (resource.second->persistant) {
-      resource.second->resourceIndex = persistantBufferBucket.size();
-      persistantBufferBucket.push_back(BufferResourceReservation());
+      vulkan::BufferInfo info{
+          .size = resource.second->renderBufferInfo.size,
+          .usage = resource.second->renderBufferInfo.usage,
+          .memoryFlags = resource.second->renderBufferInfo.memoryFlags,
+          .requireMappedData =
+              resource.second->renderBufferInfo.requireMappedData,
+          .resourceLifespan = resource.second->resourceLifespan,
+      };
+
+      resource.second->resourceIndex = bufferCreateInfos.size();
+      bufferCreateInfos.push_back(info);
     } else {
-      bool resourceAllocated = false;
-      for (uint32_t bufId = 0; bufId < bufferBucket.size(); bufId++) {
-        auto& buf = bufferBucket[bufId];
-        if (buf.bufInfo != resource.second->renderBufferInfo) continue;
-        if (buf.dependencyReservation.size() <
-            resource.second->maxDependencyRange)
-          buf.dependencyReservation.insert(
-              buf.dependencyReservation.end(), false,
-              resource.second->maxDependencyRange -
-                  buf.dependencyReservation.size());
+      vulkan::BufferInfo info{
+          .size = resource.second->renderBufferInfo.size,
+          .usage = resource.second->renderBufferInfo.usage,
+          .memoryFlags = resource.second->renderBufferInfo.memoryFlags,
+          .requireMappedData =
+              resource.second->renderBufferInfo.requireMappedData,
+          .resourceLifespan = resource.second->resourceLifespan,
+      };
 
-        // If resource already reserved, continue
-        for (uint32_t i = resource.second->minDependencyRange;
-             i < resource.second->maxDependencyRange; i++) {
-          if (buf.dependencyReservation[i]) continue;
-        }
-
-        // If resource is free, claim for requested range
-        for (uint32_t i = resource.second->minDependencyRange;
-             i < resource.second->maxDependencyRange; i++) {
-          buf.dependencyReservation[i] = true;
-        }
-
-        resource.second->resourceIndex = bufId;
-        resourceAllocated = true;
-        break;
-      }
-
-      if (!resourceAllocated) {
-        resource.second->resourceIndex = bufferBucket.size();
-        bufferBucket.push_back(
-            BufferResourceReservation(resource.second->renderBufferInfo,
-                                      resource.second->minDependencyRange,
-                                      resource.second->maxDependencyRange));
-      }
+      resource.second->resourceIndex = renderBufferCreateInfos.size();
+      renderBufferCreateInfos.push_back(info);
     }
   }
+
+  for (auto& buffer : bufferCreateInfos) {
+    renderImages.push_back(device->createBuffer(buffer, false));
+  }
+  internalRenderBuffers = device->createAliasedBuffers(renderBufferCreateInfos);
 }
 
 uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,

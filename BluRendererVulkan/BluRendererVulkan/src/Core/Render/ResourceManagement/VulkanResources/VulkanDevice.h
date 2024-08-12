@@ -72,8 +72,8 @@ struct Image {
 
 struct BufferInfo {
   VkDeviceSize size;
-  VkDeviceSize offset;
   VkBufferUsageFlags usage;
+  VkMemoryPropertyFlags memoryFlags;
   bool requireMappedData;
   // The only limitaion to having more than 32 dependency layers is this
   unsigned long resourceLifespan;
@@ -83,6 +83,7 @@ struct Buffer {
   VkDeviceSize offset = 0;
   VkBuffer buffer;
   VmaAllocation deviceMemory;
+  VkDescriptorBufferInfo descriptor;
   void *mappedData = nullptr;
 };
 
@@ -167,9 +168,7 @@ class VulkanDevice {
   Image *createImage(const ImageInfo &imageCreateInfo, bool renderResource);
   std::vector<Image *> createAliasedImages(
       std::vector<ImageInfo> imageCreateInfos);
-  Buffer *createBuffer(const BufferInfo &bufferCreateInfo,
-                       const VkMemoryPropertyFlagBits &memoryFlags,
-                       bool renderResource);
+  Buffer *createBuffer(const BufferInfo &bufferCreateInfo, bool renderResource);
   std::vector<Buffer *> createAliasedBuffers(
       std::vector<BufferInfo> bufferCreateInfos);
 };

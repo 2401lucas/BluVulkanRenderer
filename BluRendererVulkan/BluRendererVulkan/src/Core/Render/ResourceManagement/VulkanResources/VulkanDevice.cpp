@@ -595,7 +595,7 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
                                       &allocCreateInfo, &alloc, nullptr));
 
     // index.first is resource index
-    // index.second is resource offset
+    // index.second is resource memory offset
     for (auto &index : reservation.resourceIndices) {
       newImages[index.first]->deviceMemory = alloc;
       VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, index.second,
@@ -608,12 +608,11 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
 }
 
 Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
-                                   const VkMemoryPropertyFlagBits &memoryFlags,
                                    bool renderResource) {
   auto newBuffer = new Buffer();
   VmaAllocationCreateInfo allocCreateInfo = {
       .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = memoryFlags,
+      .preferredFlags = bufferCreateInfo.memoryFlags,
   };
 
   if (renderResource)
@@ -632,6 +631,8 @@ Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
   vmaCreateBuffer(allocator, &bufInfo, &allocCreateInfo, &newBuffer->buffer,
                   &newBuffer->deviceMemory, &info);
   newBuffer->mappedData = info.pMappedData;
+  newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
+                           newBuffer->size};
 
   return newBuffer;
 }
@@ -667,6 +668,8 @@ std::vector<Buffer *> VulkanDevice::createAliasedBuffers(
           memReq, bufferCreateInfo.resourceLifespan, newBufferIndex));
     }
 
+    newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
+                             newBuffer->size};
     newBuffers.push_back(newBuffer);
   }
 
