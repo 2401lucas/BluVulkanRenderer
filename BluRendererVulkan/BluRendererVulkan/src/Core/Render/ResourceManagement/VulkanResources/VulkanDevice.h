@@ -69,7 +69,21 @@ struct Image {
   void *mappedData = nullptr;
 };
 
-struct Buffer {};
+struct BufferInfo {
+  VkDeviceSize size;
+  VkDeviceSize offset;
+  VkBufferUsageFlags usage;
+  bool requireMappedData;
+  // The only limitaion to having more than 32 dependency layers is this
+  unsigned long resourceLifespan;
+};
+struct Buffer {
+  VkDeviceSize size = 0;
+  VkDeviceSize offset = 0;
+  VkBuffer buffer;
+  VmaAllocation deviceMemory;
+  void *mappedData = nullptr;
+};
 
 // Vulkan Resources are self contained in VulkanDevice
 // VulkanDevice handles all resource creation/deletion
@@ -148,14 +162,16 @@ class VulkanDevice {
   // ---------------------------------------------------------------------------------------
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);
-  vks::Buffer *createBuffer(VkBufferUsageFlags usageFlags, VkDeviceSize size,
-                            VkMemoryPropertyFlags memoryPropertyFlags,
-                            uint32_t instanceCount);
 
   Image *createImage(const ImageInfo &imageCreateInfo,
                      const VkMemoryPropertyFlagBits &memoryFlags,
                      bool renderResource);
   std::vector<Image *> createAliasedImages(
       std::vector<ImageInfo> imageCreateInfos);
+  Buffer *createBuffer(const BufferInfo &bufferCreateInfo,
+                       const VkMemoryPropertyFlagBits &memoryFlags,
+                       bool renderResource);
+  std::vector<Buffer *> createAliasedBuffers(
+      std::vector<BufferInfo> bufferCreateInfos);
 };
 }  // namespace core_internal::rendering::vulkan

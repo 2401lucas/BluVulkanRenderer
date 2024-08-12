@@ -417,58 +417,6 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
   throw std::runtime_error("Could not find a matching depth format");
 }
 
-vks::Buffer *VulkanDevice::createBuffer(
-    VkBufferUsageFlags usageFlags, VkDeviceSize size,
-    VkMemoryPropertyFlags memoryPropertyFlags, uint32_t instanceCount) {
-  VkBufferCreateInfo bufferCreateInfo{
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = size,
-      .usage = usageFlags};
-
-  VmaAllocationCreateInfo allocInfo = {.usage = VMA_MEMORY_USAGE_AUTO};
-
-  VkBuffer buffer;
-  VmaAllocation alloc;
-  vmaCreateBuffer(allocator, &bufferCreateInfo, &allocInfo, &buffer, &alloc,
-                  nullptr);
-
-  auto newBuffer = new vks::Buffer();
-  newBuffer->size = size;
-  newBuffer->usageFlags = usageFlags;
-  newBuffer->memoryPropertyFlags = memoryPropertyFlags;
-
-  newBuffer->buffer.resize(instanceCount);
-  newBuffer->memory.resize(instanceCount);
-  newBuffer->descriptor.resize(instanceCount);
-  for (size_t i = 0; i < instanceCount; i++) {
-    VK_CHECK_RESULT(vkCreateBuffer(logicalDevice, &bufferCreateInfo, nullptr,
-                                   &newBuffer->buffer[i]));
-
-    VkMemoryRequirements memReqs{};
-    VkMemoryAllocateInfo memAlloc{.sType =
-                                      VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    vkGetBufferMemoryRequirements(logicalDevice, newBuffer->buffer[i],
-                                  &memReqs);
-    memAlloc.allocationSize = memReqs.size;
-    // Find a memory type index that fits the properties of the buffer
-    memAlloc.memoryTypeIndex =
-        getMemoryType(memReqs.memoryTypeBits, memoryPropertyFlags);
-    // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also
-    // need to enable the appropriate flag during allocation
-    VkMemoryAllocateFlagsInfoKHR allocFlagsInfo{};
-    if (usageFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-      allocFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR;
-      allocFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
-      memAlloc.pNext = &allocFlagsInfo;
-    }
-    VK_CHECK_RESULT(vkAllocateMemory(logicalDevice, &memAlloc, nullptr,
-                                     &newBuffer->memory[i]));
-    newBuffer->alignment = memReqs.alignment;
-
-    // newBuffer->setupDescriptor();
-  }
-}
-
 Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
                                  const VkMemoryPropertyFlagBits &memoryFlags,
                                  bool renderResource) {
@@ -495,9 +443,9 @@ Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
   };
 
   if (renderResource)
-    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-  else if (imageCreateInfo.requireMappedData)
-    allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+  if (imageCreateInfo.requireMappedData)
+    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
   VmaAllocationInfo allocInfo;
   VK_CHECK_RESULT(vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo,
@@ -658,6 +606,93 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
   }
 
   return newImages;
+}
+
+Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
+                                   const VkMemoryPropertyFlagBits &memoryFlags,
+                                   bool renderResource) {
+  auto newBuffer = new Buffer();
+  VmaAllocationCreateInfo allocCreateInfo = {
+      .usage = VMA_MEMORY_USAGE_AUTO,
+      .preferredFlags = memoryFlags,
+  };
+
+  if (renderResource)
+    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+  if (bufferCreateInfo.requireMappedData)
+    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+  VkBufferCreateInfo bufInfo{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = bufferCreateInfo.size,
+      .usage = bufferCreateInfo.usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+
+  VmaAllocationInfo info;
+  vmaCreateBuffer(allocator, &bufInfo, &allocCreateInfo, &newBuffer->buffer,
+                  &newBuffer->deviceMemory, &info);
+  newBuffer->mappedData = info.pMappedData;
+
+  return newBuffer;
+}
+
+std::vector<Buffer *> VulkanDevice::createAliasedBuffers(
+    std::vector<BufferInfo> bufferCreateInfos) {
+  std::vector<Buffer *> newBuffers;
+  std::vector<ResourceReservation> resourceReservations;
+
+  for (auto &bufferCreateInfo : bufferCreateInfos) {
+    auto newBuffer = new Buffer();
+    VkBufferCreateInfo bufInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = bufferCreateInfo.size,
+        .usage = bufferCreateInfo.usage,
+    };
+
+    vkCreateBuffer(logicalDevice, &bufInfo, nullptr, &newBuffer->buffer);
+    VkMemoryRequirements memReq;
+    vkGetBufferMemoryRequirements(logicalDevice, newBuffer->buffer, &memReq);
+    uint32_t newBufferIndex = newBuffers.size();
+    bool allocated = false;
+    for (auto reservation : resourceReservations) {
+      if (reservation.tryReserve(memReq, bufferCreateInfo.resourceLifespan,
+                                 newBufferIndex)) {
+        allocated = true;
+        break;
+      }
+    }
+
+    if (!allocated) {
+      resourceReservations.push_back(ResourceReservation(
+          memReq, bufferCreateInfo.resourceLifespan, newBufferIndex));
+    }
+
+    newBuffers.push_back(newBuffer);
+  }
+
+  VmaAllocationCreateInfo allocCreateInfo = {
+      .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+      .usage = VMA_MEMORY_USAGE_AUTO,
+      .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      // .allocCreateInfo.priority = 1.0f; Read more about this to better
+      // understand advantages
+  };
+
+  for (auto &reservation : resourceReservations) {
+    VmaAllocation alloc;
+    VK_CHECK_RESULT(vmaAllocateMemory(allocator, &reservation.localMemReq,
+                                      &allocCreateInfo, &alloc, nullptr));
+
+    for (auto &index : reservation.resourceIndices) {
+      newBuffers[index.first]->deviceMemory = alloc;
+      VK_CHECK_RESULT(vmaBindBufferMemory2(allocator, alloc, index.second,
+                                           newBuffers[index.first]->buffer,
+                                           nullptr));
+    }
+  }
+
+  return newBuffers;
 }
 
 VulkanDevice::ResourceReservation::ResourceReservation(
