@@ -3,14 +3,16 @@
 #include <vulkan/vulkan.h>
 
 #include <functional>
+#include <glm/ext/vector_float4.hpp>
 #include <string>
 #include <vector>
 
+#include "Components/Model.hpp"
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 #include "ResourceManagement/VulkanResources/VulkanTexture.h"
 
-// TODO: Remove vulkan specific resources
+// TODO: Make Agnostic Render API
 namespace core_internal::rendering {
 class RenderGraph;
 class RenderGraphPass;
@@ -54,7 +56,7 @@ struct AttachmentInfo {
   bool requireSampler = false;
   bool requireImageView = false;
   bool requireMappedData = false;
-  bool persistant = false;  // Static data can still be updated upon request
+  bool isExternal = false;  // Static data can still be updated upon request
 };
 
 struct BufferInfo {
@@ -62,10 +64,8 @@ struct BufferInfo {
   VkBufferUsageFlags usage = 0;
   RenderGraphMemoryTypeFlags memoryFlags;
 
-  bool persistant = false;  // Static data can still be updated upon request
-  // If data is Persistant, this forces one buffer to be shared for each frame
-  // in flight
-  bool forceSingleInstance = false;
+  bool isExternal = false;
+  bool requireMappedData = false;
 };
 
 class RenderResource {
@@ -73,12 +73,9 @@ class RenderResource {
   // Used for Generating Dependency Layers
   std::vector<uint32_t> usedInPasses;
   // Resource Lifespan only cares about first/last time used
-  unsigned long resourceLifespan;
-
-  bool persistant = false;
+  unsigned long resourceLifespan = 0;
   uint32_t resourceIndex = -1;
 
-  RenderResource(uint32_t index) { usedInPasses.push_back(index); }
   void registerPass(uint32_t index) { usedInPasses.push_back(index); }
 };
 
@@ -86,14 +83,20 @@ class RenderTextureResource : public RenderResource {
  public:
   AttachmentInfo renderTextureInfo;
 
-  RenderTextureResource();
+  RenderTextureResource() = delete;
+  RenderTextureResource(AttachmentInfo renderTextureInfo) {
+    this->renderTextureInfo = renderTextureInfo;
+  }
 };
 
 class RenderBufferResource : public RenderResource {
  public:
   BufferInfo renderBufferInfo;
 
-  RenderBufferResource();
+  RenderBufferResource() = delete;
+  RenderBufferResource(BufferInfo renderBufferInfo) {
+    this->renderBufferInfo = renderBufferInfo;
+  }
 };
 
 class RenderGraphPass {
@@ -101,6 +104,8 @@ class RenderGraphPass {
   RenderGraph *graph;
   RenderGraphQueueFlags queue = RENDER_GRAPH_GRAPHICS_QUEUE;
   uint32_t index;
+
+  RenderGraph::DrawType drawType;
 
   std::vector<RenderTextureResource *> inputTextureAttachments;
   std::vector<RenderBufferResource *> inputStorageAttachments;
@@ -111,7 +116,7 @@ class RenderGraphPass {
 
   std::function<bool(VkClearDepthStencilValue *)> getDepthClearColor_cb;
   std::function<bool(uint32_t, VkClearColorValue *)> getColorClearColor_cb;
-  std::function<void()> getCommandBuffer_cb;
+  std::function<void(VkCommandBuffer)> recordCommandBuffer_cb;
 
  public:
   // Acyclic Dependency Layer
@@ -128,7 +133,7 @@ class RenderGraphPass {
   RenderBufferResource *addStorageOutput(const std::string &name,
                                          const BufferInfo &info);
 
-  void set_GetCommandBuffer(std::function<void()> callback);
+  void set_GetCommandBuffer(std::function<void(VkCommandBuffer)> callback);
 
   void setQueue(const RenderGraphQueueFlags &queue);
   RenderGraphQueueFlags &getQueue();
@@ -136,19 +141,23 @@ class RenderGraphPass {
                   const RenderGraphQueueFlags &passQueue);
 
   std::vector<RenderTextureResource *> &getOutputAttachments();
+
+  void draw(VkCommandBuffer buf);
 };
 
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION
 // Since this is controlling all frame resources, it should be able to keep
 // track of exact VRAM size and other relevant info. Should have it's own
 // toggleable Debug UI
+// Assumptions:
+// Each RGPass is only wrote to once? Is this a required assumption
 class RenderGraph {
  private:
   core_internal::rendering::vulkan::VulkanDevice *device;
   core_internal::rendering::vulkan::VulkanSwapchain *swapchain;
 
   // Registered Resources
-  std::vector<RenderGraphPass *> renderGraphPasses;
+  std::vector<RenderGraphPass *> renderPasses;
   std::unordered_map<std::string, RenderTextureResource *> textureBlackboard;
   std::unordered_map<std::string, RenderBufferResource *> bufferBlackboard;
 
@@ -162,8 +171,46 @@ class RenderGraph {
   std::vector<vulkan::Buffer *> internalRenderBuffers;
 
   // Rendering Resources
-  struct GeneratedRenderGraph {};
-  std::vector<GeneratedRenderGraph *> genRenderGraph;
+  VkSemaphore timelineSemaphore;
+  VkSemaphore presentSemaphore;
+
+  std::vector<vulkan::Buffer *> drawBuffers;
+
+  enum ShaderWorkflows {
+    SHADER_WORKFLOW_PBR_METALLIC_ROUGHNESS = 0,
+    SHADER_WORKFLOW_PBR_SPECULAR_GLOSSINESS = 1
+  };
+
+  struct alignas(16) ShaderMaterial {
+    glm::vec4 baseColorFactor;
+    glm::vec4 emissiveFactor;
+    glm::vec4 diffuseFactor;
+    glm::vec4 specularFactor;
+    float workflow;
+    int colorTextureSet;
+    int physicalDescriptorTextureSet;
+    int normalTextureSet;
+    int occlusionTextureSet;
+    int emissiveTextureSet;
+    float metallicFactor;
+    float roughnessFactor;
+    float alphaMask;
+    float alphaMaskCutoff;
+    float emissiveStrength;
+  };
+
+  // A Model is defined as an object to be rendered containing both Mesh &
+  // Texture Info
+  struct Model {
+    VkDrawIndexedIndirectCommand renderData;
+    ShaderMaterial shaderModelInfo;
+    int meshIndex;
+    int materialIndex;
+  };
+
+  struct RenderingSettings {
+    bool useMSAA;
+  };
 
   void validateData();
 
@@ -174,16 +221,46 @@ class RenderGraph {
   uint32_t getImageSize(AttachmentSizeRelative sizeRelative,
                         uint32_t swapchainSize, float size);
 
-  void generateMemoryBarriers();
   void generateDescriptorSets();
+  void generateSemaphores();
 
  public:
+  enum class DrawType {
+    CameraOccludedOpaque,
+    CameraOccludedTranslucent,
+    FullscreenTriangle,
+    Compute,          // Not actually triangle, but used for perf
+                      // testing
+    CustomOcclusion,  // Requires Bounding box info
+    CPU_RECORDED,     // Requires callback to draw commands to be supplied
+  };
+
+  // Bindless descriptor set used when rendering models
+  VkDescriptorSet modelDescriptorSet;
+
   RenderGraph();
   ~RenderGraph();
 
+  // All (Aliased) Resources need an MemoryBarrier to specify previous memory as
+  // undefined
+  // Timeline Semaphores to sync each Dependency Layer + Binary Semaphore to
+  // sync q submit
+  // All Scene Info should be stored in 2 buffers
+  // Buffer 1: Vertex/Index Buffer (Mesh Info)
+  // Buffer 2: Material, Transforms & Maybe Camera info?
+  // Buffer 3: Output buffer of draw commands?
+  // How to handle UI? (UI managed by RG, allowing for RG specific UI(Debugging)
+  // + Scene unique UI)
   void prepareFrame();
   VkResult submitFrame();
   void onResized();
+  // Used to clean generated model assets, used on scene change.
+  // TODO: Don't delete old mesh data that is used in new scene, but I am
+  // focused on runtime performance and getting a job so this is low on the
+  // priority list.
+  void clearModels();
+  void registerModel();
+  void registerModels(std::vector<core::engine::components::Model>);
 
   // Should outside updated resources be managed by RenderGraph, or by outside
   // classes
@@ -192,8 +269,7 @@ class RenderGraph {
   // making this obselete?
   // Also when creating render passes with Dynamic Rendering, very few should
   // be used and it also requires explicite image transfers
-  RenderGraphPass *addPass(const std::string &name,
-                           const VkPipelineStageFlags flag);
+  RenderGraphPass *addPass(const std::string &name, const DrawType &);
 
   RenderTextureResource *createTexture(const std::string &name,
                                        const AttachmentInfo &info);
@@ -201,14 +277,14 @@ class RenderGraph {
                                      const BufferInfo &info);
 
   RenderTextureResource *getTexture(const std::string &name);
+  vulkan::Image *getTexture(const uint32_t &index);
   RenderBufferResource *getBuffer(const std::string &name);
 
   RenderBufferResource *setFinalOutput(const std::string &name);
 
-  void printRenderGraph();
-
   void bake();
 
+  vulkan::Buffer getDrawBuffer(DrawType);
   // Access to modify baked resource memory such as model position Buffers
 };
 }  // namespace core_internal::rendering

@@ -57,8 +57,9 @@ RenderBufferResource* RenderGraphPass::addStorageOutput(
   return buf;
 }
 
-void RenderGraphPass::set_GetCommandBuffer(std::function<void()> callback) {
-  getCommandBuffer_cb = std::move(callback);
+void RenderGraphPass::set_GetCommandBuffer(
+    std::function<void(VkCommandBuffer)> callback) {
+  recordCommandBuffer_cb = std::move(callback);
 }
 
 void RenderGraphPass::setQueue(const RenderGraphQueueFlags& queue) {
@@ -70,15 +71,162 @@ RenderGraphQueueFlags& RenderGraphPass::getQueue() { return queue; }
 std::vector<RenderTextureResource*>& RenderGraphPass::getOutputAttachments() {
   return outputColorAttachments;
 }
+// So drawing needs to be quite versatile to handle all sorts of variations
+// Depth:
+//  as Input: LAYOUT: PREV -> READ ONLY
+//  as Output: UNDEF -> READONLY - (Maybe seperate stencil?)
+// Color:
+//  as Input: LAYOUT: PREV -> READ ONLY
+//  as Output: LAYOUT: UNDEF -> COLOR OPTIMAL: It must be from UNDEF to clear
+//  previous "junk" data as aliased resources are filled bad data
+// ATTACHMENTS----------------
+// Technically attachments could be baked I think, but maybe having it dynamic
+// works:
+// PROS:
+//  Allows for on the fly changes without re-baking
+// CONS:
+//  Slower per frame CPU performance
+// Solution:
+// This will remain dynamic until it is rendering successfully, at that point I
+// will re-evaluate based on profiling
+// RENDERING-------------------
+// Because DrawCommands are generated on GPU intead of on CPU, we could
+// generate draw commands for different cases and reuse them
+// Examples could be: Camera Occluded Draws, Shadow draws, UI draws? (UI should
+// be capped at X FPS & probably recorded CPU side for simplicity)
+// TODO: Support indexed resources (IE per FIF or hardcap at 2(I think this is
+// best but need to investigate/profile to confirm beliefs))
+void RenderGraphPass::draw(VkCommandBuffer buf) {
+  if (outputColorAttachments.size() == 0) {
+    DEBUG_ERROR("Renderpass with index: " + std::to_string(index) +
+                " trying to draw has no output attachments");
+  }
+
+  std::vector<VkRenderingAttachmentInfoKHR> attachments;
+  VkRenderingAttachmentInfoKHR depthStencilAttachment;
+  uint32_t width = 0;
+  uint32_t height = 0;
+
+  if (depthStencilInput) {
+    auto tex = graph->getTexture(depthStencilInput->resourceIndex);
+
+    tex->transitionImageLayout(buf,
+                               VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+
+    depthStencilAttachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .imageView = tex->view,
+        .imageLayout = tex->imageLayout,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_NONE,
+        .clearValue{.depthStencil = {1.0f, 0}},
+    };
+  } else if (depthStencilOutput) {
+    auto tex = graph->getTexture(depthStencilOutput->resourceIndex);
+    tex->transitionImageLayout(
+        buf, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    depthStencilAttachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .imageView = tex->view,
+        .imageLayout = tex->imageLayout,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue{.depthStencil = {1.0f, 0}},
+    };
+  }
+
+  for (auto& inputTex : inputTextureAttachments) {
+    auto tex = graph->getTexture(inputTex->resourceIndex);
+
+    tex->transitionImageLayout(buf, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    VkClearValue clear{};
+    clear.color = {0, 0, 0, 0};
+    clear.depthStencil = {1.0f, 0};
+    attachments.push_back({
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .imageView = tex->view,
+        .imageLayout = tex->imageLayout,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+        .storeOp = VK_ATTACHMENT_STORE_OP_NONE,
+        .clearValue = clear,
+    });
+  }
+
+  for (auto& outputTex : outputColorAttachments) {
+    auto tex = graph->getTexture(outputTex->resourceIndex);
+    tex->transitionImageLayout(buf, VK_IMAGE_LAYOUT_UNDEFINED,
+                               VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkClearValue clear{};
+    clear.color = {0, 0, 0, 0};
+    clear.depthStencil = {1.0f, 0};
+
+    attachments.push_back({
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .imageView = tex->view,
+        .imageLayout = tex->imageLayout,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = clear,
+    });
+  }
+
+  VkRenderingInfo renderpassInfo{
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+      .pNext = nullptr,
+      .flags = 0,
+      .renderArea = {.extent{.width = width, .height = height}},
+      .layerCount = 1,
+      .viewMask = 0,  // Multiview
+      .colorAttachmentCount = attachments.size(),
+      .pColorAttachments = attachments.data(),
+      .pDepthAttachment = &depthStencilAttachment,
+      .pStencilAttachment = &depthStencilAttachment,
+  };
+
+  vkCmdBeginRenderingKHR(buf, &renderpassInfo);
+
+  switch (drawType) {
+    case core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
+    case core_internal::rendering::RenderGraph::DrawType::
+        CameraOccludedTranslucent:
+      vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0, 1,
+                               sizeof(float));  // TODO: Fill with non junk
+      break;
+    case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
+      vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
+      break;
+    case core_internal::rendering::RenderGraph::DrawType::Compute:
+      break;
+    case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
+      break;
+    case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
+      recordCommandBuffer_cb(buf);
+      break;
+    default:
+      DEBUG_ERROR("Missing Draw Type implementation");
+      break;
+  }
+
+  vkCmdEndRenderingKHR(buf);
+}
+
+void RenderGraph::clearModels() {}
+
+void RenderGraph::registerModel() {}
+
+
+void RenderGraph::registerModels(std::vector<core::engine::components::Model> models) {
+
+}
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
-                                      const VkPipelineStageFlags flag) {
+                                      const DrawType& drawType) {
   return nullptr;
 }
 
 RenderTextureResource* RenderGraph::createTexture(const std::string& name,
                                                   const AttachmentInfo& info) {
-  auto newTex = new RenderTextureResource();
+  auto newTex = new RenderTextureResource(info);
   auto [it, success] =
       textureBlackboard.try_emplace(name, static_cast<RenderResource*>(newTex));
 
@@ -92,7 +240,7 @@ RenderTextureResource* RenderGraph::createTexture(const std::string& name,
 
 RenderBufferResource* RenderGraph::createBuffer(const std::string& name,
                                                 const BufferInfo& info) {
-  auto newBuf = new RenderBufferResource();
+  auto newBuf = new RenderBufferResource(info);
   auto [it, success] =
       bufferBlackboard.try_emplace(name, static_cast<RenderResource*>(newBuf));
 
@@ -114,6 +262,15 @@ RenderTextureResource* RenderGraph::getTexture(const std::string& name) {
   }
 }
 
+vulkan::Image* RenderGraph::getTexture(const uint32_t& index) {
+  if (index >= internalRenderImages.size()) {
+    DEBUG_ERROR("Trying to get texture that does not exist with index: " +
+                index);
+  }
+
+  return internalRenderImages[index];
+}
+
 RenderBufferResource* RenderGraph::getBuffer(const std::string& name) {
   if (auto res = bufferBlackboard.find(name); res != bufferBlackboard.end()) {
     return static_cast<RenderBufferResource*>(res->second);
@@ -125,7 +282,7 @@ RenderBufferResource* RenderGraph::getBuffer(const std::string& name) {
 }
 
 void RenderGraph::validateData() {
-  if (renderGraphPasses.size() == 0) {
+  if (renderPasses.size() == 0) {
     DEBUG_ERROR("RenderGraph has no set Render Passes");
   }
 
@@ -134,7 +291,8 @@ void RenderGraph::validateData() {
   }
 
   for (auto& tex : textureBlackboard) {
-    if (!tex.second->persistant && tex.second->usedInPasses.size() < 2) {
+    if (!tex.second->renderTextureInfo.isExternal &&
+        tex.second->usedInPasses.size() < 2) {
       DEBUG_WARNING("Resource with name: " + tex.first +
                     "is only referenced as an output");
     }
@@ -147,7 +305,7 @@ void RenderGraph::validateData() {
 
 void RenderGraph::generateDependencyChain() {
   // Assign Passes DepenencyLayer
-  for (uint32_t i = 0; i < renderGraphPasses.size(); i++) {
+  for (uint32_t i = 0; i < renderPasses.size(); i++) {
     // Start the search from every node
     dependencySearch(i, 0);
   }
@@ -156,17 +314,17 @@ void RenderGraph::generateDependencyChain() {
 void RenderGraph::dependencySearch(const uint32_t& passIndex,
                                    const uint32_t& depth) {
   // If depth is greater than number of render passes, it is a cyclic loop
-  if (renderGraphPasses.size() < depth) {
+  if (renderPasses.size() < depth) {
     DEBUG_ERROR("Fatal: RenderGraph has a cyclic loop");
   }
   // If the dependencyLayer has already been set to a higher depth than the
   // depth we are currently on, we know the same will be true for the children
   // and can early exit this search
-  if (renderGraphPasses[passIndex]->dependencyLayer > depth) {
+  if (renderPasses[passIndex]->dependencyLayer > depth) {
     return;
   }
-  renderGraphPasses[passIndex]->dependencyLayer = depth;
-  auto& outputResources = renderGraphPasses[passIndex]->getOutputAttachments();
+  renderPasses[passIndex]->dependencyLayer = depth;
+  auto& outputResources = renderPasses[passIndex]->getOutputAttachments();
 
   for (uint32_t j = 0; j < outputResources.size(); j++) {
     outputResources[j]->resourceLifespan |= 1 << depth;
@@ -186,7 +344,7 @@ void RenderGraph::generateResources() {
   std::vector<vulkan::BufferInfo> renderBufferCreateInfos;
 
   for (auto& resource : textureBlackboard) {
-    if (resource.second->persistant) {
+    if (resource.second->renderTextureInfo.isExternal) {
       uint32_t width = getImageSize(
           resource.second->renderTextureInfo.sizeRelative,
           swapchain->imageWidth, resource.second->renderTextureInfo.sizeX);
@@ -246,7 +404,7 @@ void RenderGraph::generateResources() {
   internalRenderImages = device->createAliasedImages(renderImageCreateInfos);
 
   for (auto& resource : bufferBlackboard) {
-    if (resource.second->persistant) {
+    if (resource.second->renderBufferInfo.isExternal) {
       vulkan::BufferInfo info{
           .size = resource.second->renderBufferInfo.size,
           .usage = resource.second->renderBufferInfo.usage,
@@ -274,7 +432,7 @@ void RenderGraph::generateResources() {
   }
 
   for (auto& buffer : bufferCreateInfos) {
-    renderImages.push_back(device->createBuffer(buffer, false));
+    renderBuffers.push_back(device->createBuffer(buffer, false));
   }
   internalRenderBuffers = device->createAliasedBuffers(renderBufferCreateInfos);
 }
@@ -292,32 +450,42 @@ uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,
   }
 }
 
-// Output should resemble
-// Buffer "BufferName"
-// BufferSize X
-// BufferUsage X
-// BufferReservation
-// 0-2, 4-5
-// Texture Should be similar
-void RenderGraph::printRenderGraph() {}
+void RenderGraph::generateDescriptorSets() {
+  // Required Data for rendering Models found in RegisteredModel:
+  // VkBuffer:
+  //
+  // VkImage:
+  //
+  // VkBuffer:
+  //
+  //
+  // Generic Descriptor Sets
+  // registerModel(Mesh, Model?)
+  // MESH:
+  //  Mesh->
+  // MODEL:
+  //  Textures->Save Indices once registered
+  // AddDescriptorSet()
+  modelDescriptorSet;
+  // Unique per pass:
+  for (auto& pass : renderPasses) {
+    pass->
+  }
+}
 
 // Baking and any process related to this is not well optimized, baking only
-// happens when the pipeline is changed and I am OK with this being slow. I
-// may come back to this eventually and optimize it, however my focus is on
-// runtime performance
+// happens when the pipeline is created/changed and I am OK with this being
+// slow. I may come back to this eventually and optimize it, however my focus is
+// on runtime performance
 void RenderGraph::bake() {
   validateData();
 
-  // This leaves us with each pass being assigned a Dependency Layer, passes
-  // with the same dependency layer can executed arbitrarily (Optimize 0_0)
-  // Memory lifetime is tracked by dependency layer. Dependency layers have a
-  // few assumptions: Won't write to the same resource, Each created resource
-  // only exists for the current frame (This is not true for TAA, maybe
-  // reserve frame permanent texture, create new TAA pass reading from old,
-  // once done copy new tex to old tex? Or maybe pingpong 2 textures at the
-  // cost of a little VRAM, but saving the copy time)
   generateDependencyChain();
-  generateResourceBuckets();
+  generateResources();
+
+  // TODO
+  generateDescriptorSets();
+  generateSemaphores();
   // printRenderGraph();
 
   // GPU RESOURCES
@@ -337,10 +505,6 @@ void RenderGraph::bake() {
   // Foreach resource, device->create()
   // For Textures, support different filetypes(ktx, dds, png & jpeg)
   // For Textures, support Cubemaps, Tex2D
-  generateResources();
-
-  generateMemoryBarriers();
-  generateDescriptorSets();
 
   // Smart Descriptor Set Creation? Hash sets for reuse? or a descriptor set
   // just for externally managed resources. Could have one for

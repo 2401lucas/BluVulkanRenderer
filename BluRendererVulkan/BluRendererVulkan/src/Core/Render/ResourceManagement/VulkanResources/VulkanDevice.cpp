@@ -473,19 +473,21 @@ Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
   }
 
   if (imageCreateInfo.requireImageView) {
+    newImage->subresourceRange = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
     VkImageViewCreateInfo imageViewCreateInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .flags = imageCreateInfo.imageViewInfo.flags,
         .image = newImage->image,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = imageCreateInfo.format,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        }};
+        .subresourceRange = newImage->subresourceRange,
+    };
     VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
                                       nullptr, &newImage->view));
   }
@@ -538,6 +540,13 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
     };
     VK_CHECK_RESULT(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr,
                                     &newImage->sampler));
+    newImage->subresourceRange = {
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
 
     VkImageViewCreateInfo imageViewCreateInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -545,13 +554,8 @@ std::vector<Image *> VulkanDevice::createAliasedImages(
         .image = newImage->image,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = imageCreateInfo.format,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        }};
+        .subresourceRange = newImage->subresourceRange,
+    };
     VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
                                       nullptr, &newImage->view));
 

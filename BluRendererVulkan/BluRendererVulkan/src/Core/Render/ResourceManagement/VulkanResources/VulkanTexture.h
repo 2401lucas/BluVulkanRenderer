@@ -7,6 +7,7 @@
 
 namespace vks {
 class Texture {
+ public:
   VkDevice device;
   VkImage image = VK_NULL_HANDLE;
   VkImageLayout imageLayout;

@@ -85,7 +85,8 @@ struct PBRInfo
 	vec3 specularColor;           // color contribution from specular lighting
 };
 
-const float M_PI = 3.141592653589793;
+const float M_PI =	3.141592653589793;
+const float M_TAU = 6.283185307179586;
 const float c_MinRoughness = 0.04;
 
 const float PBR_WORKFLOW_METALLIC_ROUGHNESS = 0.0;

@@ -13,6 +13,7 @@
 
 #include <vk_mem_alloc.h>
 
+#include "../ExternalResources/Debug.hpp"
 #include "VulkanBuffer.h"
 #include "VulkanTexture.h"
 #include "VulkanTools.h"
@@ -59,7 +60,8 @@ struct ImageInfo {
   VkDeviceSize offset = 0;
 };
 
-struct Image {
+class Image {
+ public:
   VkImage image = VK_NULL_HANDLE;
   VkImageLayout imageLayout;
   VmaAllocation deviceMemory = VK_NULL_HANDLE;
@@ -67,7 +69,118 @@ struct Image {
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
   VkDescriptorImageInfo descriptor;
+  VkImageSubresourceRange subresourceRange;
   void *mappedData = nullptr;
+
+  void transitionImageLayout(VkCommandBuffer cmdbuffer,
+                             VkImageLayout newImageLayout) {
+    transitionImageLayout(cmdbuffer, imageLayout, newImageLayout);
+  }
+
+  void transitionImageLayout(VkCommandBuffer cmdbuffer,
+                             VkImageLayout oldImageLayout,
+                             VkImageLayout newImageLayout) {
+    if (oldImageLayout == newImageLayout) return;
+
+    VkAccessFlags2 srcAccessMask = getAccessFlags(imageLayout);
+    VkAccessFlags2 dstAccessMask = getAccessFlags(newImageLayout);
+    VkPipelineStageFlags2 srcStageMask = getPipelineStageFlags(imageLayout);
+    VkPipelineStageFlags2 dstStageMask = getPipelineStageFlags(newImageLayout);
+
+    VkImageMemoryBarrier2 imageMemoryBarrier{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask = srcStageMask,
+        .srcAccessMask = srcAccessMask,
+        .dstStageMask = dstStageMask,
+        .dstAccessMask = dstAccessMask,
+        .oldLayout = oldImageLayout,
+        .newLayout = newImageLayout,
+        .image = image,
+        .subresourceRange = subresourceRange,
+    };
+
+    VkDependencyFlags dependencyFlags = 0;
+    // If both stages are in framebuffer space
+    if ((srcStageMask & dstStageMask &
+         (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)) != 0)
+      dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    VkDependencyInfo info{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .dependencyFlags = dependencyFlags,
+        .memoryBarrierCount = 0,
+        .pMemoryBarriers = nullptr,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = nullptr,
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers = &imageMemoryBarrier,
+    };
+
+    vkCmdPipelineBarrier2(cmdbuffer, &info);
+
+    imageLayout = newImageLayout;
+  }
+
+  VkPipelineStageFlags getPipelineStageFlags(VkImageLayout layout) {
+    switch (layout) {
+      case VK_IMAGE_LAYOUT_UNDEFINED:
+        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+      case VK_IMAGE_LAYOUT_PREINITIALIZED:
+        return VK_PIPELINE_STAGE_HOST_BIT;
+      case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+      case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+      case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+               VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+      case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
+        return VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+      case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+      case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+        return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+      case VK_IMAGE_LAYOUT_GENERAL:
+      default:
+        DEBUG_ERROR(
+            "Don't know how to get a meaningful VkPipelineStageFlags for "
+            "VK_IMAGE_LAYOUT_GENERAL! Don't use it!");
+    }
+  }
+
+  VkAccessFlags getAccessFlags(VkImageLayout layout) {
+    switch (layout) {
+      case VK_IMAGE_LAYOUT_UNDEFINED:
+      case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+        return 0;
+      case VK_IMAGE_LAYOUT_PREINITIALIZED:
+        return VK_ACCESS_HOST_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+               VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
+        return VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
+      case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+      case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        return VK_ACCESS_TRANSFER_READ_BIT;
+      case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_GENERAL:
+      default:
+        DEBUG_ERROR(
+            "Don't know how to get a meaningful VkAccessFlags for "
+            "VK_IMAGE_LAYOUT_GENERAL! Don't use it!");
+    }
+  }
 };
 
 struct BufferInfo {
