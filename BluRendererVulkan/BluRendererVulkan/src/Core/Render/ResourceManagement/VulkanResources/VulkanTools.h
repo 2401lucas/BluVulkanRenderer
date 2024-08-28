@@ -79,7 +79,7 @@ void setImageLayout(
     VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
 /** @brief Insert an image memory barrier into the command buffer */
-void insertImageMemoryBarrier(VkCommandBuffer cmdbuffer, VkImage image,
+void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
                               VkAccessFlags srcAccessMask,
                               VkAccessFlags dstAccessMask,
                               VkImageLayout oldImageLayout,
