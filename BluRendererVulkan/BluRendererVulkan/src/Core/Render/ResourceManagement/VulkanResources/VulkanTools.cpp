@@ -264,7 +264,7 @@ void setImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
                  subresourceRange, srcStageMask, dstStageMask);
 }
 
-void insertImageMemoryBarrier(VkCommandBuffer cmdbuffer, VkImage image,
+void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
                               VkAccessFlags srcAccessMask,
                               VkAccessFlags dstAccessMask,
                               VkImageLayout oldImageLayout,

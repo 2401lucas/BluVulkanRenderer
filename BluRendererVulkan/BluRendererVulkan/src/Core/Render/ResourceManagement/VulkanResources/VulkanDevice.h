@@ -13,7 +13,7 @@
 
 #include <vk_mem_alloc.h>
 
-#include "../ExternalResources/Debug.hpp"
+#include "../../../Tools/Debug.hpp"
 #include "VulkanBuffer.h"
 #include "VulkanTexture.h"
 #include "VulkanTools.h"
@@ -244,6 +244,8 @@ class VulkanDevice {
   VkPhysicalDevice physicalDevice;
   VkDevice logicalDevice;
   VmaAllocator allocator;
+  // Command pool used for GPU operations
+  VkCommandPool commandPool;
   VkPhysicalDeviceProperties physicalDeviceProperties;
   VkPhysicalDeviceFeatures physicalDeviceFeatures;
   VkPhysicalDeviceFeatures physicalDeviceEnabledFeatures;
@@ -256,6 +258,12 @@ class VulkanDevice {
     uint32_t compute;
     uint32_t transfer;
   } queueFamilyIndices;
+
+  struct {
+    VkQueue graphics{VK_NULL_HANDLE};
+    VkQueue compute{VK_NULL_HANDLE};
+    VkQueue transfer{VK_NULL_HANDLE};
+  } queues;
 
   explicit VulkanDevice(const char *name, bool useValidation,
                         std::vector<const char *> enabledDeviceExtensions,
@@ -273,12 +281,18 @@ class VulkanDevice {
   VkFormat getSupportedDepthFormat(bool checkSamplingSupport);
   void waitIdle();
 
+  VkCommandBuffer createCommandBuffer(VkCommandBufferLevel, VkCommandPool,
+                                      bool begin);
+  VkCommandBuffer createCommandBuffer(VkCommandBufferLevel, bool begin);
+
   // Vulkan Resource Management
   // ---------------------------------------------------------------------------------------
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);
 
   Image *createImage(const ImageInfo &imageCreateInfo, bool renderResource);
+  Image *createImageFromBuffer(ImageInfo &imageCreateInfo, void **data,
+                               VkDeviceSize dataSize);
   std::vector<Image *> createAliasedImages(
       std::vector<ImageInfo> imageCreateInfos);
   Buffer *createBuffer(const BufferInfo &bufferCreateInfo, bool renderResource);

@@ -242,6 +242,14 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
 
   VK_CHECK_RESULT(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr,
                                  &logicalDevice));
+
+  vkGetDeviceQueue(logicalDevice, queueFamilyIndices.graphics, 0,
+                   &queues.graphics);
+  vkGetDeviceQueue(logicalDevice, queueFamilyIndices.compute, 0,
+                   &queues.compute);
+  vkGetDeviceQueue(logicalDevice, queueFamilyIndices.transfer, 0,
+                   &queues.transfer);
+
   VmaAllocatorCreateInfo vmaAllocInfo{};
   vmaAllocInfo.device = logicalDevice;
   vmaAllocInfo.physicalDevice = physicalDevice;
@@ -249,11 +257,24 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
   vmaAllocInfo.vulkanApiVersion = apiVersion;
 
   vmaCreateAllocator(&vmaAllocInfo, &allocator);
+
+  VkCommandPoolCreateInfo cmdPoolInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .flags = 0,
+      .queueFamilyIndex = queueFamilyIndices.graphics,
+  };
+
+  VK_CHECK_RESULT(
+      vkCreateCommandPool(logicalDevice, &cmdPoolInfo, nullptr, &commandPool));
 }
 
 VulkanDevice::~VulkanDevice() {
   for (auto &shaderModule : shaderModules) {
     vkDestroyShaderModule(logicalDevice, shaderModule, nullptr);
+  }
+
+  if (commandPool) {
+    vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
   }
 
   if (allocator) {
@@ -373,6 +394,33 @@ uint32_t VulkanDevice::getQueueFamilyIndex(VkQueueFlags queueFlags) const {
 
 void VulkanDevice::waitIdle() { vkDeviceWaitIdle(logicalDevice); }
 
+VkCommandBuffer VulkanDevice::createCommandBuffer(VkCommandBufferLevel level,
+                                                  VkCommandPool pool,
+                                                  bool begin) {
+  VkCommandBufferAllocateInfo cmdBufAllocateInfo{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = pool,
+      .level = level,
+      .commandBufferCount = 1,
+  };
+
+  VkCommandBuffer cmdBuffer;
+  VK_CHECK_RESULT(
+      vkAllocateCommandBuffers(logicalDevice, &cmdBufAllocateInfo, &cmdBuffer));
+  // If requested, also start recording for the new command buffer
+  if (begin) {
+    VkCommandBufferBeginInfo cmdBufInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    VK_CHECK_RESULT(vkBeginCommandBuffer(cmdBuffer, &cmdBufInfo));
+  }
+  return cmdBuffer;
+}
+
+VkCommandBuffer VulkanDevice::createCommandBuffer(VkCommandBufferLevel level,
+                                                  bool begin) {
+  return createCommandBuffer(level, commandPool, begin);
+}
+
 VkPipelineShaderStageCreateInfo VulkanDevice::loadShader(
     std::string fileName, VkShaderStageFlagBits stage) {
   VkPipelineShaderStageCreateInfo shaderStage = {};
@@ -415,6 +463,81 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
     }
   }
   throw std::runtime_error("Could not find a matching depth format");
+}
+
+Image *VulkanDevice::createImageFromBuffer(ImageInfo &imageCreateInfo,
+                                           void **data, VkDeviceSize dataSize) {
+  if (!(imageCreateInfo.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
+    imageCreateInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  }
+
+  auto newImage = createImage(imageCreateInfo, false);
+
+  VkBufferCreateInfo bufCreateInfo{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = dataSize,
+      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+  };
+
+  VmaAllocationCreateInfo allocCreateInfo{
+      .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+               VMA_ALLOCATION_CREATE_MAPPED_BIT,
+      .usage = VMA_MEMORY_USAGE_AUTO,
+  };
+
+  VkBuffer stagingBuffer;
+  VmaAllocation alloc;
+  VmaAllocationInfo allocInfo;
+
+  vmaCreateBuffer(allocator, &bufCreateInfo, &allocCreateInfo, &stagingBuffer,
+                  &alloc, &allocInfo);
+
+  memcpy(allocInfo.pMappedData, data, dataSize);
+
+  VkBufferImageCopy bufferCopyRegion = {};
+  bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  bufferCopyRegion.imageSubresource.mipLevel = imageCreateInfo.mipLevels;
+  bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
+  bufferCopyRegion.imageSubresource.layerCount = imageCreateInfo.arrayLayers;
+  bufferCopyRegion.imageExtent.width = imageCreateInfo.width;
+  bufferCopyRegion.imageExtent.height = imageCreateInfo.height;
+  bufferCopyRegion.imageExtent.depth = imageCreateInfo.depth;
+  bufferCopyRegion.bufferOffset = 0;
+
+  auto copyCmd = createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+
+  newImage->transitionImageLayout(copyCmd,
+                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+  vkCmdCopyBufferToImage(copyCmd, stagingBuffer, newImage->image,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                         &bufferCopyRegion);
+
+  newImage->transitionImageLayout(copyCmd,
+                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+  VK_CHECK_RESULT(vkEndCommandBuffer(copyCmd));
+
+  VkSubmitInfo submitInfo{
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &copyCmd,
+  };
+
+  VkFenceCreateInfo fenceInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                              .flags = VK_FLAGS_NONE};
+
+  VkFence fence;
+  VK_CHECK_RESULT(vkCreateFence(logicalDevice, &fenceInfo, nullptr, &fence));
+  VK_CHECK_RESULT(vkQueueSubmit(queues.transfer, 1, &submitInfo, fence));
+  VK_CHECK_RESULT(vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE,
+                                  DEFAULT_FENCE_TIMEOUT));
+  vkDestroyFence(logicalDevice, fence, nullptr);
+  vkFreeCommandBuffers(logicalDevice, commandPool, 1, &copyCmd);
+
+  vmaDestroyBuffer(allocator, stagingBuffer, alloc);
+
+  return newImage;
 }
 
 Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,

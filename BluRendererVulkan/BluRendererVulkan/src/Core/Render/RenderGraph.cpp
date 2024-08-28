@@ -2,7 +2,9 @@
 
 #include <iostream>
 
-#include "ResourceManagement/ExternalResources/Debug.hpp"
+#include "../../libraries/GLTF/tiny_gltf.h"
+#include "../Tools/Debug.hpp"
+#include "ResourceManagement/ExternalResources/VulkanglTFModel.h"
 
 namespace core_internal::rendering {
 void RenderGraphPass::addAttachmentInput(const std::string& name) {
@@ -212,12 +214,108 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
 
 void RenderGraph::clearModels() {}
 
-void RenderGraph::registerModel() {}
+// Models are loaded individually to return relevent rendering information to
+// scene models
+// Mesh->Primitives that contains a mesh:
+//
+uint32_t RenderGraph::registerModel(core::engine::components::Model* model) {
+  if (model->filePath.empty()) {
+    // If model is created without a filepath, this is empty meant to hold
+    // components, it should be handled engine side and should never make it
+    // here
+    DEBUG_WARNING("Model has no filepath");
+    return;
+  }
 
+  if (modelBlackboard.contains(model->filePath)) {
+    auto modelInfoID = modelBlackboard[model->filePath];
 
-void RenderGraph::registerModels(std::vector<core::engine::components::Model> models) {
+    if (emptyModelSlots.empty()) {
+      auto modelID = models.size();
+      models.push_back(modelInfoID);
+      return modelID;
+    } else {
+      auto modelID = emptyModelSlots.front();
+      emptyModelSlots.pop();
+      return modelID;
+    }
+  } else {
+    vkglTF::Model newModel;
+    newModel.loadFromFile(model->filePath);
 
+    // if buffer can fit memory, send data
+    // else allocate more memory?
+  }
 }
+
+// size_t vertexBufferSize = vertexCount * sizeof(Vertex);
+// size_t indexBufferSize = indexCount * sizeof(uint32_t);
+
+// assert(vertexBufferSize > 0);
+
+// struct StagingBuffer {
+//   VkBuffer buffer;
+//   VkDeviceMemory memory;
+// } vertexStaging, indexStaging;
+
+//// Create staging buffers
+//// Vertex data
+// VK_CHECK_RESULT(device->createBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+//                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//                                      vertexBufferSize,
+//                                      &vertexStaging.buffer,
+//                                      &vertexStaging.memory,
+//                                      loaderInfo.vertexBuffer));
+//// Index data
+// if (indexBufferSize > 0) {
+//   VK_CHECK_RESULT(
+//       device->createBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+//                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//                            indexBufferSize, &indexStaging.buffer,
+//                            &indexStaging.memory, loaderInfo.indexBuffer));
+// }
+
+//// Create device local buffers
+//// Vertex buffer
+// VK_CHECK_RESULT(device->createBuffer(
+//     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+//     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBufferSize,
+//     &vertices.buffer, &vertices.memory));
+//// Index buffer
+// if (indexBufferSize > 0) {
+//   VK_CHECK_RESULT(device->createBuffer(
+//       VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+//       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBufferSize,
+//       &indices.buffer, &indices.memory));
+// }
+
+//// Copy from staging buffers
+// VkCommandBuffer copyCmd =
+//     device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+
+// VkBufferCopy copyRegion = {};
+
+// copyRegion.size = vertexBufferSize;
+// vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, vertices.buffer, 1,
+//                 &copyRegion);
+
+// if (indexBufferSize > 0) {
+//   copyRegion.size = indexBufferSize;
+//   vkCmdCopyBuffer(copyCmd, indexStaging.buffer, indices.buffer, 1,
+//                   &copyRegion);
+// }
+
+// device->flushCommandBuffer(copyCmd, transferQueue, true);
+
+// vkDestroyBuffer(device->logicalDevice, vertexStaging.buffer, nullptr);
+// vkFreeMemory(device->logicalDevice, vertexStaging.memory, nullptr);
+// if (indexBufferSize > 0) {
+//   vkDestroyBuffer(device->logicalDevice, indexStaging.buffer, nullptr);
+//   vkFreeMemory(device->logicalDevice, indexStaging.memory, nullptr);
+// }
+// }
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
                                       const DrawType& drawType) {

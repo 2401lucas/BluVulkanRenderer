@@ -11,6 +11,7 @@
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 #include "ResourceManagement/VulkanResources/VulkanTexture.h"
+#include <queue>
 
 // TODO: Make Agnostic Render API
 namespace core_internal::rendering {
@@ -153,6 +154,18 @@ class RenderGraphPass {
 // Each RGPass is only wrote to once? Is this a required assumption
 class RenderGraph {
  private:
+  // A Model is defined as an object to be rendered containing both Mesh &
+  // Texture Info
+  struct RegisteredModel {
+    // VkDrawIndexedIndirectCommand renderData;
+    // ShaderMaterial shaderModelInfo;
+    int meshIndex;
+    int materialIndex;
+  };
+
+  struct RenderingSettings {
+    bool useMSAA;
+  };
   core_internal::rendering::vulkan::VulkanDevice *device;
   core_internal::rendering::vulkan::VulkanSwapchain *swapchain;
 
@@ -170,47 +183,23 @@ class RenderGraph {
   std::vector<vulkan::Image *> internalRenderImages;
   std::vector<vulkan::Buffer *> internalRenderBuffers;
 
+  std::vector<RegisteredModel> registeredModels;
+  std::vector<uint32_t> models;
+  std::queue<uint32_t> emptyModelSlots;
+
+  // Cached GPU resources
+  std::unordered_map<std::string, uint32_t> modelBlackboard;
+  std::unordered_map<std::string, uint32_t> materialBlackboard;
+
+  std::vector<vulkan::Image *> shaderImages;  // Texture Images
+  vulkan::Buffer modelInfo;
+  vulkan::Buffer meshData;
+
   // Rendering Resources
   VkSemaphore timelineSemaphore;
   VkSemaphore presentSemaphore;
 
   std::vector<vulkan::Buffer *> drawBuffers;
-
-  enum ShaderWorkflows {
-    SHADER_WORKFLOW_PBR_METALLIC_ROUGHNESS = 0,
-    SHADER_WORKFLOW_PBR_SPECULAR_GLOSSINESS = 1
-  };
-
-  struct alignas(16) ShaderMaterial {
-    glm::vec4 baseColorFactor;
-    glm::vec4 emissiveFactor;
-    glm::vec4 diffuseFactor;
-    glm::vec4 specularFactor;
-    float workflow;
-    int colorTextureSet;
-    int physicalDescriptorTextureSet;
-    int normalTextureSet;
-    int occlusionTextureSet;
-    int emissiveTextureSet;
-    float metallicFactor;
-    float roughnessFactor;
-    float alphaMask;
-    float alphaMaskCutoff;
-    float emissiveStrength;
-  };
-
-  // A Model is defined as an object to be rendered containing both Mesh &
-  // Texture Info
-  struct Model {
-    VkDrawIndexedIndirectCommand renderData;
-    ShaderMaterial shaderModelInfo;
-    int meshIndex;
-    int materialIndex;
-  };
-
-  struct RenderingSettings {
-    bool useMSAA;
-  };
 
   void validateData();
 
@@ -254,13 +243,26 @@ class RenderGraph {
   void prepareFrame();
   VkResult submitFrame();
   void onResized();
+
   // Used to clean generated model assets, used on scene change.
-  // TODO: Don't delete old mesh data that is used in new scene, but I am
-  // focused on runtime performance and getting a job so this is low on the
-  // priority list.
   void clearModels();
-  void registerModel();
-  void registerModels(std::vector<core::engine::components::Model>);
+
+  // Registers a Model and it's required rendering info onto the GPU
+  // TODO: Upload Queue to GPU to improve frametimes when creating models
+  // If Mesh or Texture data does not already exist on the GPU, there is a
+  // multi-frame delay expected. Mesh & Texture data can take up to X frames,
+  // and if there is a Queue, it could take even longer
+  // desiredUploadSize:
+  //   When calculating what to upload each frame, this is the ideal size
+  // maxFramesForUpload:
+  //   If the data to upload is too large, the data size is divided by
+  //   maxFramesForUpload to calculate data upload
+  // (dataSize / desiredUploadSize > maxFramesForUpload)
+  // maxObjecsInQueue:
+  //   If the upload queue gets too long, the cap for upload per frame is
+  //   raised until the queue size is reduced. This is to keep object creations
+  //   delays reasonable
+  uint32_t registerModel(core::engine::components::Model *);
 
   // Should outside updated resources be managed by RenderGraph, or by outside
   // classes
