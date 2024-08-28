@@ -126,21 +126,21 @@ class BaseRenderer {
     unsigned long isFirstFrame;
     unsigned long isReleased;
 
-    bool isPressed(KeyBinds key, bool eatInput = false) {
+    bool isKeyPressed(KeyBinds key, bool eatInput = false) {
       bool result = (isPressed & key) == 1;
       if (eatInput) {
         isPressed &= ~(1 << key);
       }
       return result;
     }
-    bool isFirstFramePressed(KeyBinds key, bool eatInput = false) {
+    bool isFirstFrameKeyPressed(KeyBinds key, bool eatInput = false) {
       bool result = (isFirstFrame & key) == 1;
       if (eatInput) {
         isFirstFrame &= ~(1 << key);
       }
       return result;
     }
-    bool isReleased(KeyBinds key, bool eatInput = false) {
+    bool isKeyReleased(KeyBinds key, bool eatInput = false) {
       bool result = (isReleased & key) == 1;
       if (eatInput) {
         isReleased &= ~(1 << key);

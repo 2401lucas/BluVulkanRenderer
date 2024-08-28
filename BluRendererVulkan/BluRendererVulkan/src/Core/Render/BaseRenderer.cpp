@@ -137,7 +137,7 @@ void BaseRenderer::handleKeypress(GLFWwindow* window, int glfwKey,
                                   unsigned long prevInput) {
   if (glfwGetKey(window, glfwKey)) {
     if ((prevInput & keyCode) == 0) keyInput.isFirstFrame |= keyCode;
-    keyInput.isHeld |= 1 << keyCode;
+    keyInput.isPressed |= 1 << keyCode;
   } else {
     if ((prevInput & keyCode) == 1) {
       keyInput.isReleased |= keyCode;
@@ -173,23 +173,29 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   ImGuiIO& io = ImGui::GetIO();
 
   if (io.WantCaptureKeyboard && settings.overlay) {
-    keyInput.isHeld = 0;
+    keyInput.isPressed = 0;
     keyInput.isFirstFrame = 0;
     keyInput.isReleased = 0;
     return;
   }
-  unsigned long prevInput = keyInput.isHeld;
+  unsigned long prevInput = keyInput.isPressed;
 
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
 
-  handleKeypress(window, GLFW_KEY_W, KEYBOARD_W, prevInput);
-  handleKeypress(window, GLFW_KEY_S, KEYBOARD_S, prevInput);
-  handleKeypress(window, GLFW_KEY_A, KEYBOARD_A, prevInput);
-  handleKeypress(window, GLFW_KEY_D, KEYBOARD_D, prevInput);
-  handleKeypress(window, GLFW_KEY_LEFT_CONTROL, KEYBOARD_LCTRL, prevInput);
-  handleKeypress(window, GLFW_KEY_LEFT_SHIFT, KEYBOARD_LSHIFT, prevInput);
+  handleKeypress(window, GLFW_KEY_W,
+                 BaseRenderer::InputData::KeyBinds::KEYBOARD_W, prevInput);
+  handleKeypress(window, GLFW_KEY_S, InputData::KeyBinds::KEYBOARD_S,
+                 prevInput);
+  handleKeypress(window, GLFW_KEY_A, InputData::KeyBinds::KEYBOARD_A,
+                 prevInput);
+  handleKeypress(window, GLFW_KEY_D, InputData::KeyBinds::KEYBOARD_D,
+                 prevInput);
+  handleKeypress(window, GLFW_KEY_LEFT_CONTROL,
+                 InputData::KeyBinds::KEYBOARD_LCTRL, prevInput);
+  handleKeypress(window, GLFW_KEY_LEFT_SHIFT,
+                 InputData::KeyBinds::KEYBOARD_LSHIFT, prevInput);
 }
 
 void BaseRenderer::windowResize() {
