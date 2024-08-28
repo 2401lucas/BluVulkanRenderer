@@ -133,6 +133,8 @@ void BaseRenderer::submitFrame() {
 }
 // TODO: Build input struct to send around
 void BaseRenderer::polledEvents(GLFWwindow* window) {
+  keyInput.keys = 0;
+
   double xpos, ypos;
   glfwGetCursorPos(window, &xpos, &ypos);
 
@@ -166,43 +168,25 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
-  /* if (glfwGetKey(window, GLFW_KEY_F2)) {
-     if (camera.type == Camera::CameraType::lookat) {
-       camera.type = Camera::CameraType::firstperson;
-     } else {
-       camera.type = Camera::CameraType::lookat;
-     }
-   }
-   if (glfwGetKey(window, GLFW_KEY_W)) {
-     camera.keys.forward = true;
-   } else {
-     camera.keys.forward = false;
-   }
-   if (glfwGetKey(window, GLFW_KEY_S)) {
-     camera.keys.backward = true;
-   } else {
-     camera.keys.backward = false;
-   }
-   if (glfwGetKey(window, GLFW_KEY_A)) {
-     camera.keys.left = true;
-   } else {
-     camera.keys.left = false;
-   }
-   if (glfwGetKey(window, GLFW_KEY_D)) {
-     camera.keys.right = true;
-   } else {
-     camera.keys.right = false;
-   }
-   if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) {
-     camera.keys.down = true;
-   } else {
-     camera.keys.down = false;
-   }
-   if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) {
-     camera.keys.up = true;
-   } else {
-     camera.keys.up = false;
-   }*/
+
+  if (glfwGetKey(window, GLFW_KEY_W)) {
+    keyInput.keys |= 1 << KEYBOARD_W;
+  }
+  if (glfwGetKey(window, GLFW_KEY_S)) {
+    keyInput.keys |= 1 << KEYBOARD_S;
+  }
+  if (glfwGetKey(window, GLFW_KEY_A)) {
+    keyInput.keys |= 1 << KEYBOARD_A;
+  }
+  if (glfwGetKey(window, GLFW_KEY_D)) {
+    keyInput.keys |= 1 << KEYBOARD_D;
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) {
+    keyInput.keys |= 1 << KEYBOARD_LCTRL;
+  }
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)) {
+    keyInput.keys |= 1 << KEYBOARD_LSHIFT;
+  }
 }
 
 void BaseRenderer::windowResize() {
@@ -238,9 +222,6 @@ void BaseRenderer::windowResize() {
 }
 
 void BaseRenderer::handleMouseMove(int32_t x, int32_t y) {
-  int32_t dx = (int32_t)mouseState.position.x - x;
-  int32_t dy = (int32_t)mouseState.position.y - y;
-
   bool handled = false;
 
   ImGuiIO& io = ImGui::GetIO();
@@ -248,10 +229,14 @@ void BaseRenderer::handleMouseMove(int32_t x, int32_t y) {
 
   if (handled) {
     mouseState.position = glm::vec2((float)x, (float)y);
+    mouseState.deltaPos = glm::vec2(0, 0);
     return;
   }
 
-  if (mouseState.buttons.left) {
+  mouseState.deltaPos = {mouseState.position.x - x, mouseState.position.y - y};
+
+  // TODO: MOVE TO ENGINE
+  /*if (mouseState.buttons.left) {
     camera.rotate(
         glm::vec3(dy * camera.rotationSpeed, -dx * camera.rotationSpeed, 0.0f));
     viewUpdated = true;
@@ -264,7 +249,7 @@ void BaseRenderer::handleMouseMove(int32_t x, int32_t y) {
     camera.translate(glm::vec3(-dx * 0.005f, -dy * 0.005f, 0.0f));
     viewUpdated = true;
   }
-  mouseState.position = glm::vec2((float)x, (float)y);
+  mouseState.position = glm::vec2((float)x, (float)y);*/
 }
 
 int BaseRenderer::getWidth() { return width; }
