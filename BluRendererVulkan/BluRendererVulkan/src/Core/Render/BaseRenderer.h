@@ -23,6 +23,7 @@
 #include "RenderGraph.hpp"
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
+#include "Components/Input.hpp"
 
 // Needs an interface with the engine to receive info
 class BaseRenderer {
@@ -42,6 +43,8 @@ class BaseRenderer {
   // Core
   void windowResize();
   void handleMouseMove(int32_t x, int32_t y);
+  void handleMousepress(GLFWwindow* window, int glfwKey, unsigned long keyCode,
+                      unsigned long prevInput);
   void handleKeypress(GLFWwindow* window, int glfwKey, unsigned long keyCode,
                       unsigned long prevInput);
   void polledEvents(GLFWwindow* window);
@@ -78,76 +81,8 @@ class BaseRenderer {
 
   // TODO: M&K INPUT? MOVE INPUT TO ENGINE CLASS
   // State of mouse/touch input
-  struct {
-    struct {
-      bool left = false;
-      bool right = false;
-      bool middle = false;
-    } buttons;
-    glm::vec2 position;
-    glm::vec2 deltaPos;
-  } mouseState;
 
-  struct InputData {
-    enum KeyBinds : unsigned long {
-      KEYBOARD_Q = 1 << 0,
-      KEYBOARD_W = 1 << 1,
-      KEYBOARD_E = 1 << 2,
-      KEYBOARD_R = 1 << 3,
-      KEYBOARD_T = 1 << 4,
-      KEYBOARD_Y = 1 << 5,
-      KEYBOARD_U = 1 << 6,
-      KEYBOARD_I = 1 << 7,
-      KEYBOARD_O = 1 << 8,
-      KEYBOARD_P = 1 << 9,
-      KEYBOARD_A = 1 << 10,
-      KEYBOARD_S = 1 << 11,
-      KEYBOARD_D = 1 << 12,
-      KEYBOARD_F = 1 << 13,
-      KEYBOARD_G = 1 << 14,
-      KEYBOARD_H = 1 << 15,
-      KEYBOARD_J = 1 << 16,
-      KEYBOARD_K = 1 << 17,
-      KEYBOARD_L = 1 << 18,
-      KEYBOARD_Z = 1 << 19,
-      KEYBOARD_X = 1 << 20,
-      KEYBOARD_C = 1 << 21,
-      KEYBOARD_V = 1 << 22,
-      KEYBOARD_B = 1 << 23,
-      KEYBOARD_N = 1 << 24,
-      KEYBOARD_M = 1 << 25,
-      KEYBOARD_LSHIFT = 1 << 26,
-      KEYBOARD_LCTRL = 1 << 27,
-      KEYBOARD_LALT = 1 << 28,
-      KEYBOARD_TAB = 1 << 29,
-    };
-
-    unsigned long isPressed;
-    unsigned long isFirstFrame;
-    unsigned long isReleased;
-
-    bool isKeyPressed(KeyBinds key, bool eatInput = false) {
-      bool result = (isPressed & key) == 1;
-      if (eatInput) {
-        isPressed &= ~(1 << key);
-      }
-      return result;
-    }
-    bool isFirstFrameKeyPressed(KeyBinds key, bool eatInput = false) {
-      bool result = (isFirstFrame & key) == 1;
-      if (eatInput) {
-        isFirstFrame &= ~(1 << key);
-      }
-      return result;
-    }
-    bool isKeyReleased(KeyBinds key, bool eatInput = false) {
-      bool result = (isReleased & key) == 1;
-      if (eatInput) {
-        isReleased &= ~(1 << key);
-      }
-      return result;
-    }
-  } keyInput;
+  InputData input;
 
   BaseRenderer();
   virtual ~BaseRenderer();

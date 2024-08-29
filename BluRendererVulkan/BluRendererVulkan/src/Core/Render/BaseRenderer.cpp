@@ -67,7 +67,7 @@ void BaseRenderer::nextFrame() {
   auto tStart = std::chrono::high_resolution_clock::now();
 
   // engine->beginFixedUpdate(deltaTime);
-  engine->beginUpdate(deltaTime);
+  engine->beginUpdate(deltaTime, input);
   windowManager->handleEvents();
   polledEvents(windowManager->getWindow());
   render();
@@ -132,15 +132,28 @@ void BaseRenderer::submitFrame() {
   }
 }
 
+void BaseRenderer::handleMousepress(GLFWwindow* window, int glfwKey,
+                                    unsigned long keyCode,
+                                    unsigned long prevInput) {
+  if (glfwGetMouseButton(window, glfwKey)) {
+    if ((prevInput & keyCode) == 0) input.isFirstFrame |= keyCode;
+    input.isPressed |= 1 << keyCode;
+  } else {
+    if ((prevInput & keyCode) == 1) {
+      input.isReleased |= keyCode;
+    }
+  }
+}
+
 void BaseRenderer::handleKeypress(GLFWwindow* window, int glfwKey,
                                   unsigned long keyCode,
                                   unsigned long prevInput) {
   if (glfwGetKey(window, glfwKey)) {
-    if ((prevInput & keyCode) == 0) keyInput.isFirstFrame |= keyCode;
-    keyInput.isPressed |= 1 << keyCode;
+    if ((prevInput & keyCode) == 0) input.isFirstFrame |= keyCode;
+    input.isPressed |= 1 << keyCode;
   } else {
     if ((prevInput & keyCode) == 1) {
-      keyInput.isReleased |= keyCode;
+      input.isReleased |= keyCode;
     }
   }
 }
@@ -148,22 +161,12 @@ void BaseRenderer::handleKeypress(GLFWwindow* window, int glfwKey,
 void BaseRenderer::polledEvents(GLFWwindow* window) {
   double xpos, ypos;
   glfwGetCursorPos(window, &xpos, &ypos);
+  unsigned long prevInput = input.isPressed;
 
-  if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)) {
-    mouseState.buttons.left = true;
-  } else {
-    mouseState.buttons.left = false;
-  }
-  if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT)) {
-    mouseState.buttons.right = true;
-  } else {
-    mouseState.buttons.right = false;
-  }
-  if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE)) {
-    mouseState.buttons.middle = true;
-  } else {
-    mouseState.buttons.middle = false;
-  }
+  handleMousepress(window, GLFW_MOUSE_BUTTON_LEFT,
+                   InputData::KeyBinds::MOUSE_LEFT, prevInput);
+  handleMousepress(window, GLFW_MOUSE_BUTTON_RIGHT,
+                   InputData::KeyBinds::MOUSE_RIGHT, prevInput);
   handleMouseMove(xpos, ypos);
 
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) || glfwWindowShouldClose(window)) {
@@ -173,19 +176,18 @@ void BaseRenderer::polledEvents(GLFWwindow* window) {
   ImGuiIO& io = ImGui::GetIO();
 
   if (io.WantCaptureKeyboard && settings.overlay) {
-    keyInput.isPressed = 0;
-    keyInput.isFirstFrame = 0;
-    keyInput.isReleased = 0;
+    input.isPressed = 0;
+    input.isFirstFrame = 0;
+    input.isReleased = 0;
     return;
   }
-  unsigned long prevInput = keyInput.isPressed;
 
   if (glfwGetKey(window, GLFW_KEY_P)) {
     paused != paused;
   }
 
-  handleKeypress(window, GLFW_KEY_W,
-                 BaseRenderer::InputData::KeyBinds::KEYBOARD_W, prevInput);
+  handleKeypress(window, GLFW_KEY_W, InputData::KeyBinds::KEYBOARD_W,
+                 prevInput);
   handleKeypress(window, GLFW_KEY_S, InputData::KeyBinds::KEYBOARD_S,
                  prevInput);
   handleKeypress(window, GLFW_KEY_A, InputData::KeyBinds::KEYBOARD_A,
@@ -234,12 +236,13 @@ void BaseRenderer::handleMouseMove(int32_t x, int32_t y) {
   ImGuiIO& io = ImGui::GetIO();
 
   if (io.WantCaptureMouse && settings.overlay) {
-    mouseState.position = glm::vec2((float)x, (float)y);
-    mouseState.deltaPos = glm::vec2(0, 0);
+    input.position = glm::vec2((float)x, (float)y);
+    input.deltaPos = glm::vec2(0, 0);
     return;
   }
 
-  mouseState.deltaPos = {mouseState.position.x - x, mouseState.position.y - y};
+  input.deltaPos = {input.position.x - x, input.position.y - y};
+  input.position = glm::vec2((float)x, (float)y);
 }
 
 int BaseRenderer::getWidth() { return width; }

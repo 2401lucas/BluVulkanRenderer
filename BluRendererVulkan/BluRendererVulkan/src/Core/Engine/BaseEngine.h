@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "../Render/Components/Camera.hpp"
+#include "../Render/Components/Input.hpp"
 
 namespace core_internal::engine {
 // Base Engine Class
@@ -27,7 +28,7 @@ class BaseEngine {
 
  public:
   void onResized(float aspectRatio);
-  void beginUpdate(float deltaTime);
+  void beginUpdate(float deltaTime, InputData input);
   void beginFixedUpdate();
 };
 }  // namespace core_internal::engine
