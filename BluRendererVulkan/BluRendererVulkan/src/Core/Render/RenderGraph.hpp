@@ -4,6 +4,8 @@
 
 #include <functional>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/mat4x4.hpp>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -11,7 +13,6 @@
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 #include "ResourceManagement/VulkanResources/VulkanTexture.h"
-#include <queue>
 
 // TODO: Make Agnostic Render API
 namespace core_internal::rendering {
@@ -200,6 +201,20 @@ class RenderGraph {
   VkSemaphore presentSemaphore;
 
   std::vector<vulkan::Buffer *> drawBuffers;
+
+  // Indexed by GL_InstanceIndex
+  struct GPUIndices {
+    int posIndex;
+    int colorIndex;
+    int physicalDescriptorIndex;
+    int normalIndex;
+    int aoIndex;
+    int emmisiveIndex;
+  };
+
+  struct GPUMeshData {
+      glm::mat4 mvp;
+  };
 
   void validateData();
 

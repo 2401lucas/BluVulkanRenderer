@@ -9,9 +9,6 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
                            std::vector<const char *> enabledDeviceExtensions,
                            std::vector<const char *> enabledInstanceExtensions,
                            void *pNextChain) {
-  // Change Input is this is false
-  assert(sizeof(unsigned long) == 64);
-  
   VkApplicationInfo appInfo = {};
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = name;

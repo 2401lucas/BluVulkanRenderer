@@ -549,21 +549,6 @@ uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,
 }
 
 void RenderGraph::generateDescriptorSets() {
-  // Required Data for rendering Models found in RegisteredModel:
-  // VkBuffer:
-  //
-  // VkImage:
-  //
-  // VkBuffer:
-  //
-  //
-  // Generic Descriptor Sets
-  // registerModel(Mesh, Model?)
-  // MESH:
-  //  Mesh->
-  // MODEL:
-  //  Textures->Save Indices once registered
-  // AddDescriptorSet()
   modelDescriptorSet;
   // Unique per pass:
   for (auto& pass : renderPasses) {
