@@ -147,7 +147,7 @@ void BaseRenderer::handleMousepress(GLFWwindow* window, int glfwKey,
 
 void BaseRenderer::handleKeypress(GLFWwindow* window, int glfwKey,
                                   unsigned long keyCode,
-                                  unsigned long prevInput) {
+                                  const unsigned long& prevInput) {
   if (glfwGetKey(window, glfwKey)) {
     if ((prevInput & keyCode) == 0) input.isFirstFrame |= keyCode;
     input.isPressed |= 1 << keyCode;
