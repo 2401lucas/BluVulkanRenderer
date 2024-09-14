@@ -7,6 +7,8 @@
 #include "ResourceManagement/ExternalResources/VulkanglTFModel.h"
 
 namespace core_internal::rendering {
+RenderGraphPass::RenderGraphPass(RenderGraph* rg) { graph = rg; }
+
 void RenderGraphPass::addAttachmentInput(const std::string& name) {
   auto tex = graph->getTexture(name);
   tex->registerPass(index);
@@ -99,9 +101,14 @@ std::vector<RenderTextureResource*>& RenderGraphPass::getOutputAttachments() {
 // TODO: Support indexed resources (IE per FIF or hardcap at 2(I think this is
 // best but need to investigate/profile to confirm beliefs))
 void RenderGraphPass::draw(VkCommandBuffer buf) {
-  if (outputColorAttachments.size() == 0) {
-    DEBUG_ERROR("Renderpass with index: " + std::to_string(index) +
-                " trying to draw has no output attachments");
+  if (drawType ==
+      core_internal::rendering::RenderGraph::DrawType::DRAW_TYPE_COMPUTE) {
+    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            computePipelineLayout, 0, 1,
+                            &computeDescriptorSets[i], 0, 0);
+    vkCmdDispatch(buf, 256, 1, 1);
+    return;
   }
 
   std::vector<VkRenderingAttachmentInfoKHR> attachments;
@@ -126,7 +133,8 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
   } else if (depthStencilOutput) {
     auto tex = graph->getTexture(depthStencilOutput->resourceIndex);
     tex->transitionImageLayout(
-        buf, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        buf, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     depthStencilAttachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .imageView = tex->view,
@@ -188,20 +196,22 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
   vkCmdBeginRenderingKHR(buf, &renderpassInfo);
 
   switch (drawType) {
-    case core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
     case core_internal::rendering::RenderGraph::DrawType::
-        CameraOccludedTranslucent:
+        DRAW_TYPE_CAMERA_OCCLUDED_OPAQUE:
+    case core_internal::rendering::RenderGraph::DrawType::
+        DRAW_TYPE_CAMERA_OCCLUDED_TRANSLUCENT:
       vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0, 1,
                                sizeof(float));  // TODO: Fill with non junk
       break;
-    case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
+    case core_internal::rendering::RenderGraph::DrawType::
+        DRAW_TYPE_FULLSCREEN_TRIANGLE:
       vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
       break;
-    case core_internal::rendering::RenderGraph::DrawType::Compute:
+    case core_internal::rendering::RenderGraph::DrawType::
+        DRAW_TYPE_CUSTOM_OCCLUSION:
       break;
-    case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
-      break;
-    case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
+    case core_internal::rendering::RenderGraph::DrawType::
+        DRAW_TYPE_CPU_RECORDED:
       recordCommandBuffer_cb(buf);
       break;
     default:
@@ -319,7 +329,9 @@ uint32_t RenderGraph::registerModel(core::engine::components::Model* model) {
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
                                       const DrawType& drawType) {
-  return nullptr;
+  RenderGraphPass* newPass = new RenderGraphPass(this);
+  renderPasses.push_back(newPass);
+  return newPass;
 }
 
 RenderTextureResource* RenderGraph::createTexture(const std::string& name,

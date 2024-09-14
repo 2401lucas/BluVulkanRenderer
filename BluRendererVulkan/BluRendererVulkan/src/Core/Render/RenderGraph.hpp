@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <glm/ext/vector_float4.hpp>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -11,7 +12,6 @@
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 #include "ResourceManagement/VulkanResources/VulkanTexture.h"
-#include <queue>
 
 // TODO: Make Agnostic Render API
 namespace core_internal::rendering {
@@ -105,6 +105,8 @@ class RenderGraphPass {
   RenderGraph *graph;
   RenderGraphQueueFlags queue = RENDER_GRAPH_GRAPHICS_QUEUE;
   uint32_t index;
+  uint32_t width = -1;
+  uint32_t height = -1;
 
   RenderGraph::DrawType drawType;
 
@@ -122,6 +124,8 @@ class RenderGraphPass {
  public:
   // Acyclic Dependency Layer
   uint32_t dependencyLayer = -1;
+
+  RenderGraphPass(RenderGraph *);
 
   void addAttachmentInput(const std::string &name);
   RenderTextureResource *addColorOutput(const std::string &name,
@@ -215,13 +219,13 @@ class RenderGraph {
 
  public:
   enum class DrawType {
-    CameraOccludedOpaque,
-    CameraOccludedTranslucent,
-    FullscreenTriangle,
-    Compute,          // Not actually triangle, but used for perf
-                      // testing
-    CustomOcclusion,  // Requires Bounding box info
-    CPU_RECORDED,     // Requires callback to draw commands to be supplied
+    DRAW_TYPE_CAMERA_OCCLUDED_OPAQUE,
+    DRAW_TYPE_CAMERA_OCCLUDED_TRANSLUCENT,
+    DRAW_TYPE_FULLSCREEN_TRIANGLE,
+    DRAW_TYPE_COMPUTE,
+    DRAW_TYPE_CUSTOM_OCCLUSION,  // Requires Bounding box info
+    DRAW_TYPE_CPU_RECORDED,      // Requires callback to draw commands to be
+                                 // supplied
   };
 
   // Bindless descriptor set used when rendering models

@@ -42,10 +42,9 @@ class DemoRenderer : public BaseRenderer {
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
     enabledDeviceExtensions.push_back(
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-    
+
     // TODO: CREATE INFO
-    enabledDeviceExtensions.push_back(
-        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    enabledDeviceExtensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
   }
 
   void buildEngine() override {
@@ -81,10 +80,12 @@ class DemoRenderer : public BaseRenderer {
                       .isExternal = true,
                       .requireMappedData = true});
     auto generateRenderCommands = renderGraph->addPass(
-        "generateRenderCommands", VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        "generateRenderCommands",
+        core_internal::rendering::RenderGraph::DrawType::DRAW_TYPE_COMPUTE);
 
     auto antiAliasingPass = renderGraph->addPass(
-        "AntiAliasingPass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+        "AntiAliasingPass", core_internal::rendering::RenderGraph::DrawType::
+                                DRAW_TYPE_FULLSCREEN_TRIANGLE);
     antiAliasingPass->addColorOutput(
         "AAOut", {
                      .sizeRelative = core_internal::rendering::
@@ -94,8 +95,9 @@ class DemoRenderer : public BaseRenderer {
                      .format = VK_FORMAT_R16_SFLOAT,
                  });
 
-    auto mainPass =
-        renderGraph->addPass("Mainpass", VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT);
+    auto mainPass = renderGraph->addPass(
+        "Mainpass", core_internal::rendering::RenderGraph::DrawType::
+                        DRAW_TYPE_CAMERA_OCCLUDED_OPAQUE);
     mainPass->addAttachmentInput("AAOut");
     mainPass->addStorageInput("meshInfo");
     mainPass->addStorageInput("modelInfo");

@@ -20,10 +20,10 @@
 
 #include "../Engine/BaseEngine.h"
 #include "../Window/WindowManager.h"
+#include "Components/Input.hpp"
 #include "RenderGraph.hpp"
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
-#include "Components/Input.hpp"
 
 // Needs an interface with the engine to receive info
 class BaseRenderer {
@@ -44,9 +44,9 @@ class BaseRenderer {
   void windowResize();
   void handleMouseMove(int32_t x, int32_t y);
   void handleMousepress(GLFWwindow* window, int glfwKey, unsigned long keyCode,
-                      unsigned long prevInput);
+                        unsigned long prevInput);
   void handleKeypress(GLFWwindow* window, int glfwKey, unsigned long keyCode,
-                      unsigned long prevInput);
+                      const unsigned long& prevInput);
   void polledEvents(GLFWwindow* window);
 
   // Entry point for the main render loop
@@ -79,9 +79,6 @@ class BaseRenderer {
     bool overlay = true;
   } settings;
 
-  // TODO: M&K INPUT? MOVE INPUT TO ENGINE CLASS
-  // State of mouse/touch input
-
   InputData input;
 
   BaseRenderer();
@@ -111,9 +108,8 @@ class BaseRenderer {
   // copying and allows for engine to work) In this case, multiple threads can
   // read from the same pointer(assuming no writes) which can be defined with
   // https://en.wikipedia.org/wiki/Immutable_object
-  // This still leaves Q
-  // submission to the RenderGraph but maybe we could define it to the
-  // rendergraph (I like this)
+  // This still leaves Queue submission to the RenderGraph but maybe we could
+  // define it to the rendergraph (I like this)
   virtual void render() = 0;
 
   virtual void prepare();
