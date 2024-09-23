@@ -7,7 +7,20 @@
 #include "ResourceManagement/ExternalResources/VulkanglTFModel.h"
 
 namespace core_internal::rendering {
-RenderGraphPass::RenderGraphPass(RenderGraph* rg) { graph = rg; }
+RenderGraphPass::RenderGraphPass(RenderGraph* rg, uint32_t index,
+                                 const std::string& name)
+    : graph(rg), index(index), name(name) {}
+
+void RenderGraphPass::registerShader(
+    std::pair<ShaderStagesFlag, std::string> shader) {
+  shaders.push_back(shader);
+}
+
+void RenderGraphPass::setComputeGroup(glm::vec3 computeGroup) {
+  computeGroups = computeGroup;
+}
+
+void RenderGraphPass::setSize(glm::vec2 size) { this->size = size; }
 
 void RenderGraphPass::addAttachmentInput(const std::string& name) {
   auto tex = graph->getTexture(name);
@@ -75,6 +88,18 @@ RenderGraphQueueFlags& RenderGraphPass::getQueue() { return queue; }
 std::vector<RenderTextureResource*>& RenderGraphPass::getOutputAttachments() {
   return outputColorAttachments;
 }
+
+std::vector<RenderTextureResource*>& RenderGraphPass::getInputAttachments() {
+  return inputTextureAttachments;
+}
+std::vector<RenderBufferResource*>& RenderGraphPass::getInputStorage() {
+  return inputStorageAttachments;
+}
+std::vector<std::pair<ShaderStagesFlag, std::string>>&
+RenderGraphPass::getShaders() {
+  return shaders;
+}
+std::string RenderGraphPass::getName() { return name; }
 // So drawing needs to be quite versatile to handle all sorts of variations
 // Depth:
 //  as Input: LAYOUT: PREV -> READ ONLY
@@ -101,20 +126,16 @@ std::vector<RenderTextureResource*>& RenderGraphPass::getOutputAttachments() {
 // TODO: Support indexed resources (IE per FIF or hardcap at 2(I think this is
 // best but need to investigate/profile to confirm beliefs))
 void RenderGraphPass::draw(VkCommandBuffer buf) {
-  if (drawType ==
-      core_internal::rendering::RenderGraph::DrawType::DRAW_TYPE_COMPUTE) {
+  if (drawType == core_internal::rendering::RenderGraph::DrawType::Compute) {
     vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            computePipelineLayout, 0, 1,
-                            &computeDescriptorSets[i], 0, 0);
-    vkCmdDispatch(buf, 256, 1, 1);
+    vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout,
+                            0, 1, &descriptorSet, 0, 0);
+    vkCmdDispatch(buf, computeGroups.x, computeGroups.y, computeGroups.z);
     return;
   }
 
   std::vector<VkRenderingAttachmentInfoKHR> attachments;
   VkRenderingAttachmentInfoKHR depthStencilAttachment;
-  uint32_t width = 0;
-  uint32_t height = 0;
 
   if (depthStencilInput) {
     auto tex = graph->getTexture(depthStencilInput->resourceIndex);
@@ -184,7 +205,7 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
       .pNext = nullptr,
       .flags = 0,
-      .renderArea = {.extent{.width = width, .height = height}},
+      .renderArea = {.extent{.width = size.x, .height = size.y}},
       .layerCount = 1,
       .viewMask = 0,  // Multiview
       .colorAttachmentCount = attachments.size(),
@@ -195,31 +216,43 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
 
   vkCmdBeginRenderingKHR(buf, &renderpassInfo);
 
+  vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                          0, 1, &descriptorSet, 0, nullptr);
+  vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
   switch (drawType) {
+    case core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
     case core_internal::rendering::RenderGraph::DrawType::
-        DRAW_TYPE_CAMERA_OCCLUDED_OPAQUE:
-    case core_internal::rendering::RenderGraph::DrawType::
-        DRAW_TYPE_CAMERA_OCCLUDED_TRANSLUCENT:
+        CameraOccludedTranslucent:
+      vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
+                           VK_INDEX_TYPE_UINT32);
+      vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
       vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0, 1,
                                sizeof(float));  // TODO: Fill with non junk
       break;
-    case core_internal::rendering::RenderGraph::DrawType::
-        DRAW_TYPE_FULLSCREEN_TRIANGLE:
+    case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
       vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
       break;
-    case core_internal::rendering::RenderGraph::DrawType::
-        DRAW_TYPE_CUSTOM_OCCLUSION:
+    case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
       break;
-    case core_internal::rendering::RenderGraph::DrawType::
-        DRAW_TYPE_CPU_RECORDED:
+    case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
+      vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
+                           VK_INDEX_TYPE_UINT32);
+      vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
       recordCommandBuffer_cb(buf);
       break;
     default:
-      DEBUG_ERROR("Missing Draw Type implementation");
+      DEBUG_ERROR("Missing Draw Type implementation in pass: " + name);
       break;
   }
 
   vkCmdEndRenderingKHR(buf);
+}
+
+void RenderGraphPass::createDescriptorSetLayout(
+    VkDevice device, VkDescriptorSetLayoutCreateInfo* descriptorSetLayoutCI) {
+  VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, descriptorSetLayoutCI,
+                                              nullptr, &descriptorSetLayout));
 }
 
 void RenderGraph::clearModels() {}
@@ -329,7 +362,8 @@ uint32_t RenderGraph::registerModel(core::engine::components::Model* model) {
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
                                       const DrawType& drawType) {
-  RenderGraphPass* newPass = new RenderGraphPass(this);
+  RenderGraphPass* newPass =
+      new RenderGraphPass(this, renderPasses.size(), name);
   renderPasses.push_back(newPass);
   return newPass;
 }
@@ -394,6 +428,42 @@ RenderBufferResource* RenderGraph::getBuffer(const std::string& name) {
 void RenderGraph::validateData() {
   if (renderPasses.size() == 0) {
     DEBUG_ERROR("RenderGraph has no set Render Passes");
+  }
+
+  for (auto& rp : renderPasses) {
+    auto& outputs = rp->getOutputAttachments();
+    uint32_t sizeX = -1, sizeY = -1;
+    for (auto& o : outputs) {
+      uint32_t width =
+          getImageSize(o->renderTextureInfo.sizeRelative, swapchain->imageWidth,
+                       o->renderTextureInfo.sizeX);
+      uint32_t height =
+          getImageSize(o->renderTextureInfo.sizeRelative,
+                       swapchain->imageHeight, o->renderTextureInfo.sizeY);
+      if (sizeX == -1 && sizeY == -1) {
+        sizeX = width;
+        sizeY = height;
+      } else {
+        if (sizeX != width || sizeY != height) {
+          DEBUG_ERROR("Not all output attachments sizes match");
+        }
+      }
+    }
+    rp->setSize(glm::vec2(sizeX, sizeY));
+
+    auto& shaders = rp->getShaders();
+    uint32_t shaderMask = 0;
+    for (auto& shader : shaders) {
+      shaderMask |= shader.first;
+    }
+    switch (shaderMask) {
+      case SHADER_STAGE_VERT_FRAG:
+      case SHADER_STAGE_COMPUTE:
+        break;
+      default:
+        DEBUG_ERROR("Shader stages not supported in pass: " + rp->getName());
+        break;
+    }
   }
 
   if (textureBlackboard.empty() && bufferBlackboard.empty()) {
@@ -564,7 +634,32 @@ void RenderGraph::generateDescriptorSets() {
   modelDescriptorSet;
   // Unique per pass:
   for (auto& pass : renderPasses) {
-    pass->
+    auto& inAtt = pass->getInputAttachments();
+    auto& inStr = pass->getInputStorage();
+
+    std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
+
+    uint32_t inAttCount = inAtt.size();
+    for (uint32_t i = 0; i < inAttCount; i++) {
+      setLayoutBindings.push_back(
+          {i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+           inAtt[i]->renderTextureInfo.shaderStageFlag, nullptr});
+    }
+
+    for (uint32_t i = 0; i < inStr.size(); i++) {
+      setLayoutBindings.push_back(
+          {inAttCount + i, inStr[i]->renderBufferInfo.type, 1,
+           inStr[i]->renderBufferInfo.shaderStageFlag, nullptr});
+    }
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = setLayoutBindings.size(),
+        .pBindings = setLayoutBindings.data(),
+    };
+
+    pass->createDescriptorSetLayout(device->logicalDevice, &descriptorSetLayoutCI);
+    // Allocate Descriptor Sets (Requires pool/pools)
   }
 }
 
@@ -606,4 +701,6 @@ void RenderGraph::bake() {
   // models+luts(Maybe seperate?) Textures are frag only, buffers could be
   // Vert | Frag | Both
 }
+vulkan::Buffer RenderGraph::getDrawBuffer(DrawType) { return vulkan::Buffer(); }
+VkBuffer* RenderGraph::getVertexBuffer() { return VkBuffer(); }
 }  // namespace core_internal::rendering

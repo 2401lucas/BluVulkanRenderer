@@ -59,48 +59,33 @@ class DemoRenderer : public BaseRenderer {
   void prepareExternalBuffers() {}
 
   void buildRenderGraph() {
-    // TODO: CALCULATE EXTERNAL BUFFER SIZE REQUIREMENTS
-    //  Vert/Ind buf should be mostly static, and could be updated with a
-    //  staging buffer probably
-    renderGraph->createBuffer(
-        "meshInfo", {.size = 1,
-                     .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                     .memoryFlags = core_internal::rendering::
-                         RenderGraphMemoryTypeFlagBits::MEMORY_GPU_ONLY,
-                     .isExternal = true,
-                     .requireMappedData = false});
-
-    // This should contain less data that is optimally packed and
-    // only updated once per frame
-    renderGraph->createBuffer(
-        "modelInfo", {.size = 1,
-                      .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                      .memoryFlags = core_internal::rendering::
-                          RenderGraphMemoryTypeFlagBits::MEMORY_CPU_TO_GPU,
-                      .isExternal = true,
-                      .requireMappedData = true});
     auto generateRenderCommands = renderGraph->addPass(
         "generateRenderCommands",
-        core_internal::rendering::RenderGraph::DrawType::DRAW_TYPE_COMPUTE);
+        core_internal::rendering::RenderGraph::DrawType::Compute);
+    generateRenderCommands->registerShader(
+        std::make_pair(VK_SHADER_STAGE_COMPUTE_BIT, "example.comp"));
 
     auto antiAliasingPass = renderGraph->addPass(
-        "AntiAliasingPass", core_internal::rendering::RenderGraph::DrawType::
-                                DRAW_TYPE_FULLSCREEN_TRIANGLE);
+        "AntiAliasingPass",
+        core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle);
+    antiAliasingPass->registerShader(
+        std::make_pair(VK_SHADER_STAGE_VERTEX_BIT, "example.vert"));
+    antiAliasingPass->registerShader(
+        std::make_pair(VK_SHADER_STAGE_FRAGMENT_BIT, "example.frag"));
     antiAliasingPass->addColorOutput(
         "AAOut", {
                      .sizeRelative = core_internal::rendering::
                          AttachmentSizeRelative::SwapchainRelative,
                      .sizeX = 0.5,
                      .sizeY = 0.5,
-                     .format = VK_FORMAT_R16_SFLOAT,
+                     .format = VK_FORMAT_R16G16B16_SFLOAT,
                  });
 
     auto mainPass = renderGraph->addPass(
-        "Mainpass", core_internal::rendering::RenderGraph::DrawType::
-                        DRAW_TYPE_CAMERA_OCCLUDED_OPAQUE);
+        "Mainpass",
+        core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque);
     mainPass->addAttachmentInput("AAOut");
-    mainPass->addStorageInput("meshInfo");
-    mainPass->addStorageInput("modelInfo");
+
     mainPass->addColorOutput("MainColorOutput",
                              {.format = vulkanSwapchain->colorFormat});
     renderGraph->setFinalOutput("MainColorOutput");

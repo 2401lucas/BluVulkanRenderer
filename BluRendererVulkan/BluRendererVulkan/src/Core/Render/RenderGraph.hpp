@@ -31,6 +31,15 @@ enum RenderGraphQueueFlagBits {
 };
 using RenderGraphQueueFlags = uint32_t;
 
+enum ShaderStagesFlagBits {
+  SHADER_STAGE_VERTEX = 1 << 0,
+  SHADER_STAGE_FRAGMENT = 1 << 1,
+  SHADER_STAGE_COMPUTE = 1 << 2,
+
+  SHADER_STAGE_VERT_FRAG = SHADER_STAGE_VERTEX + SHADER_STAGE_FRAGMENT,
+};
+using ShaderStagesFlag = uint32_t;
+
 enum RenderGraphMemoryTypeFlagBits {
   MEMORY_GPU_ONLY = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
   // Size Limit is small, bigger data should be uploaded with a staging buffer
@@ -55,6 +64,7 @@ struct AttachmentInfo {
   uint32_t arrayLayers = 1;
   uint32_t depth = 1;
   VkImageUsageFlags usage;
+  VkShaderStageFlags shaderStageFlag = VK_SHADER_STAGE_FRAGMENT_BIT;
   bool requireSampler = false;
   bool requireImageView = false;
   bool requireMappedData = false;
@@ -65,6 +75,8 @@ struct BufferInfo {
   VkDeviceSize size = 0;
   VkBufferUsageFlags usage = 0;
   RenderGraphMemoryTypeFlags memoryFlags;
+  VkShaderStageFlags shaderStageFlag = VK_SHADER_STAGE_FRAGMENT_BIT;
+  VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
   bool isExternal = false;
   bool requireMappedData = false;
@@ -106,8 +118,17 @@ class RenderGraphPass {
   RenderGraph *graph;
   RenderGraphQueueFlags queue = RENDER_GRAPH_GRAPHICS_QUEUE;
   uint32_t index;
+  std::string name;
 
   RenderGraph::DrawType drawType;
+
+  // VK Resources
+  VkPipeline pipeline;
+  VkPipelineLayout pipelineLayout;
+  VkDescriptorSet descriptorSet;
+  VkDescriptorSetLayout descriptorSetLayout;
+  glm::vec3 computeGroups = glm::vec3(256, 1, 1);
+  glm::vec2 size;
 
   std::vector<RenderTextureResource *> inputTextureAttachments;
   std::vector<RenderBufferResource *> inputStorageAttachments;
@@ -120,10 +141,17 @@ class RenderGraphPass {
   std::function<bool(uint32_t, VkClearColorValue *)> getColorClearColor_cb;
   std::function<void(VkCommandBuffer)> recordCommandBuffer_cb;
 
+  std::vector<std::pair<ShaderStagesFlag, std::string>> shaders;
+
  public:
   // Acyclic Dependency Layer
   uint32_t dependencyLayer = -1;
 
+  RenderGraphPass(RenderGraph *, uint32_t index, const std::string &name);
+  void registerShader(std::pair<ShaderStagesFlag, std::string> shader);
+
+  void setComputeGroup(glm::vec3 computeGroup);
+  void setSize(glm::vec2 size);
   void addAttachmentInput(const std::string &name);
   RenderTextureResource *addColorOutput(const std::string &name,
                                         AttachmentInfo info);
@@ -143,8 +171,14 @@ class RenderGraphPass {
                   const RenderGraphQueueFlags &passQueue);
 
   std::vector<RenderTextureResource *> &getOutputAttachments();
+  std::vector<RenderTextureResource *> &getInputAttachments();
+  std::vector<RenderBufferResource *> &getInputStorage();
+  std::vector<std::pair<ShaderStagesFlag, std::string>> &getShaders();
+  std::string getName();
 
   void draw(VkCommandBuffer buf);
+
+  void createDescriptorSet(VkDevice, VkDescriptorSetLayoutCreateInfo *);
 };
 
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION
@@ -193,8 +227,9 @@ class RenderGraph {
   std::unordered_map<std::string, uint32_t> materialBlackboard;
 
   std::vector<vulkan::Image *> shaderImages;  // Texture Images
-  vulkan::Buffer modelInfo;
-  vulkan::Buffer meshData;
+
+  vulkan::Buffer vertexBuffer;  // Could be broken into more buffers
+  vulkan::Buffer indexBuffer;
 
   // Rendering Resources
   VkSemaphore timelineSemaphore;
@@ -213,7 +248,7 @@ class RenderGraph {
   };
 
   struct GPUMeshData {
-      glm::mat4 mvp;
+    glm::mat4 mvp;
   };
 
   void validateData();
@@ -298,6 +333,9 @@ class RenderGraph {
   RenderBufferResource *getBuffer(const std::string &name);
 
   RenderBufferResource *setFinalOutput(const std::string &name);
+
+  VkBuffer *getVertexBuffer();
+  VkBuffer getIndexBuffer();
 
   void bake();
 
