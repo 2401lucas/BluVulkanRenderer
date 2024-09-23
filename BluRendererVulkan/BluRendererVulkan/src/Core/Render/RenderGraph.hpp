@@ -178,7 +178,7 @@ class RenderGraphPass {
 
   void draw(VkCommandBuffer buf);
 
-  void createDescriptorSet(VkDevice, VkDescriptorSetLayoutCreateInfo *);
+  void createDescriptorSetLayout(VkDevice, VkDescriptorSetLayoutCreateInfo *);
 };
 
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION

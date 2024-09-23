@@ -255,6 +255,7 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
   vmaAllocInfo.physicalDevice = physicalDevice;
   vmaAllocInfo.instance = instance;
   vmaAllocInfo.vulkanApiVersion = apiVersion;
+  vmaAllocInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
   vmaCreateAllocator(&vmaAllocInfo, &allocator);
 
@@ -750,7 +751,8 @@ Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
   VkBufferCreateInfo bufInfo{
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = bufferCreateInfo.size,
-      .usage = bufferCreateInfo.usage,
+      .usage =
+          bufferCreateInfo.usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
 
@@ -760,6 +762,15 @@ Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
   newBuffer->mappedData = info.pMappedData;
   newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
                            newBuffer->size};
+
+  VkBufferDeviceAddressInfo addressInfo{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+      .pNext = nullptr,
+      .buffer = newBuffer->buffer,
+  };
+
+  newBuffer->deviceAddress = static_cast<DeviceAddress>(
+      vkGetBufferDeviceAddress(logicalDevice, &addressInfo));
 
   return newBuffer;
 }

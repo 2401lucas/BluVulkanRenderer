@@ -631,7 +631,14 @@ uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,
 }
 
 void RenderGraph::generateDescriptorSets() {
+  // Required Data for rendering:
+  // Material / Textures
+  //    Material-> Tex Index + Modifiers
+  // Camera + OBJ Matrices
+  // Other Draw Data -> Required Indices per model set by DrawIndexedIndirect
+
   modelDescriptorSet;
+
   // Unique per pass:
   for (auto& pass : renderPasses) {
     auto& inAtt = pass->getInputAttachments();
@@ -658,7 +665,8 @@ void RenderGraph::generateDescriptorSets() {
         .pBindings = setLayoutBindings.data(),
     };
 
-    pass->createDescriptorSetLayout(device->logicalDevice, &descriptorSetLayoutCI);
+    pass->createDescriptorSetLayout(device->logicalDevice,
+                                    &descriptorSetLayoutCI);
     // Allocate Descriptor Sets (Requires pool/pools)
   }
 }

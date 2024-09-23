@@ -191,6 +191,9 @@ struct BufferInfo {
   // The only limitaion to having more than 32 dependency layers is this
   unsigned long resourceLifespan;
 };
+
+enum class DeviceAddress : uint64_t { Invalid = 0 };
+
 struct Buffer {
   VkDeviceSize size = 0;
   VkDeviceSize offset = 0;
@@ -198,6 +201,7 @@ struct Buffer {
   VmaAllocation deviceMemory;
   VkDescriptorBufferInfo descriptor;
   void *mappedData = nullptr;
+  DeviceAddress deviceAddress;
 };
 
 // Vulkan Resources are self contained in VulkanDevice
