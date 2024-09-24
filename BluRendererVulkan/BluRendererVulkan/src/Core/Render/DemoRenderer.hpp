@@ -59,37 +59,21 @@ class DemoRenderer : public BaseRenderer {
   void prepareExternalBuffers() {}
 
   void buildRenderGraph() {
-    auto generateRenderCommands = renderGraph->addPass(
-        "generateRenderCommands",
-        core_internal::rendering::RenderGraph::DrawType::Compute);
-    generateRenderCommands->registerShader(
-        std::make_pair(VK_SHADER_STAGE_COMPUTE_BIT, "example.comp"));
-
-    auto antiAliasingPass = renderGraph->addPass(
-        "AntiAliasingPass",
-        core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle);
-    antiAliasingPass->registerShader(
-        std::make_pair(VK_SHADER_STAGE_VERTEX_BIT, "example.vert"));
-    antiAliasingPass->registerShader(
-        std::make_pair(VK_SHADER_STAGE_FRAGMENT_BIT, "example.frag"));
-    antiAliasingPass->addColorOutput(
-        "AAOut", {
-                     .sizeRelative = core_internal::rendering::
-                         AttachmentSizeRelative::SwapchainRelative,
-                     .sizeX = 0.5,
-                     .sizeY = 0.5,
-                     .format = VK_FORMAT_R16G16B16_SFLOAT,
-                 });
-
     auto mainPass = renderGraph->addPass(
         "Mainpass",
-        core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque);
-    mainPass->addAttachmentInput("AAOut");
-
+        core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED);
+    mainPass->set_GetCommandBuffer([](VkCommandBuffer buf) {
+      // For Each Model
+      // vkCmdBindIndexBuffer(buf, IndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+      // vkCmdBindVertexBuffers(buf, 0, 1, VertexBuffer(), 0);
+      // Draw();
+    });
     mainPass->addColorOutput("MainColorOutput",
                              {.format = vulkanSwapchain->colorFormat});
     renderGraph->setFinalOutput("MainColorOutput");
   }
+
+  void mainpassRender(VkCommandBuffer buf) {}
 
   void render() override {}
 

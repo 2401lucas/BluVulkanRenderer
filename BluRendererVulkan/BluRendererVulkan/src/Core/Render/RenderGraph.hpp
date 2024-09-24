@@ -68,7 +68,6 @@ struct AttachmentInfo {
   bool requireSampler = false;
   bool requireImageView = false;
   bool requireMappedData = false;
-  bool isExternal = false;  // Static data can still be updated upon request
 };
 
 struct BufferInfo {
@@ -77,8 +76,6 @@ struct BufferInfo {
   RenderGraphMemoryTypeFlags memoryFlags;
   VkShaderStageFlags shaderStageFlag = VK_SHADER_STAGE_FRAGMENT_BIT;
   VkDescriptorType type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-
-  bool isExternal = false;
   bool requireMappedData = false;
 };
 
@@ -185,21 +182,21 @@ class RenderGraphPass {
 // Since this is controlling all frame resources, it should be able to keep
 // track of exact VRAM size and other relevant info. Should have it's own
 // toggleable Debug UI
-// Assumptions:
-// Each RGPass is only wrote to once? Is this a required assumption
+
+// External Memory Manager
+// - Frame Persistant Resources
+// - Descriptor Sets
+// Render Graph
+// - Manages Frame Resources, Baked once frame is setup
+// - Descriptor Sets for Frame Resources
+// - Need descriptor sets for non-frame resources IE Matrices & Textures
 class RenderGraph {
  private:
   // A Model is defined as an object to be rendered containing both Mesh &
   // Texture Info
-  struct RegisteredModel {
-    // VkDrawIndexedIndirectCommand renderData;
-    // ShaderMaterial shaderModelInfo;
-    int meshIndex;
-    int materialIndex;
-  };
 
   struct RenderingSettings {
-    bool useMSAA;
+    bool useMSAA = false;
   };
   core_internal::rendering::vulkan::VulkanDevice *device;
   core_internal::rendering::vulkan::VulkanSwapchain *swapchain;
@@ -213,14 +210,8 @@ class RenderGraph {
   RenderTextureResource *finalOutput = nullptr;
 
   // GPU Resources
-  std::vector<vulkan::Image *> renderImages;
-  std::vector<vulkan::Buffer *> renderBuffers;
   std::vector<vulkan::Image *> internalRenderImages;
   std::vector<vulkan::Buffer *> internalRenderBuffers;
-
-  std::vector<RegisteredModel> registeredModels;
-  std::vector<uint32_t> models;
-  std::queue<uint32_t> emptyModelSlots;
 
   // Cached GPU resources
   std::unordered_map<std::string, uint32_t> modelBlackboard;
@@ -234,6 +225,20 @@ class RenderGraph {
   // Rendering Resources
   VkSemaphore timelineSemaphore;
   VkSemaphore presentSemaphore;
+
+  enum class TextureHandle : uint32_t { Invalid = 0 };
+  enum class BufferHandle : uint32_t { Invalid = 0 };
+
+  static constexpr uint32_t StorageBinding = 0;
+  static constexpr uint32_t UniformBinding = 1;
+  static constexpr uint32_t TextureBinding = 2;
+
+  std::vector<vulkan::Image *> textures;
+  std::vector<vulkan::Buffer *> buffers;
+
+  VkDescriptorPool bindlessDescriptorPool;
+  VkDescriptorSetLayout bindlessDesciptorLayout;
+  VkDescriptorSet bindlessDescriptor;
 
   std::vector<vulkan::Buffer *> drawBuffers;
 
@@ -260,6 +265,10 @@ class RenderGraph {
   uint32_t getImageSize(AttachmentSizeRelative sizeRelative,
                         uint32_t swapchainSize, float size);
 
+  void uploadImageSampler(VkDescriptorImageInfo *);
+  void uploadFBuffer(VkDescriptorBufferInfo *);
+  void uploadVFBuffer(VkDescriptorBufferInfo *);
+
   void generateDescriptorSets();
   void generateSemaphores();
 
@@ -273,9 +282,6 @@ class RenderGraph {
     CustomOcclusion,  // Requires Bounding box info
     CPU_RECORDED,     // Requires callback to draw commands to be supplied
   };
-
-  // Bindless descriptor set used when rendering models
-  VkDescriptorSet modelDescriptorSet;
 
   RenderGraph();
   ~RenderGraph();
@@ -293,6 +299,9 @@ class RenderGraph {
   void prepareFrame();
   VkResult submitFrame();
   void onResized();
+
+  BufferHandle storeBuffer(vulkan::Buffer *);
+  TextureHandle storeTexture(vulkan::Image *);
 
   // Used to clean generated model assets, used on scene change.
   void clearModels();

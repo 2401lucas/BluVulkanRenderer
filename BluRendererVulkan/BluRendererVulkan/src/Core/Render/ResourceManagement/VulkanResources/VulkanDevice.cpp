@@ -762,6 +762,7 @@ Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
   newBuffer->mappedData = info.pMappedData;
   newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
                            newBuffer->size};
+  newBuffer->descriptorType = bufferCreateInfo.descriptorType;
 
   VkBufferDeviceAddressInfo addressInfo{
       .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,

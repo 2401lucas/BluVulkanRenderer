@@ -188,6 +188,7 @@ struct BufferInfo {
   VkBufferUsageFlags usage;
   VkMemoryPropertyFlags memoryFlags;
   bool requireMappedData;
+  VkDescriptorType descriptorType;
   // The only limitaion to having more than 32 dependency layers is this
   unsigned long resourceLifespan;
 };
@@ -200,6 +201,7 @@ struct Buffer {
   VkBuffer buffer;
   VmaAllocation deviceMemory;
   VkDescriptorBufferInfo descriptor;
+  VkDescriptorType descriptorType;
   void *mappedData = nullptr;
   DeviceAddress deviceAddress;
 };

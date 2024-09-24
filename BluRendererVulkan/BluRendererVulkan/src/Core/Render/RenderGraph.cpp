@@ -100,31 +100,7 @@ RenderGraphPass::getShaders() {
   return shaders;
 }
 std::string RenderGraphPass::getName() { return name; }
-// So drawing needs to be quite versatile to handle all sorts of variations
-// Depth:
-//  as Input: LAYOUT: PREV -> READ ONLY
-//  as Output: UNDEF -> READONLY - (Maybe seperate stencil?)
-// Color:
-//  as Input: LAYOUT: PREV -> READ ONLY
-//  as Output: LAYOUT: UNDEF -> COLOR OPTIMAL: It must be from UNDEF to clear
-//  previous "junk" data as aliased resources are filled bad data
-// ATTACHMENTS----------------
-// Technically attachments could be baked I think, but maybe having it dynamic
-// works:
-// PROS:
-//  Allows for on the fly changes without re-baking
-// CONS:
-//  Slower per frame CPU performance
-// Solution:
-// This will remain dynamic until it is rendering successfully, at that point I
-// will re-evaluate based on profiling
-// RENDERING-------------------
-// Because DrawCommands are generated on GPU intead of on CPU, we could
-// generate draw commands for different cases and reuse them
-// Examples could be: Camera Occluded Draws, Shadow draws, UI draws? (UI should
-// be capped at X FPS & probably recorded CPU side for simplicity)
-// TODO: Support indexed resources (IE per FIF or hardcap at 2(I think this is
-// best but need to investigate/profile to confirm beliefs))
+
 void RenderGraphPass::draw(VkCommandBuffer buf) {
   if (drawType == core_internal::rendering::RenderGraph::DrawType::Compute) {
     vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
@@ -236,9 +212,6 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
     case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
       break;
     case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
-      vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
-                           VK_INDEX_TYPE_UINT32);
-      vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
       recordCommandBuffer_cb(buf);
       break;
     default:
@@ -255,110 +228,38 @@ void RenderGraphPass::createDescriptorSetLayout(
                                               nullptr, &descriptorSetLayout));
 }
 
-void RenderGraph::clearModels() {}
+RenderGraph::BufferHandle RenderGraph::storeBuffer(vulkan::Buffer* buffer) {
+  size_t newHandle = buffers.size();
+  buffers.push_back(buffer);
 
-// Models are loaded individually to return relevent rendering information to
-// scene models
-// Mesh->Primitives that contains a mesh:
-//
-uint32_t RenderGraph::registerModel(core::engine::components::Model* model) {
-  if (model->filePath.empty()) {
-    // If model is created without a filepath, this is empty meant to hold
-    // components, it should be handled engine side and should never make it
-    // here
-    DEBUG_WARNING("Model has no filepath");
-    return;
-  }
+  VkWriteDescriptorSet write{
+      .dstSet = bindlessDescriptor,
+      .dstBinding = buffer->descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                        ? UniformBinding
+                        : StorageBinding,
+      .dstArrayElement = newHandle,
+      .descriptorCount = 1,
+      .pBufferInfo = &buffer->descriptor};
 
-  if (modelBlackboard.contains(model->filePath)) {
-    auto modelInfoID = modelBlackboard[model->filePath];
-
-    if (emptyModelSlots.empty()) {
-      auto modelID = models.size();
-      models.push_back(modelInfoID);
-      return modelID;
-    } else {
-      auto modelID = emptyModelSlots.front();
-      emptyModelSlots.pop();
-      return modelID;
-    }
-  } else {
-    vkglTF::Model newModel;
-    newModel.loadFromFile(model->filePath);
-
-    // if buffer can fit memory, send data
-    // else allocate more memory?
-  }
+  vkUpdateDescriptorSets(device->logicalDevice, 1, &write, 0, nullptr);
+  return static_cast<BufferHandle>(newHandle);
 }
 
-// size_t vertexBufferSize = vertexCount * sizeof(Vertex);
-// size_t indexBufferSize = indexCount * sizeof(uint32_t);
+RenderGraph::TextureHandle RenderGraph::storeTexture(vulkan::Image* image) {
+  size_t newHandle = textures.size();
+  textures.push_back(image);
 
-// assert(vertexBufferSize > 0);
+  VkWriteDescriptorSet write{};
+  write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  write.dstBinding = TextureBinding;
+  write.dstSet = bindlessDescriptor;
+  write.descriptorCount = 1;
+  write.dstArrayElement = newHandle;
+  write.pImageInfo = &image->descriptor;
 
-// struct StagingBuffer {
-//   VkBuffer buffer;
-//   VkDeviceMemory memory;
-// } vertexStaging, indexStaging;
-
-//// Create staging buffers
-//// Vertex data
-// VK_CHECK_RESULT(device->createBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//                                      vertexBufferSize,
-//                                      &vertexStaging.buffer,
-//                                      &vertexStaging.memory,
-//                                      loaderInfo.vertexBuffer));
-//// Index data
-// if (indexBufferSize > 0) {
-//   VK_CHECK_RESULT(
-//       device->createBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-//                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//                            indexBufferSize, &indexStaging.buffer,
-//                            &indexStaging.memory, loaderInfo.indexBuffer));
-// }
-
-//// Create device local buffers
-//// Vertex buffer
-// VK_CHECK_RESULT(device->createBuffer(
-//     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-//     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBufferSize,
-//     &vertices.buffer, &vertices.memory));
-//// Index buffer
-// if (indexBufferSize > 0) {
-//   VK_CHECK_RESULT(device->createBuffer(
-//       VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-//       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBufferSize,
-//       &indices.buffer, &indices.memory));
-// }
-
-//// Copy from staging buffers
-// VkCommandBuffer copyCmd =
-//     device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-
-// VkBufferCopy copyRegion = {};
-
-// copyRegion.size = vertexBufferSize;
-// vkCmdCopyBuffer(copyCmd, vertexStaging.buffer, vertices.buffer, 1,
-//                 &copyRegion);
-
-// if (indexBufferSize > 0) {
-//   copyRegion.size = indexBufferSize;
-//   vkCmdCopyBuffer(copyCmd, indexStaging.buffer, indices.buffer, 1,
-//                   &copyRegion);
-// }
-
-// device->flushCommandBuffer(copyCmd, transferQueue, true);
-
-// vkDestroyBuffer(device->logicalDevice, vertexStaging.buffer, nullptr);
-// vkFreeMemory(device->logicalDevice, vertexStaging.memory, nullptr);
-// if (indexBufferSize > 0) {
-//   vkDestroyBuffer(device->logicalDevice, indexStaging.buffer, nullptr);
-//   vkFreeMemory(device->logicalDevice, indexStaging.memory, nullptr);
-// }
-// }
+  vkUpdateDescriptorSets(device->logicalDevice, 1, &write, 0, nullptr);
+  return static_cast<TextureHandle>(newHandle);
+}
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
                                       const DrawType& drawType) {
@@ -457,6 +358,7 @@ void RenderGraph::validateData() {
       shaderMask |= shader.first;
     }
     switch (shaderMask) {
+      case SHADER_STAGE_VERTEX:
       case SHADER_STAGE_VERT_FRAG:
       case SHADER_STAGE_COMPUTE:
         break;
@@ -471,8 +373,7 @@ void RenderGraph::validateData() {
   }
 
   for (auto& tex : textureBlackboard) {
-    if (!tex.second->renderTextureInfo.isExternal &&
-        tex.second->usedInPasses.size() < 2) {
+    if (tex.second->usedInPasses.size() < 2) {
       DEBUG_WARNING("Resource with name: " + tex.first +
                     "is only referenced as an output");
     }
@@ -518,102 +419,51 @@ void RenderGraph::dependencySearch(const uint32_t& passIndex,
 
 void RenderGraph::generateResources() {
   auto& fifCount = swapchain->imageCount;
-  std::vector<vulkan::ImageInfo> imageCreateInfos;
   std::vector<vulkan::ImageInfo> renderImageCreateInfos;
-  std::vector<vulkan::BufferInfo> bufferCreateInfos;
   std::vector<vulkan::BufferInfo> renderBufferCreateInfos;
 
   for (auto& resource : textureBlackboard) {
-    if (resource.second->renderTextureInfo.isExternal) {
-      uint32_t width = getImageSize(
-          resource.second->renderTextureInfo.sizeRelative,
-          swapchain->imageWidth, resource.second->renderTextureInfo.sizeX);
-      uint32_t height = getImageSize(
-          resource.second->renderTextureInfo.sizeRelative,
-          swapchain->imageHeight, resource.second->renderTextureInfo.sizeY);
+    uint32_t width = getImageSize(
+        resource.second->renderTextureInfo.sizeRelative, swapchain->imageWidth,
+        resource.second->renderTextureInfo.sizeX);
+    uint32_t height = getImageSize(
+        resource.second->renderTextureInfo.sizeRelative, swapchain->imageHeight,
+        resource.second->renderTextureInfo.sizeY);
 
-      vulkan::ImageInfo info{
-          .width = width,
-          .height = height,
-          .format = resource.second->renderTextureInfo.format,
-          .tiling = VK_IMAGE_TILING_OPTIMAL,
-          .usage = resource.second->renderTextureInfo.usage,
-          .mipLevels = resource.second->renderTextureInfo.mipLevels,
-          .arrayLayers = resource.second->renderTextureInfo.arrayLayers,
-          .samples = resource.second->renderTextureInfo.samples,
-          .resourceLifespan = resource.second->resourceLifespan,
-          .requireSampler = resource.second->renderTextureInfo.requireSampler,
-          .requireImageView =
-              resource.second->renderTextureInfo.requireImageView,
-          .requireMappedData =
-              resource.second->renderTextureInfo.requireMappedData,
-      };
-      resource.second->resourceIndex = imageCreateInfos.size();
-      imageCreateInfos.push_back(info);
-    } else {
-      uint32_t width = getImageSize(
-          resource.second->renderTextureInfo.sizeRelative,
-          swapchain->imageWidth, resource.second->renderTextureInfo.sizeX);
-      uint32_t height = getImageSize(
-          resource.second->renderTextureInfo.sizeRelative,
-          swapchain->imageHeight, resource.second->renderTextureInfo.sizeY);
-
-      vulkan::ImageInfo info{
-          .width = width,
-          .height = height,
-          .format = resource.second->renderTextureInfo.format,
-          .tiling = VK_IMAGE_TILING_OPTIMAL,
-          .usage = resource.second->renderTextureInfo.usage,
-          .mipLevels = resource.second->renderTextureInfo.mipLevels,
-          .arrayLayers = resource.second->renderTextureInfo.arrayLayers,
-          .samples = resource.second->renderTextureInfo.samples,
-          .memoryFlags = resource.second->renderTextureInfo.memoryFlags,
-          .resourceLifespan = resource.second->resourceLifespan,
-          .requireSampler = true,
-          .requireImageView = true,
-      };
-      resource.second->resourceIndex = renderImageCreateInfos.size();
-      renderImageCreateInfos.push_back(info);
-    }
-  }
-
-  for (auto& image : imageCreateInfos) {
-    renderImages.push_back(device->createImage(image, false));
+    vulkan::ImageInfo info{
+        .width = width,
+        .height = height,
+        .format = resource.second->renderTextureInfo.format,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = resource.second->renderTextureInfo.usage,
+        .mipLevels = resource.second->renderTextureInfo.mipLevels,
+        .arrayLayers = resource.second->renderTextureInfo.arrayLayers,
+        .samples = resource.second->renderTextureInfo.samples,
+        .memoryFlags = resource.second->renderTextureInfo.memoryFlags,
+        .resourceLifespan = resource.second->resourceLifespan,
+        .requireSampler = true,
+        .requireImageView = true,
+    };
+    resource.second->resourceIndex = renderImageCreateInfos.size();
+    renderImageCreateInfos.push_back(info);
   }
 
   internalRenderImages = device->createAliasedImages(renderImageCreateInfos);
 
   for (auto& resource : bufferBlackboard) {
-    if (resource.second->renderBufferInfo.isExternal) {
-      vulkan::BufferInfo info{
-          .size = resource.second->renderBufferInfo.size,
-          .usage = resource.second->renderBufferInfo.usage,
-          .memoryFlags = resource.second->renderBufferInfo.memoryFlags,
-          .requireMappedData =
-              resource.second->renderBufferInfo.requireMappedData,
-          .resourceLifespan = resource.second->resourceLifespan,
-      };
+    vulkan::BufferInfo info{
+        .size = resource.second->renderBufferInfo.size,
+        .usage = resource.second->renderBufferInfo.usage,
+        .memoryFlags = resource.second->renderBufferInfo.memoryFlags,
+        .requireMappedData =
+            resource.second->renderBufferInfo.requireMappedData,
+        .resourceLifespan = resource.second->resourceLifespan,
+    };
 
-      resource.second->resourceIndex = bufferCreateInfos.size();
-      bufferCreateInfos.push_back(info);
-    } else {
-      vulkan::BufferInfo info{
-          .size = resource.second->renderBufferInfo.size,
-          .usage = resource.second->renderBufferInfo.usage,
-          .memoryFlags = resource.second->renderBufferInfo.memoryFlags,
-          .requireMappedData =
-              resource.second->renderBufferInfo.requireMappedData,
-          .resourceLifespan = resource.second->resourceLifespan,
-      };
-
-      resource.second->resourceIndex = renderBufferCreateInfos.size();
-      renderBufferCreateInfos.push_back(info);
-    }
+    resource.second->resourceIndex = renderBufferCreateInfos.size();
+    renderBufferCreateInfos.push_back(info);
   }
 
-  for (auto& buffer : bufferCreateInfos) {
-    renderBuffers.push_back(device->createBuffer(buffer, false));
-  }
   internalRenderBuffers = device->createAliasedBuffers(renderBufferCreateInfos);
 }
 
@@ -637,7 +487,71 @@ void RenderGraph::generateDescriptorSets() {
   // Camera + OBJ Matrices
   // Other Draw Data -> Required Indices per model set by DrawIndexedIndirect
 
-  modelDescriptorSet;
+  // TODO: Test Solutions for allocating pools/pool sizes
+  // also->if(vkAllocateDescriptorSets == error) Target New Pool
+
+  {  // Generic Descriptor Set & Pool
+    std::array<VkDescriptorPoolSize, 3> poolSizes = {
+        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1024,
+        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1024,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024};
+
+    VkDescriptorPoolCreateInfo descriptorPoolCI{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+        .maxSets = 1024,
+        .poolSizeCount = poolSizes.size(),
+        .pPoolSizes = poolSizes.data(),
+    };
+
+    vkCreateDescriptorPool(device->logicalDevice, &descriptorPoolCI, nullptr,
+                           &bindlessDescriptorPool);
+
+    std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+        {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024, VK_SHADER_STAGE_ALL,
+         nullptr},
+        {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024, VK_SHADER_STAGE_ALL,
+         nullptr},
+        {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024,
+         VK_SHADER_STAGE_ALL, nullptr},
+    };
+
+    std::array<VkDescriptorBindingFlags, 3> flags{
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT};
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flagInfo{
+        .sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+        .bindingCount = flags.size(),
+        .pBindingFlags = flags.data(),
+    };
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = &flagInfo,
+        .bindingCount = setLayoutBindings.size(),
+        .pBindings = setLayoutBindings.data(),
+    };
+
+    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device->logicalDevice,
+                                                &descriptorSetLayoutCI, nullptr,
+                                                &bindlessDesciptorLayout));
+
+    VkDescriptorSetAllocateInfo descriptorSetAllocInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = bindlessDescriptorPool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &bindlessDesciptorLayout,
+    };
+
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(
+        device->logicalDevice, &descriptorSetAllocInfo, &bindlessDescriptor));
+  }
 
   // Unique per pass:
   for (auto& pass : renderPasses) {
@@ -681,34 +595,8 @@ void RenderGraph::bake() {
   generateDependencyChain();
   generateResources();
 
-  // TODO
   generateDescriptorSets();
   generateSemaphores();
   // printRenderGraph();
-
-  // GPU RESOURCES
-  // BUFFERS
-  //  Buffers Refer to raw data stored on the GPU
-  // IMAGES
-  //   Images refer to what renderpasses use as output/input
-  // TEXTURES
-  //   referes to what models use for colours
-
-  // For Resource Generation
-  // Needs:
-  // One resource Per Frame
-  // Persitant Mapped Data needs to be accessible
-  // Persitant data will need to be resizeable
-  // Non Persistant data not accessible
-  // Foreach resource, device->create()
-  // For Textures, support different filetypes(ktx, dds, png & jpeg)
-  // For Textures, support Cubemaps, Tex2D
-
-  // Smart Descriptor Set Creation? Hash sets for reuse? or a descriptor set
-  // just for externally managed resources. Could have one for
-  // models+luts(Maybe seperate?) Textures are frag only, buffers could be
-  // Vert | Frag | Both
 }
-vulkan::Buffer RenderGraph::getDrawBuffer(DrawType) { return vulkan::Buffer(); }
-VkBuffer* RenderGraph::getVertexBuffer() { return VkBuffer(); }
 }  // namespace core_internal::rendering
