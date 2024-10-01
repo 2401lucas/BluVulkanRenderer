@@ -31,15 +31,6 @@ enum RenderGraphQueueFlagBits {
 };
 using RenderGraphQueueFlags = uint32_t;
 
-enum ShaderStagesFlagBits {
-  SHADER_STAGE_VERTEX = 1 << 0,
-  SHADER_STAGE_FRAGMENT = 1 << 1,
-  SHADER_STAGE_COMPUTE = 1 << 2,
-
-  SHADER_STAGE_VERT_FRAG = SHADER_STAGE_VERTEX + SHADER_STAGE_FRAGMENT,
-};
-using ShaderStagesFlag = uint32_t;
-
 enum RenderGraphMemoryTypeFlagBits {
   MEMORY_GPU_ONLY = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
   // Size Limit is small, bigger data should be uploaded with a staging buffer
@@ -82,6 +73,7 @@ struct BufferInfo {
 class RenderResource {
  public:
   // Used for Generating Dependency Layers
+
   std::vector<uint32_t> usedInPasses;
   // Resource Lifespan only cares about first/last time used
   unsigned long resourceLifespan = 0;
@@ -121,6 +113,7 @@ class RenderGraphPass {
 
   // VK Resources
   VkPipeline pipeline;
+  VkPipelineCache cache; //TODO
   VkPipelineLayout pipelineLayout;
   VkDescriptorSet descriptorSet;
   VkDescriptorSetLayout descriptorSetLayout;
@@ -138,14 +131,14 @@ class RenderGraphPass {
   std::function<bool(uint32_t, VkClearColorValue *)> getColorClearColor_cb;
   std::function<void(VkCommandBuffer)> recordCommandBuffer_cb;
 
-  std::vector<std::pair<ShaderStagesFlag, std::string>> shaders;
+  std::vector<std::pair<VkShaderStageFlagBits, std::string>> shaders;
 
  public:
   // Acyclic Dependency Layer
   uint32_t dependencyLayer = -1;
 
   RenderGraphPass(RenderGraph *, uint32_t index, const std::string &name);
-  void registerShader(std::pair<ShaderStagesFlag, std::string> shader);
+  void registerShader(std::pair<VkShaderStageFlagBits, std::string> shader);
 
   void setComputeGroup(glm::vec3 computeGroup);
   void setSize(glm::vec2 size);
@@ -176,6 +169,8 @@ class RenderGraphPass {
   void draw(VkCommandBuffer buf);
 
   void createDescriptorSetLayout(VkDevice, VkDescriptorSetLayoutCreateInfo *);
+  void allocateDescriptorSet(VkDevice, VkDescriptorSetAllocateInfo *);
+  void createPipeline(vulkan::VulkanDevice *);
 };
 
 // TODO: INSERT BLOG LINK RELATING TO RENDER GRAPH IMPLEMENTATION
@@ -192,37 +187,25 @@ class RenderGraphPass {
 // - Need descriptor sets for non-frame resources IE Matrices & Textures
 class RenderGraph {
  private:
-  // A Model is defined as an object to be rendered containing both Mesh &
-  // Texture Info
-
-  struct RenderingSettings {
-    bool useMSAA = false;
-  };
   core_internal::rendering::vulkan::VulkanDevice *device;
   core_internal::rendering::vulkan::VulkanSwapchain *swapchain;
 
   // Registered Resources
+  // TODO: CLEAR on Bake
   std::vector<RenderGraphPass *> renderPasses;
   std::unordered_map<std::string, RenderTextureResource *> textureBlackboard;
   std::unordered_map<std::string, RenderBufferResource *> bufferBlackboard;
 
-  // Unsure about format
-  RenderTextureResource *finalOutput = nullptr;
-
-  // GPU Resources
+  // Baked GPU Resources
   std::vector<vulkan::Image *> internalRenderImages;
   std::vector<vulkan::Buffer *> internalRenderBuffers;
-
-  // Cached GPU resources
-  std::unordered_map<std::string, uint32_t> modelBlackboard;
-  std::unordered_map<std::string, uint32_t> materialBlackboard;
-
-  std::vector<vulkan::Image *> shaderImages;  // Texture Images
 
   vulkan::Buffer vertexBuffer;  // Could be broken into more buffers
   vulkan::Buffer indexBuffer;
 
   // Rendering Resources
+  VkDescriptorPool descriptorPool;
+
   VkSemaphore timelineSemaphore;
   VkSemaphore presentSemaphore;
 
@@ -236,26 +219,6 @@ class RenderGraph {
   std::vector<vulkan::Image *> textures;
   std::vector<vulkan::Buffer *> buffers;
 
-  VkDescriptorPool bindlessDescriptorPool;
-  VkDescriptorSetLayout bindlessDesciptorLayout;
-  VkDescriptorSet bindlessDescriptor;
-
-  std::vector<vulkan::Buffer *> drawBuffers;
-
-  // Indexed by GL_InstanceIndex
-  struct GPUIndices {
-    int posIndex;
-    int colorIndex;
-    int physicalDescriptorIndex;
-    int normalIndex;
-    int aoIndex;
-    int emmisiveIndex;
-  };
-
-  struct GPUMeshData {
-    glm::mat4 mvp;
-  };
-
   void validateData();
 
   void generateDependencyChain();
@@ -265,11 +228,8 @@ class RenderGraph {
   uint32_t getImageSize(AttachmentSizeRelative sizeRelative,
                         uint32_t swapchainSize, float size);
 
-  void uploadImageSampler(VkDescriptorImageInfo *);
-  void uploadFBuffer(VkDescriptorBufferInfo *);
-  void uploadVFBuffer(VkDescriptorBufferInfo *);
-
   void generateDescriptorSets();
+  void generatePipelines();
   void generateSemaphores();
 
  public:
@@ -300,29 +260,6 @@ class RenderGraph {
   VkResult submitFrame();
   void onResized();
 
-  BufferHandle storeBuffer(vulkan::Buffer *);
-  TextureHandle storeTexture(vulkan::Image *);
-
-  // Used to clean generated model assets, used on scene change.
-  void clearModels();
-
-  // Registers a Model and it's required rendering info onto the GPU
-  // TODO: Upload Queue to GPU to improve frametimes when creating models
-  // If Mesh or Texture data does not already exist on the GPU, there is a
-  // multi-frame delay expected. Mesh & Texture data can take up to X frames,
-  // and if there is a Queue, it could take even longer
-  // desiredUploadSize:
-  //   When calculating what to upload each frame, this is the ideal size
-  // maxFramesForUpload:
-  //   If the data to upload is too large, the data size is divided by
-  //   maxFramesForUpload to calculate data upload
-  // (dataSize / desiredUploadSize > maxFramesForUpload)
-  // maxObjecsInQueue:
-  //   If the upload queue gets too long, the cap for upload per frame is
-  //   raised until the queue size is reduced. This is to keep object creations
-  //   delays reasonable
-  uint32_t registerModel(core::engine::components::Model *);
-
   // Should outside updated resources be managed by RenderGraph, or by outside
   // classes
   // VkPipelineStageFlags is only required for pipeline, I am unsure how
@@ -343,12 +280,6 @@ class RenderGraph {
 
   RenderBufferResource *setFinalOutput(const std::string &name);
 
-  VkBuffer *getVertexBuffer();
-  VkBuffer getIndexBuffer();
-
   void bake();
-
-  vulkan::Buffer getDrawBuffer(DrawType);
-  // Access to modify baked resource memory such as model position Buffers
 };
 }  // namespace core_internal::rendering

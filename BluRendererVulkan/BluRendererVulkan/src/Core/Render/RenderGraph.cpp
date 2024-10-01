@@ -200,11 +200,11 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
     case core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
     case core_internal::rendering::RenderGraph::DrawType::
         CameraOccludedTranslucent:
-      vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
+      /*vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
                            VK_INDEX_TYPE_UINT32);
       vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
       vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0, 1,
-                               sizeof(float));  // TODO: Fill with non junk
+                               sizeof(float));*/  // TODO: Fill with non junk
       break;
     case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
       vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
@@ -228,37 +228,59 @@ void RenderGraphPass::createDescriptorSetLayout(
                                               nullptr, &descriptorSetLayout));
 }
 
-RenderGraph::BufferHandle RenderGraph::storeBuffer(vulkan::Buffer* buffer) {
-  size_t newHandle = buffers.size();
-  buffers.push_back(buffer);
-
-  VkWriteDescriptorSet write{
-      .dstSet = bindlessDescriptor,
-      .dstBinding = buffer->descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                        ? UniformBinding
-                        : StorageBinding,
-      .dstArrayElement = newHandle,
-      .descriptorCount = 1,
-      .pBufferInfo = &buffer->descriptor};
-
-  vkUpdateDescriptorSets(device->logicalDevice, 1, &write, 0, nullptr);
-  return static_cast<BufferHandle>(newHandle);
+void RenderGraphPass::allocateDescriptorSet(
+    VkDevice device, VkDescriptorSetAllocateInfo* allocInfo) {
+  allocInfo->pSetLayouts = &descriptorSetLayout;
+  allocInfo->descriptorSetCount = 1;
+  vkAllocateDescriptorSets(device, allocInfo, &descriptorSet);
 }
 
-RenderGraph::TextureHandle RenderGraph::storeTexture(vulkan::Image* image) {
-  size_t newHandle = textures.size();
-  textures.push_back(image);
+void RenderGraphPass::createPipeline(vulkan::VulkanDevice* device) {
+  const std::vector<VkDescriptorSetLayout> setLayouts = {descriptorSetLayout};
 
-  VkWriteDescriptorSet write{};
-  write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  write.dstBinding = TextureBinding;
-  write.dstSet = bindlessDescriptor;
-  write.descriptorCount = 1;
-  write.dstArrayElement = newHandle;
-  write.pImageInfo = &image->descriptor;
+  VkPipelineLayoutCreateInfo pipelineLayoutCI{
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount = static_cast<uint32_t>(setLayouts.size()),
+      .pSetLayouts = setLayouts.data(),
+      .pushConstantRangeCount = 0,
+  };
+  VK_CHECK_RESULT(vkCreatePipelineLayout(
+      device->logicalDevice, &pipelineLayoutCI, nullptr, &pipelineLayout));
 
-  vkUpdateDescriptorSets(device->logicalDevice, 1, &write, 0, nullptr);
-  return static_cast<TextureHandle>(newHandle);
+  std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+  shaderStages.resize(shaders.size());
+
+  VkPipelineRenderingCreateInfoKHR pipelineCreateInfo{
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+    .colorAttachmentCount = 1,
+    .pColorAttachmentFormats = &color_rendering_format,
+    .depthAttachmentFormat = depth_format,
+    .stencilAttachmentFormat = depth_format,
+  };
+  
+  VkGraphicsPipelineCreateInfo pipelineCI{};
+  pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  pipelineCI.layout = pipelineLayout;
+  pipelineCI.renderPass = VK_NULL_HANDLE;
+  pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
+  pipelineCI.pVertexInputState = &vertexInputStateCI;
+  pipelineCI.pRasterizationState = &rasterizationStateCI;
+  pipelineCI.pColorBlendState = &colorBlendStateCI;
+  pipelineCI.pMultisampleState = &multisampleStateCI;
+  pipelineCI.pViewportState = &viewportStateCI;
+  pipelineCI.pDepthStencilState = &depthStencilStateCI;
+  pipelineCI.pDynamicState = &dynamicStateCI;
+  pipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
+  pipelineCI.pStages = shaderStages.data();
+
+  for (int i = 0; i < shaders.size(); i++) {
+    shaderStages[i] = device->loadShader(shaders[i].second, shaders[i].first);
+  }
+
+  VkPipeline pipeline{};
+
+  VK_CHECK_RESULT(vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1,
+                                            &pipelineCI, nullptr, &pipeline));
 }
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
@@ -481,82 +503,24 @@ uint32_t RenderGraph::getImageSize(AttachmentSizeRelative sizeRelative,
 }
 
 void RenderGraph::generateDescriptorSets() {
-  // Required Data for rendering:
-  // Material / Textures
-  //    Material-> Tex Index + Modifiers
-  // Camera + OBJ Matrices
-  // Other Draw Data -> Required Indices per model set by DrawIndexedIndirect
+  std::array<VkDescriptorPoolSize, 2> poolSizes = {
+      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, bufferBlackboard.size(),
+      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureBlackboard.size()};
+  VkDescriptorPoolCreateInfo descriptorPoolCI{
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+      .maxSets = std::max(bufferBlackboard.size(), textureBlackboard.size()),
+      .poolSizeCount = poolSizes.size(),
+      .pPoolSizes = poolSizes.data(),
+  };
+  vkCreateDescriptorPool(device->logicalDevice, &descriptorPoolCI, nullptr,
+                         &descriptorPool);
 
-  // TODO: Test Solutions for allocating pools/pool sizes
-  // also->if(vkAllocateDescriptorSets == error) Target New Pool
-
-  {  // Generic Descriptor Set & Pool
-    std::array<VkDescriptorPoolSize, 3> poolSizes = {
-        VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1024,
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1024,
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024};
-
-    VkDescriptorPoolCreateInfo descriptorPoolCI{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
-        .maxSets = 1024,
-        .poolSizeCount = poolSizes.size(),
-        .pPoolSizes = poolSizes.data(),
-    };
-
-    vkCreateDescriptorPool(device->logicalDevice, &descriptorPoolCI, nullptr,
-                           &bindlessDescriptorPool);
-
-    std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-        {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024, VK_SHADER_STAGE_ALL,
-         nullptr},
-        {1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024, VK_SHADER_STAGE_ALL,
-         nullptr},
-        {2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1024,
-         VK_SHADER_STAGE_ALL, nullptr},
-    };
-
-    std::array<VkDescriptorBindingFlags, 3> flags{
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT};
-
-    VkDescriptorSetLayoutBindingFlagsCreateInfo flagInfo{
-        .sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
-        .bindingCount = flags.size(),
-        .pBindingFlags = flags.data(),
-    };
-
-    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .pNext = &flagInfo,
-        .bindingCount = setLayoutBindings.size(),
-        .pBindings = setLayoutBindings.data(),
-    };
-
-    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device->logicalDevice,
-                                                &descriptorSetLayoutCI, nullptr,
-                                                &bindlessDesciptorLayout));
-
-    VkDescriptorSetAllocateInfo descriptorSetAllocInfo{
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = bindlessDescriptorPool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &bindlessDesciptorLayout,
-    };
-
-    VK_CHECK_RESULT(vkAllocateDescriptorSets(
-        device->logicalDevice, &descriptorSetAllocInfo, &bindlessDescriptor));
-  }
-
-  // Unique per pass:
   for (auto& pass : renderPasses) {
     auto& inAtt = pass->getInputAttachments();
     auto& inStr = pass->getInputStorage();
+    if (inAtt.size() + inStr.size() != 0) {
+      continue;
+    }
 
     std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings;
 
@@ -581,7 +545,17 @@ void RenderGraph::generateDescriptorSets() {
 
     pass->createDescriptorSetLayout(device->logicalDevice,
                                     &descriptorSetLayoutCI);
-    // Allocate Descriptor Sets (Requires pool/pools)
+    VkDescriptorSetAllocateInfo allocInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptorPool,
+    };
+    pass->allocateDescriptorSet(device->logicalDevice, &allocInfo);
+  }
+}
+
+void RenderGraph::generatePipelines() {
+  for (auto& pass : renderPasses) {
+    pass->createPipeline();
   }
 }
 
@@ -596,6 +570,7 @@ void RenderGraph::bake() {
   generateResources();
 
   generateDescriptorSets();
+  generatePipelines();
   generateSemaphores();
   // printRenderGraph();
 }
