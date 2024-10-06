@@ -1,23 +1,16 @@
 #pragma once
 
+#define VK_USE_PLATFORM_WIN32_KHR
+
 #include <assert.h>
+#include <vk_mem_alloc.h>
+#include <vulkan/vulkan.h>
 
 #include <algorithm>
 #include <exception>
 
-#if defined(_WIN32)
-#define VK_USE_PLATFORM_WIN32_KHR
-#elif defined(__linux__)
-#define VK_USE_PLATFORM_XCB_KHR
-#endif
-
-#include <vk_mem_alloc.h>
-
 #include "../../../Tools/Debug.hpp"
-#include "VulkanBuffer.h"
-#include "VulkanTexture.h"
 #include "VulkanTools.h"
-#include "vulkan/vulkan.h"
 
 namespace core_internal::rendering::vulkan {
 struct SamplerInfo {
@@ -241,7 +234,6 @@ class VulkanDevice {
                     uint32_t imgIndex);
   };
 
- public:
   uint32_t apiVersion = VK_API_VERSION_1_2;
   std::vector<std::string> supportedInstanceExtensions;
   std::vector<std::string> supportedExtensions;
@@ -259,6 +251,18 @@ class VulkanDevice {
   std::vector<VkQueueFamilyProperties> queueFamilyProperties;
   std::vector<VkShaderModule> shaderModules;
 
+  operator VkInstance() const { return instance; };
+  operator VkDevice() const { return logicalDevice; };
+  operator VkPhysicalDevice() const { return physicalDevice; };
+  operator VmaAllocator() const { return allocator; };
+  operator VkPhysicalDeviceProperties() const {
+    return physicalDeviceProperties;
+  };
+  operator VkPhysicalDeviceMemoryProperties() const {
+    return physicalDeviceMemoryProperties;
+  };
+
+ public:
   struct {
     uint32_t graphics;
     uint32_t compute;
@@ -305,4 +309,4 @@ class VulkanDevice {
   std::vector<Buffer *> createAliasedBuffers(
       std::vector<BufferInfo> bufferCreateInfos);
 };
-}  // namespace core_internal::rendering::vulkan
+}  // namespace core_internal::rendering
