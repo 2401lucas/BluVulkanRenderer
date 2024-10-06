@@ -31,6 +31,12 @@ class DemoRenderer : public BaseRenderer {
     bufferDeviceAddresspNext->sType =
         VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR;
     bufferDeviceAddresspNext->bufferDeviceAddress = VK_TRUE;
+
+    VkPhysicalDeviceSynchronization2FeaturesKHR* deviceSuncpNext{};
+    bufferDeviceAddresspNext->pNext = deviceSuncpNext;
+    deviceSuncpNext->sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+    deviceSuncpNext->synchronization2 = VK_TRUE;
   }
 
   void getEnabledExtensions() override {
