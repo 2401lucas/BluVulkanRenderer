@@ -99,6 +99,45 @@ struct Material {
   float emissiveStrength = 1.0f;
 };
 
+enum class VertexComponent {
+  Position,
+  Normal,
+  UV0,
+  UV1,
+  Color,
+  Tangent,
+  Joint0,
+  Weight0
+};
+
+struct Vertex {
+  glm::vec3 pos;
+  glm::vec3 normal;
+  glm::vec2 uv0;
+  glm::vec2 uv1;
+  glm::vec4 tangent;
+  glm::vec4 joint0;
+  glm::vec4 weight0;
+  glm::vec4 color;
+
+  static VkVertexInputBindingDescription vertexInputBindingDescription;
+  static std::vector<VkVertexInputAttributeDescription>
+      vertexInputAttributeDescriptions;
+  static VkPipelineVertexInputStateCreateInfo
+      pipelineVertexInputStateCreateInfo;
+  static VkVertexInputBindingDescription inputBindingDescription(
+      uint32_t binding);
+  static VkVertexInputAttributeDescription inputAttributeDescription(
+      uint32_t binding, uint32_t location, VertexComponent component);
+  static std::vector<VkVertexInputAttributeDescription>
+  inputAttributeDescriptions(uint32_t binding,
+                             const std::vector<VertexComponent> components);
+  /** @brief Returns the default pipeline vertex input state create info
+   * structure for the requested vertex components */
+  static VkPipelineVertexInputStateCreateInfo* getPipelineVertexInputState(
+      const std::vector<VertexComponent> components);
+};
+
 struct Primitive {
   uint32_t indexCount;
   uint32_t vertexCount;
@@ -107,8 +146,7 @@ struct Primitive {
   Material& material;
   bool hasIndices;
   BoundingBox bb;
-  Primitive(uint32_t indexCount, uint32_t vertexCount,
-            Material& material);
+  Primitive(uint32_t indexCount, uint32_t vertexCount, Material& material);
   void setBoundingBox(glm::vec3 min, glm::vec3 max);
 };
 
@@ -172,45 +210,6 @@ struct Animation {
   std::vector<AnimationChannel> channels;
   float start = std::numeric_limits<float>::max();
   float end = std::numeric_limits<float>::min();
-};
-
-enum class VertexComponent {
-  Position,
-  Normal,
-  UV0,
-  UV1,
-  Color,
-  Tangent,
-  Joint0,
-  Weight0
-};
-
-struct Vertex {
-  glm::vec3 pos;
-  glm::vec3 normal;
-  glm::vec2 uv0;
-  glm::vec2 uv1;
-  glm::vec4 tangent;
-  glm::vec4 joint0;
-  glm::vec4 weight0;
-  glm::vec4 color;
-
-  static VkVertexInputBindingDescription vertexInputBindingDescription;
-  static std::vector<VkVertexInputAttributeDescription>
-      vertexInputAttributeDescriptions;
-  static VkPipelineVertexInputStateCreateInfo
-      pipelineVertexInputStateCreateInfo;
-  static VkVertexInputBindingDescription inputBindingDescription(
-      uint32_t binding);
-  static VkVertexInputAttributeDescription inputAttributeDescription(
-      uint32_t binding, uint32_t location, VertexComponent component);
-  static std::vector<VkVertexInputAttributeDescription>
-  inputAttributeDescriptions(uint32_t binding,
-                             const std::vector<VertexComponent> components);
-  /** @brief Returns the default pipeline vertex input state create info
-   * structure for the requested vertex components */
-  static VkPipelineVertexInputStateCreateInfo* getPipelineVertexInputState(
-      const std::vector<VertexComponent> components);
 };
 
 class Transform {

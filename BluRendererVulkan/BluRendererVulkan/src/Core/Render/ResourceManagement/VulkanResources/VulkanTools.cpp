@@ -141,12 +141,13 @@ void setImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
                     VkPipelineStageFlags srcStageMask,
                     VkPipelineStageFlags dstStageMask) {
   // Create an image barrier object
-  VkImageMemoryBarrier imageMemoryBarrier =
-      vks::initializers::imageMemoryBarrier();
-  imageMemoryBarrier.oldLayout = oldImageLayout;
-  imageMemoryBarrier.newLayout = newImageLayout;
-  imageMemoryBarrier.image = image;
-  imageMemoryBarrier.subresourceRange = subresourceRange;
+  VkImageMemoryBarrier imageMemoryBarrier{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .oldLayout = oldImageLayout,
+      .newLayout = newImageLayout,
+      .image = image,
+      .subresourceRange = subresourceRange,
+  };
 
   // Source layouts (old)
   // Source access mask controls actions that have to be finished on the old
@@ -265,21 +266,22 @@ void setImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
 }
 
 void transitionImageLayout(VkCommandBuffer cmdbuffer, VkImage image,
-                              VkAccessFlags srcAccessMask,
-                              VkAccessFlags dstAccessMask,
-                              VkImageLayout oldImageLayout,
-                              VkImageLayout newImageLayout,
-                              VkPipelineStageFlags srcStageMask,
-                              VkPipelineStageFlags dstStageMask,
-                              VkImageSubresourceRange subresourceRange) {
-  VkImageMemoryBarrier imageMemoryBarrier =
-      vks::initializers::imageMemoryBarrier();
-  imageMemoryBarrier.srcAccessMask = srcAccessMask;
-  imageMemoryBarrier.dstAccessMask = dstAccessMask;
-  imageMemoryBarrier.oldLayout = oldImageLayout;
-  imageMemoryBarrier.newLayout = newImageLayout;
-  imageMemoryBarrier.image = image;
-  imageMemoryBarrier.subresourceRange = subresourceRange;
+                           VkAccessFlags srcAccessMask,
+                           VkAccessFlags dstAccessMask,
+                           VkImageLayout oldImageLayout,
+                           VkImageLayout newImageLayout,
+                           VkPipelineStageFlags srcStageMask,
+                           VkPipelineStageFlags dstStageMask,
+                           VkImageSubresourceRange subresourceRange) {
+  VkImageMemoryBarrier imageMemoryBarrier{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .srcAccessMask = srcAccessMask,
+      .dstAccessMask = dstAccessMask,
+      .oldLayout = oldImageLayout,
+      .newLayout = newImageLayout,
+      .image = image,
+      .subresourceRange = subresourceRange,
+  };
 
   vkCmdPipelineBarrier(cmdbuffer, srcStageMask, dstStageMask, 0, 0, nullptr, 0,
                        nullptr, 1, &imageMemoryBarrier);

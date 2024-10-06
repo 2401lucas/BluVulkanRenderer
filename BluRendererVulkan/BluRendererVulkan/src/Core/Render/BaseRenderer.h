@@ -112,7 +112,7 @@ class BaseRenderer {
   // define it to the rendergraph (I like this)
   virtual void render() = 0;
 
-  virtual void prepare();
+  virtual void prepare() = 0;
 
   void prepareFrame();
   void submitFrame();

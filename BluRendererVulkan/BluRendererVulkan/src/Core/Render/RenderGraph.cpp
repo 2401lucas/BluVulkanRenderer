@@ -12,7 +12,7 @@ RenderGraphPass::RenderGraphPass(RenderGraph* rg, uint32_t index,
     : graph(rg), index(index), name(name) {}
 
 void RenderGraphPass::registerShader(
-    std::pair<ShaderStagesFlag, std::string> shader) {
+    std::pair<VkShaderStageFlagBits, std::string> shader) {
   shaders.push_back(shader);
 }
 
@@ -95,20 +95,19 @@ std::vector<RenderTextureResource*>& RenderGraphPass::getInputAttachments() {
 std::vector<RenderBufferResource*>& RenderGraphPass::getInputStorage() {
   return inputStorageAttachments;
 }
-std::vector<std::pair<ShaderStagesFlag, std::string>>&
+std::vector<std::pair<VkShaderStageFlagBits, std::string>>&
 RenderGraphPass::getShaders() {
   return shaders;
 }
 std::string RenderGraphPass::getName() { return name; }
 
 void RenderGraphPass::draw(VkCommandBuffer buf) {
-  if (drawType == core_internal::rendering::RenderGraph::DrawType::Compute) {
-    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout,
-                            0, 1, &descriptorSet, 0, 0);
-    vkCmdDispatch(buf, computeGroups.x, computeGroups.y, computeGroups.z);
-    return;
-  }
+  /* if (drawType == core_internal::rendering::RenderGraph::DrawType::Compute) {
+     vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+     vkCmdBindDescriptorSets(buf, VK_PIPELINE_BIND_POINT_COMPUTE,
+   pipelineLayout, 0, 1, &descriptorSet, 0, 0); vkCmdDispatch(buf,
+   computeGroups.x, computeGroups.y, computeGroups.z); return;
+   }*/
 
   std::vector<VkRenderingAttachmentInfoKHR> attachments;
   VkRenderingAttachmentInfoKHR depthStencilAttachment;
@@ -181,10 +180,11 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
       .pNext = nullptr,
       .flags = 0,
-      .renderArea = {.extent{.width = size.x, .height = size.y}},
+      .renderArea = {.extent{.width = (uint32_t)size.x,
+                             .height = (uint32_t)size.y}},
       .layerCount = 1,
       .viewMask = 0,  // Multiview
-      .colorAttachmentCount = attachments.size(),
+      .colorAttachmentCount = (uint32_t)attachments.size(),
       .pColorAttachments = attachments.data(),
       .pDepthAttachment = &depthStencilAttachment,
       .pStencilAttachment = &depthStencilAttachment,
@@ -196,28 +196,30 @@ void RenderGraphPass::draw(VkCommandBuffer buf) {
                           0, 1, &descriptorSet, 0, nullptr);
   vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-  switch (drawType) {
-    case core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
-    case core_internal::rendering::RenderGraph::DrawType::
-        CameraOccludedTranslucent:
-      /*vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
-                           VK_INDEX_TYPE_UINT32);
-      vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
-      vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0, 1,
-                               sizeof(float));*/  // TODO: Fill with non junk
-      break;
-    case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
-      vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
-      break;
-    case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
-      break;
-    case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
-      recordCommandBuffer_cb(buf);
-      break;
-    default:
-      DEBUG_ERROR("Missing Draw Type implementation in pass: " + name);
-      break;
-  }
+  // switch (drawType) {
+  //   case
+  //   core_internal::rendering::RenderGraph::DrawType::CameraOccludedOpaque:
+  //   case core_internal::rendering::RenderGraph::DrawType::
+  //       CameraOccludedTranslucent:
+  //     /*vkCmdBindIndexBuffer(buf, graph->getIndexBuffer(), 0,
+  //                          VK_INDEX_TYPE_UINT32);
+  //     vkCmdBindVertexBuffers(buf, 0, 1, graph->getVertexBuffer(), 0);
+  //     vkCmdDrawIndexedIndirect(buf, graph->getDrawBuffer(drawType).buffer, 0,
+  //     1,
+  //                              sizeof(float));*/  // TODO: Fill with non junk
+  //     break;
+  //   case core_internal::rendering::RenderGraph::DrawType::FullscreenTriangle:
+  //     vkCmdDraw(buf, 3, 1, 0, 0);  // Vertices generated in VertexShader
+  //     break;
+  //   case core_internal::rendering::RenderGraph::DrawType::CustomOcclusion:
+  //     break;
+  //   case core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED:
+  //     recordCommandBuffer_cb(buf);
+  //     break;
+  //   default:
+  //     DEBUG_ERROR("Missing Draw Type implementation in pass: " + name);
+  //     break;
+  // }
 
   vkCmdEndRenderingKHR(buf);
 }
@@ -250,28 +252,28 @@ void RenderGraphPass::createPipeline(vulkan::VulkanDevice* device) {
   std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
   shaderStages.resize(shaders.size());
 
-  VkPipelineRenderingCreateInfoKHR pipelineCreateInfo{
-      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
-    .colorAttachmentCount = 1,
-    .pColorAttachmentFormats = &color_rendering_format,
-    .depthAttachmentFormat = depth_format,
-    .stencilAttachmentFormat = depth_format,
-  };
-  
-  VkGraphicsPipelineCreateInfo pipelineCI{};
-  pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-  pipelineCI.layout = pipelineLayout;
-  pipelineCI.renderPass = VK_NULL_HANDLE;
-  pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
-  pipelineCI.pVertexInputState = &vertexInputStateCI;
-  pipelineCI.pRasterizationState = &rasterizationStateCI;
-  pipelineCI.pColorBlendState = &colorBlendStateCI;
-  pipelineCI.pMultisampleState = &multisampleStateCI;
-  pipelineCI.pViewportState = &viewportStateCI;
-  pipelineCI.pDepthStencilState = &depthStencilStateCI;
-  pipelineCI.pDynamicState = &dynamicStateCI;
-  pipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
-  pipelineCI.pStages = shaderStages.data();
+  // VkPipelineRenderingCreateInfoKHR pipelineCreateInfo{
+  //     .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+  //     .colorAttachmentCount = 1,
+  //     .pColorAttachmentFormats = &color_rendering_format,
+  //     .depthAttachmentFormat = depth_format,
+  //     .stencilAttachmentFormat = depth_format,
+  // };
+
+  // VkGraphicsPipelineCreateInfo pipelineCI{};
+  // pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+  // pipelineCI.layout = pipelineLayout;
+  // pipelineCI.renderPass = VK_NULL_HANDLE;
+  // pipelineCI.pInputAssemblyState = &inputAssemblyStateCI;
+  // pipelineCI.pVertexInputState = &vertexInputStateCI;
+  // pipelineCI.pRasterizationState = &rasterizationStateCI;
+  // pipelineCI.pColorBlendState = &colorBlendStateCI;
+  // pipelineCI.pMultisampleState = &multisampleStateCI;
+  // pipelineCI.pViewportState = &viewportStateCI;
+  // pipelineCI.pDepthStencilState = &depthStencilStateCI;
+  // pipelineCI.pDynamicState = &dynamicStateCI;
+  // pipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
+  // pipelineCI.pStages = shaderStages.data();
 
   for (int i = 0; i < shaders.size(); i++) {
     shaderStages[i] = device->loadShader(shaders[i].second, shaders[i].first);
@@ -279,8 +281,8 @@ void RenderGraphPass::createPipeline(vulkan::VulkanDevice* device) {
 
   VkPipeline pipeline{};
 
-  VK_CHECK_RESULT(vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1,
-                                            &pipelineCI, nullptr, &pipeline));
+  /*VK_CHECK_RESULT(vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1,
+                                            &pipelineCI, nullptr, &pipeline));*/
 }
 
 RenderGraphPass* RenderGraph::addPass(const std::string& name,
@@ -380,10 +382,10 @@ void RenderGraph::validateData() {
       shaderMask |= shader.first;
     }
     switch (shaderMask) {
-      case SHADER_STAGE_VERTEX:
+      /*case SHADER_STAGE_VERTEX:
       case SHADER_STAGE_VERT_FRAG:
       case SHADER_STAGE_COMPUTE:
-        break;
+        break;*/
       default:
         DEBUG_ERROR("Shader stages not supported in pass: " + rp->getName());
         break;
@@ -555,7 +557,7 @@ void RenderGraph::generateDescriptorSets() {
 
 void RenderGraph::generatePipelines() {
   for (auto& pass : renderPasses) {
-    pass->createPipeline();
+    // pass->createPipeline();
   }
 }
 

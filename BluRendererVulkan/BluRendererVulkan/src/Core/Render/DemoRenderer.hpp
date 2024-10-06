@@ -1,6 +1,6 @@
 #pragma once
 
-#define DEBUG_ALL 1
+#define DEBUG_ALL
 // #define DEBUG_RENDERGRAPH
 // #define DEBUG_RENDERER
 // #define DEBUG_ENGINE
@@ -65,18 +65,7 @@ class DemoRenderer : public BaseRenderer {
   void prepareExternalBuffers() {}
 
   void buildRenderGraph() {
-    auto mainPass = renderGraph->addPass(
-        "Mainpass",
-        core_internal::rendering::RenderGraph::DrawType::CPU_RECORDED);
-    mainPass->set_GetCommandBuffer([](VkCommandBuffer buf) {
-      // For Each Model
-      // vkCmdBindIndexBuffer(buf, IndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-      // vkCmdBindVertexBuffers(buf, 0, 1, VertexBuffer(), 0);
-      // Draw();
-    });
-    mainPass->addColorOutput("MainColorOutput",
-                             {.format = vulkanSwapchain->colorFormat});
-    renderGraph->setFinalOutput("MainColorOutput");
+    
   }
 
   void mainpassRender(VkCommandBuffer buf) {}

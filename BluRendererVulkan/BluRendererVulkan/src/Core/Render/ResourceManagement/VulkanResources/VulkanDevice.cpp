@@ -126,7 +126,7 @@ VulkanDevice::VulkanDevice(const char *name, bool useValidation,
                                            queueFamilyProperties.data());
 
   // Get list of supported extensions
-  uint32_t extCount = 0;
+  extCount = 0;
   vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extCount,
                                        nullptr);
   if (extCount > 0) {

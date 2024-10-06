@@ -109,8 +109,6 @@ class RenderGraphPass {
   uint32_t index;
   std::string name;
 
-  RenderGraph::DrawType drawType;
-
   // VK Resources
   VkPipeline pipeline;
   VkPipelineCache cache; //TODO
@@ -163,7 +161,7 @@ class RenderGraphPass {
   std::vector<RenderTextureResource *> &getOutputAttachments();
   std::vector<RenderTextureResource *> &getInputAttachments();
   std::vector<RenderBufferResource *> &getInputStorage();
-  std::vector<std::pair<ShaderStagesFlag, std::string>> &getShaders();
+  std::vector<std::pair<VkShaderStageFlagBits, std::string>> &getShaders();
   std::string getName();
 
   void draw(VkCommandBuffer buf);
@@ -195,6 +193,7 @@ class RenderGraph {
   std::vector<RenderGraphPass *> renderPasses;
   std::unordered_map<std::string, RenderTextureResource *> textureBlackboard;
   std::unordered_map<std::string, RenderBufferResource *> bufferBlackboard;
+  RenderBufferResource* finalOutput;
 
   // Baked GPU Resources
   std::vector<vulkan::Image *> internalRenderImages;
