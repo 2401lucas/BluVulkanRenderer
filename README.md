@@ -47,18 +47,6 @@ I also didn't like needing to manually create every resource and ended up with h
 - [ ] Screen Space Reflections
 - [ ] SMAA
 - [ ] Compact Light GPU info
-
-
-## Scene Resources Overview
-### Lights
-The light struct allows for the creation, deletion and modification of lights, unique to their type. When created or modified, the minimum required information for shaders are compacted in 4 vector4s, holding some combination of Color RBG(Intensity is premultiplied), LightType, Position XYZ, Direction XYZ, FOV, Light Falloffs(Constant, Linear & Quadratic). This also creates the light space matrix for shadow map calculations. This could be lowered to 3 vec4s if one float held all Light Falloffs at the cost of accuracy. Because all values are clamped between 0-1 this should be a non issue. 
-### Models
-Models are sepereated by Static and Dynamic. Static models are never moved, are baked into the IBL and their model data(Material Info & pre-multipled model matrices) are loaded onto the GPU once, only being updated if the scene changes(With an exception in the Demo UI to create & move static models). If a static model is loaded more than once it is automatically instanced, with each instance holding unique model matrix transform info. When drawing with `VkCmdDrawIndexed` gl_InstanceIndex is exposed in the vertex shader allowing for the model matrices to be indexed.
-
-Dyanmic Models can be modified during runtime, with their model matrices being updated more frequently. They also support GPU instancing. 
-
-### Material System
-When a model is loaded, all of its material info(Colors, Textures...) are loaded into a material buffer which is then sent to the GPU in an SSBO and is indexed with a push constant. Currently, the material buffer is shared between models and is completely rewritten when adding or removing a single material. This could be changed to either a per object material buffer, or allocating a buffer with a **MAX_MATERIAL** limit allowing new materials to be added without reallocating the entire buffer. 
   
 ## Resources
 ### Tech
