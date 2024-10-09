@@ -8,60 +8,24 @@ BaseRenderer::BaseRenderer() {
   getEnabledFeatures();
   getEnabledExtensions();
 
-  vulkanDevice = new core_internal::rendering::vulkan::VulkanDevice(
+  vulkanDevice = new core_internal::rendering::VulkanDevice(
       windowTitle.c_str(), settings.validation, enabledDeviceExtensions,
       enabledInstanceExtensions, pNextChain);
-  vulkanSwapchain = new core_internal::rendering::vulkan::VulkanSwapchain(
+  vulkanSwapchain = new core_internal::rendering::VulkanSwapchain(
       vulkanDevice, windowManager->getWindow());
   vulkanSwapchain->create(&width, &height, settings.vsync, settings.fullscreen);
-  renderGraph = new core_internal::rendering::RenderGraph();
+  renderGraph =
+      new core_internal::rendering::rendergraph::RenderGraph({width, height});
   buildEngine();
 }
 
 BaseRenderer::~BaseRenderer() {
-  delete vulkanSwapchain;
   delete renderGraph;
+  delete vulkanSwapchain;
   delete vulkanDevice;
 }
 
 void BaseRenderer::start() { renderLoop(); }
-
-// IDK------------------------------------------------------------------------------------------------------------
-// void BaseRenderer::createPipelineCache() {
-//  VkPipelineCacheCreateInfo pipelineCacheCreateInfo = {};
-//  pipelineCacheCreateInfo.sType =
-//  VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-//  VK_CHECK_RESULT(vkCreatePipelineCache(device, &pipelineCacheCreateInfo,
-//                                        nullptr, &pipelineCache));
-//}
-
-// IDK------------------------------------------------------------------------------------------------------------
-// void BaseRenderer::setupFrameBuffer() {
-//  std::array<VkImageView, 2> attachments;
-//  // attachment[0]
-//  // Depth/Stencil attachment is the same for all frame buffers
-//  attachments[1] = depthStencil.view;
-//
-//  VkFramebufferCreateInfo frameBufferCreateInfo = {};
-//  frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-//  frameBufferCreateInfo.pNext = NULL;
-//  frameBufferCreateInfo.renderPass = renderPass;
-//  frameBufferCreateInfo.attachmentCount =
-//      static_cast<uint32_t>(attachments.size());
-//  frameBufferCreateInfo.pAttachments = attachments.data();
-//  frameBufferCreateInfo.width = width;
-//  frameBufferCreateInfo.height = height;
-//  frameBufferCreateInfo.layers = 1;
-//
-//  // Create frame buffers for every swap chain image
-//  frameBuffers.resize(swapChain.imageCount);
-//  for (uint32_t i = 0; i < frameBuffers.size(); i++) {
-//    attachments[0] = swapChain.buffers[i].view;
-//    VK_CHECK_RESULT(vkCreateFramebuffer(device, &frameBufferCreateInfo,
-//    nullptr,
-//                                        &frameBuffers[i]));
-//  }
-//}
 
 void BaseRenderer::nextFrame() {
   auto tStart = std::chrono::high_resolution_clock::now();
@@ -113,23 +77,23 @@ void BaseRenderer::renderLoop() {
   vulkanDevice->waitIdle();
 }
 
-void BaseRenderer::prepareFrame() { renderGraph->prepareFrame(); }
+void BaseRenderer::prepareFrame() { /*renderGraph->prepareFrame();*/ }
 // Instead of submit, this should be validate frame or something, leave Q
 // dispatching to inherited class
 void BaseRenderer::submitFrame() {
   // Needs multiple Q submits, maybe just verify their outputs and dispatch Q
   // submits elsewhere
-  VkResult result = renderGraph->submitFrame();
+  //VkResult result = renderGraph->submitFrame();
   // Recreate the swapchain if it's no longer compatible with the surface
-  // (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
-  if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)) {
-    windowResize();
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-      return;
-    }
-  } else {
-    VK_CHECK_RESULT(result);
-  }
+  //// (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
+  //if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)) {
+  //  windowResize();
+  //  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+  //    return;
+  //  }
+  //} else {
+  //  VK_CHECK_RESULT(result);
+  //}
 }
 
 void BaseRenderer::handleMousepress(GLFWwindow* window, int glfwKey,
@@ -224,7 +188,7 @@ void BaseRenderer::windowResize() {
 
   if ((width > 0.0f) && (height > 0.0f)) {
     engine->onResized((float)width / (float)height);
-    renderGraph->onResized();
+    //renderGraph->onResized();
   }
 
   windowResized();

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <glm/ext/vector_float2.hpp>
 struct InputData {
   // Instead of saving an enum of keys that GLFW already has, a
@@ -38,7 +40,7 @@ struct InputData {
     KEYBOARD_LALT = 1 << 28,
     KEYBOARD_TAB = 1 << 29,
     MOUSE_LEFT = 1 << 30,
-    MOUSE_RIGHT = 1 << 31,
+    MOUSE_RIGHT = 1UL << 31,
   };
 
   glm::vec2 position;

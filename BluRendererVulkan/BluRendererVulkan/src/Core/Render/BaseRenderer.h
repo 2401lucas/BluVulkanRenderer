@@ -14,7 +14,7 @@
 #include <glm/glm.hpp>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
-#define GLFW_EXPOSE_NATIVE_WGL
+#include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 #include <imgui.h>
 
@@ -25,10 +25,10 @@
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 
-// Needs an interface with the engine to receive info
+// Needs to interface with the engine to receive info
 class BaseRenderer {
  private:
-  // Window Info (Initially set upon swapchain creation)
+  // Window Info
   int width;
   int height;
 
@@ -66,7 +66,7 @@ class BaseRenderer {
   std::vector<const char*> enabledInstanceExtensions;
 
   core_internal::engine::BaseEngine* engine;
-  core_internal::rendering::RenderGraph* renderGraph;
+  core_internal::rendering::rendergraph::RenderGraph* renderGraph;
 
   struct Settings {
     // Activates validation layers (and message output) when set to true
@@ -118,8 +118,8 @@ class BaseRenderer {
   void submitFrame();
 
  public:
-  core_internal::rendering::vulkan::VulkanDevice* vulkanDevice;
-  core_internal::rendering::vulkan::VulkanSwapchain* vulkanSwapchain;
+  core_internal::rendering::VulkanDevice* vulkanDevice;
+  core_internal::rendering::VulkanSwapchain* vulkanSwapchain;
 
   float frameTimer = 1.0f;
 

@@ -63,7 +63,7 @@ class Camera {
   bool updated = true;
   bool flipY = false;
 
-  core_internal::components::GPUCameraInfo* gpuInfo;
+  core_internal::rendering::components::GPUCameraInfo* gpuInfo;
 
   struct {
     glm::mat4 perspective;

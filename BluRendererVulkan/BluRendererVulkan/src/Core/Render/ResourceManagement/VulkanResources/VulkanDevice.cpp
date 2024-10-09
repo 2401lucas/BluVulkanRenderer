@@ -4,7 +4,7 @@
 #include <map>
 #include <unordered_set>
 
-namespace core_internal::rendering::vulkan {
+namespace core_internal::rendering {
 VulkanDevice::VulkanDevice(const char *name, bool useValidation,
                            std::vector<const char *> enabledDeviceExtensions,
                            std::vector<const char *> enabledInstanceExtensions,
@@ -466,409 +466,87 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
   throw std::runtime_error("Could not find a matching depth format");
 }
 
-Image *VulkanDevice::createImageFromBuffer(ImageInfo &imageCreateInfo,
-                                           void **data, VkDeviceSize dataSize) {
-  if (!(imageCreateInfo.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)) {
-    imageCreateInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+VkFormat VulkanDevice::getImageFormat(VkImageUsageFlags imageUsageFlags) {
+  if (imageUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
+    return colorFormat;
+  }
+  if (imageUsageFlags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+    return depthFormat;
   }
 
-  auto newImage = createImage(imageCreateInfo, false);
-
-  VkBufferCreateInfo bufCreateInfo{
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = dataSize,
-      .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-  };
-
-  VmaAllocationCreateInfo allocCreateInfo{
-      .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-               VMA_ALLOCATION_CREATE_MAPPED_BIT,
-      .usage = VMA_MEMORY_USAGE_AUTO,
-  };
-
-  VkBuffer stagingBuffer;
-  VmaAllocation alloc;
-  VmaAllocationInfo allocInfo;
-
-  vmaCreateBuffer(allocator, &bufCreateInfo, &allocCreateInfo, &stagingBuffer,
-                  &alloc, &allocInfo);
-
-  memcpy(allocInfo.pMappedData, data, dataSize);
-
-  VkBufferImageCopy bufferCopyRegion = {};
-  bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  bufferCopyRegion.imageSubresource.mipLevel = imageCreateInfo.mipLevels;
-  bufferCopyRegion.imageSubresource.baseArrayLayer = 0;
-  bufferCopyRegion.imageSubresource.layerCount = imageCreateInfo.arrayLayers;
-  bufferCopyRegion.imageExtent.width = imageCreateInfo.width;
-  bufferCopyRegion.imageExtent.height = imageCreateInfo.height;
-  bufferCopyRegion.imageExtent.depth = imageCreateInfo.depth;
-  bufferCopyRegion.bufferOffset = 0;
-
-  auto copyCmd = createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-
-  newImage->transitionImageLayout(copyCmd,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-  vkCmdCopyBufferToImage(copyCmd, stagingBuffer, newImage->image,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                         &bufferCopyRegion);
-
-  newImage->transitionImageLayout(copyCmd,
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-  VK_CHECK_RESULT(vkEndCommandBuffer(copyCmd));
-
-  VkSubmitInfo submitInfo{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &copyCmd,
-  };
-
-  VkFenceCreateInfo fenceInfo{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                              .flags = VK_FLAGS_NONE};
-
-  VkFence fence;
-  VK_CHECK_RESULT(vkCreateFence(logicalDevice, &fenceInfo, nullptr, &fence));
-  VK_CHECK_RESULT(vkQueueSubmit(queues.transfer, 1, &submitInfo, fence));
-  VK_CHECK_RESULT(vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE,
-                                  DEFAULT_FENCE_TIMEOUT));
-  vkDestroyFence(logicalDevice, fence, nullptr);
-  vkFreeCommandBuffers(logicalDevice, commandPool, 1, &copyCmd);
-
-  vmaDestroyBuffer(allocator, stagingBuffer, alloc);
-
-  return newImage;
+  DEBUG_ERROR("Could not find format based on usage flags");
+  return VK_FORMAT_MAX_ENUM;
 }
 
-Image *VulkanDevice::createImage(const ImageInfo &imageCreateInfo,
-                                 bool renderResource) {
-  auto newImage = new Image();
-  VkImageCreateInfo imgCreateInfo = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = VK_IMAGE_TYPE_2D,
-      .format = imageCreateInfo.format,
-      .extent = {.width = imageCreateInfo.width,
-                 .height = imageCreateInfo.height,
-                 .depth = imageCreateInfo.depth},
-      .mipLevels = imageCreateInfo.mipLevels,
-      .arrayLayers = imageCreateInfo.arrayLayers,
-      .samples = imageCreateInfo.samples,
-      .tiling = imageCreateInfo.tiling,
-      .usage = imageCreateInfo.usage,
-      .initialLayout = imageCreateInfo.initialLayout,
-  };
-  // allocCreateInfo.priority = 1.0f; Read more about this to better understand
-  // advantages
-  VmaAllocationCreateInfo allocCreateInfo = {
+void VulkanDevice::createBuffer(Buffer *buf, const VkBufferCreateInfo &bufCI,
+                                VkMemoryPropertyFlags propertyFlags,
+                                VmaAllocationCreateFlags vmaFlags, bool mapped,
+                                bool renderResource) {
+  uint32_t requiredFlags = 0;
+  uint32_t preferredFlags = propertyFlags;
+  if (mapped) {
+    requiredFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+  }
+
+  VmaAllocationCreateInfo allocCI{
+      .flags = vmaFlags,
       .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = imageCreateInfo.memoryFlags,
+      .requiredFlags = requiredFlags,
+      .preferredFlags = preferredFlags,
   };
 
   if (renderResource)
-    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-  if (imageCreateInfo.requireMappedData)
-    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+    allocCI.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+  if (mapped) allocCI.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
   VmaAllocationInfo allocInfo;
-  VK_CHECK_RESULT(vmaCreateImage(allocator, &imgCreateInfo, &allocCreateInfo,
-                                 &newImage->image, &newImage->deviceMemory,
-                                 &allocInfo));
 
-  newImage->mappedData = allocInfo.pMappedData;
+  vmaCreateBuffer(allocator, &bufCI, &allocCI, &buf->buffer, &buf->alloc,
+                  &allocInfo);
 
-  if (imageCreateInfo.requireSampler) {
-    VkSamplerCreateInfo samplerCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = imageCreateInfo.samplerInfo.magFilter,
-        .minFilter = imageCreateInfo.samplerInfo.minFilter,
-        .mipmapMode = imageCreateInfo.samplerInfo.mipmapMode,
-        .addressModeU = imageCreateInfo.samplerInfo.addressModeU,
-        .addressModeV = imageCreateInfo.samplerInfo.addressModeV,
-        .addressModeW = imageCreateInfo.samplerInfo.addressModeW,
-        .mipLodBias = imageCreateInfo.samplerInfo.mipLodBias,
-        .maxAnisotropy = imageCreateInfo.samplerInfo.maxAnisotropy,
-        .minLod = imageCreateInfo.samplerInfo.minLod,
-        .maxLod = imageCreateInfo.samplerInfo.maxLod,
-        .borderColor = imageCreateInfo.samplerInfo.borderColor,
-    };
-    VK_CHECK_RESULT(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr,
-                                    &newImage->sampler));
+  buf->size = bufCI.size;
+  buf->mappedData = allocInfo.pMappedData;
+
+  if (bufCI.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+    VkBufferDeviceAddressInfo info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = buf->buffer};
+
+    buf->deviceAddress = vkGetBufferDeviceAddress(logicalDevice, &info);
   }
-
-  if (imageCreateInfo.requireImageView) {
-    newImage->subresourceRange = {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1,
-    };
-    VkImageViewCreateInfo imageViewCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .flags = imageCreateInfo.imageViewInfo.flags,
-        .image = newImage->image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = imageCreateInfo.format,
-        .subresourceRange = newImage->subresourceRange,
-    };
-    VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
-                                      nullptr, &newImage->view));
-  }
-
-  newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  newImage->descriptor.sampler = newImage->sampler;
-  newImage->descriptor.imageView = newImage->view;
-
-  return newImage;
 }
 
-std::vector<Image *> VulkanDevice::createAliasedImages(
-    std::vector<ImageInfo> imageCreateInfos) {
-  std::vector<Image *> newImages;
-  std::vector<ResourceReservation> resourceReservations;
-
-  for (auto &imageCreateInfo : imageCreateInfos) {
-    auto newImage = new Image();
-    VkImageCreateInfo imgCreateInfo = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = imageCreateInfo.format,
-        .extent = {.width = imageCreateInfo.width,
-                   .height = imageCreateInfo.height,
-                   .depth = imageCreateInfo.depth},
-        .mipLevels = imageCreateInfo.mipLevels,
-        .arrayLayers = imageCreateInfo.arrayLayers,
-        .samples = imageCreateInfo.samples,
-        .tiling = imageCreateInfo.tiling,
-        .usage = imageCreateInfo.usage,
-        .initialLayout = imageCreateInfo.initialLayout,
-    };
-
-    VK_CHECK_RESULT(vkCreateImage(logicalDevice, &imgCreateInfo, nullptr,
-                                  &newImage->image));
-
-    VkSamplerCreateInfo samplerCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = imageCreateInfo.samplerInfo.magFilter,
-        .minFilter = imageCreateInfo.samplerInfo.minFilter,
-        .mipmapMode = imageCreateInfo.samplerInfo.mipmapMode,
-        .addressModeU = imageCreateInfo.samplerInfo.addressModeU,
-        .addressModeV = imageCreateInfo.samplerInfo.addressModeV,
-        .addressModeW = imageCreateInfo.samplerInfo.addressModeW,
-        .mipLodBias = imageCreateInfo.samplerInfo.mipLodBias,
-        .maxAnisotropy = imageCreateInfo.samplerInfo.maxAnisotropy,
-        .minLod = imageCreateInfo.samplerInfo.minLod,
-        .maxLod = imageCreateInfo.samplerInfo.maxLod,
-        .borderColor = imageCreateInfo.samplerInfo.borderColor,
-    };
-    VK_CHECK_RESULT(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr,
-                                    &newImage->sampler));
-    newImage->subresourceRange = {
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1,
-    };
-
-    VkImageViewCreateInfo imageViewCreateInfo{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .flags = imageCreateInfo.imageViewInfo.flags,
-        .image = newImage->image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = imageCreateInfo.format,
-        .subresourceRange = newImage->subresourceRange,
-    };
-    VK_CHECK_RESULT(vkCreateImageView(logicalDevice, &imageViewCreateInfo,
-                                      nullptr, &newImage->view));
-
-    newImage->descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    newImage->descriptor.sampler = newImage->sampler;
-    newImage->descriptor.imageView = newImage->view;
-    newImage->offset = imageCreateInfo.offset;
-
-    VkMemoryRequirements memReq;
-    vkGetImageMemoryRequirements(logicalDevice, newImage->image, &memReq);
-    uint32_t newImageIndex = newImages.size();
-    bool allocated = false;
-
-    for (auto reservation : resourceReservations) {
-      if (reservation.tryReserve(memReq, imageCreateInfo.resourceLifespan,
-                                 newImageIndex)) {
-        allocated = true;
-        break;
-      }
-    }
-
-    if (!allocated) {
-      resourceReservations.push_back(ResourceReservation(
-          memReq, imageCreateInfo.resourceLifespan, newImageIndex));
-    }
-
-    newImages.push_back(newImage);
-  }
-
-  VmaAllocationCreateInfo allocCreateInfo = {
-      .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-      .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      // .allocCreateInfo.priority = 1.0f; Read more about this to better
-      // understand advantages
-  };
-
-  for (auto &reservation : resourceReservations) {
-    VmaAllocation alloc;
-    VK_CHECK_RESULT(vmaAllocateMemory(allocator, &reservation.localMemReq,
-                                      &allocCreateInfo, &alloc, nullptr));
-
-    // index.first is resource index
-    // index.second is resource memory offset
-    for (auto &index : reservation.resourceIndices) {
-      newImages[index.first]->deviceMemory = alloc;
-      VK_CHECK_RESULT(vmaBindImageMemory2(allocator, alloc, index.second,
-                                          newImages[index.first]->image,
-                                          nullptr));
-    }
-  }
-
-  return newImages;
+void VulkanDevice::createBuffer(Buffer *buf, const VkBufferCreateInfo &bufCI) {
+  VK_CHECK_RESULT(vkCreateBuffer(logicalDevice, &bufCI, nullptr, &buf->buffer));
 }
 
-Buffer *VulkanDevice::createBuffer(const BufferInfo &bufferCreateInfo,
-                                   bool renderResource) {
-  auto newBuffer = new Buffer();
-  VmaAllocationCreateInfo allocCreateInfo = {
-      .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = bufferCreateInfo.memoryFlags,
-  };
+void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI,
+                               VkMemoryPropertyFlags propertyFlags,
+                               VmaAllocationCreateFlags vmaFlags,
+                               bool renderResource = false) {}
 
-  if (renderResource)
-    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-  if (bufferCreateInfo.requireMappedData)
-    allocCreateInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT;
+void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI) {
+  VK_CHECK_RESULT(vkCreateImage(logicalDevice, &imgCI, nullptr, &img->image));
 
-  VkBufferCreateInfo bufInfo{
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = bufferCreateInfo.size,
-      .usage =
-          bufferCreateInfo.usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-  };
-
-  VmaAllocationInfo info;
-  vmaCreateBuffer(allocator, &bufInfo, &allocCreateInfo, &newBuffer->buffer,
-                  &newBuffer->deviceMemory, &info);
-  newBuffer->mappedData = info.pMappedData;
-  newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
-                           newBuffer->size};
-  newBuffer->descriptorType = bufferCreateInfo.descriptorType;
-
-  VkBufferDeviceAddressInfo addressInfo{
-      .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-      .pNext = nullptr,
-      .buffer = newBuffer->buffer,
-  };
-
-  newBuffer->deviceAddress = static_cast<DeviceAddress>(
-      vkGetBufferDeviceAddress(logicalDevice, &addressInfo));
-
-  return newBuffer;
+  VkMemoryRequirements memReqs;
+  vkGetImageMemoryRequirements(logicalDevice, img->image, &memReqs);
+  img->size = memReqs.size;
 }
 
-std::vector<Buffer *> VulkanDevice::createAliasedBuffers(
-    std::vector<BufferInfo> bufferCreateInfos) {
-  std::vector<Buffer *> newBuffers;
-  std::vector<ResourceReservation> resourceReservations;
-
-  for (auto &bufferCreateInfo : bufferCreateInfos) {
-    auto newBuffer = new Buffer();
-    VkBufferCreateInfo bufInfo{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = bufferCreateInfo.size,
-        .usage = bufferCreateInfo.usage,
-    };
-
-    vkCreateBuffer(logicalDevice, &bufInfo, nullptr, &newBuffer->buffer);
-    VkMemoryRequirements memReq;
-    vkGetBufferMemoryRequirements(logicalDevice, newBuffer->buffer, &memReq);
-    uint32_t newBufferIndex = newBuffers.size();
-    bool allocated = false;
-    for (auto reservation : resourceReservations) {
-      if (reservation.tryReserve(memReq, bufferCreateInfo.resourceLifespan,
-                                 newBufferIndex)) {
-        allocated = true;
-        break;
-      }
-    }
-
-    if (!allocated) {
-      resourceReservations.push_back(ResourceReservation(
-          memReq, bufferCreateInfo.resourceLifespan, newBufferIndex));
-    }
-
-    newBuffer->descriptor = {newBuffer->buffer, newBuffer->offset,
-                             newBuffer->size};
-    newBuffers.push_back(newBuffer);
-  }
-
-  VmaAllocationCreateInfo allocCreateInfo = {
-      .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-      .usage = VMA_MEMORY_USAGE_AUTO,
-      .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      // .allocCreateInfo.priority = 1.0f; Read more about this to better
-      // understand advantages
-  };
-
-  for (auto &reservation : resourceReservations) {
-    VmaAllocation alloc;
-    VK_CHECK_RESULT(vmaAllocateMemory(allocator, &reservation.localMemReq,
-                                      &allocCreateInfo, &alloc, nullptr));
-
-    for (auto &index : reservation.resourceIndices) {
-      newBuffers[index.first]->deviceMemory = alloc;
-      VK_CHECK_RESULT(vmaBindBufferMemory2(allocator, alloc, index.second,
-                                           newBuffers[index.first]->buffer,
-                                           nullptr));
-    }
-  }
-
-  return newBuffers;
+// GPU->CPU Memory
+void VulkanDevice::copyAllocToMemory(Buffer *buf, void *dst) {
+  VK_CHECK_RESULT(
+      vmaCopyAllocationToMemory(allocator, buf->alloc, 0, dst, buf->size));
 }
 
-VulkanDevice::ResourceReservation::ResourceReservation(
-    VkMemoryRequirements memReq, unsigned long range, uint32_t imgIndex) {
-  this->localMemReq = memReq;
-  memory = std::vector<MemoryReservation>(64, MemoryReservation(memReq.size));
-
-  tryReserve(memReq, range, imgIndex);
+// CPU->GPU Memory
+void VulkanDevice::copyMemoryToAlloc(Buffer *buf, void *src,
+                                     VkDeviceSize size) {
+  VK_CHECK_RESULT(
+      vmaCopyMemoryToAllocation(allocator, src, buf->alloc, 0, size));
 }
-
-bool VulkanDevice::ResourceReservation::tryReserve(VkMemoryRequirements memReq,
-                                                   unsigned long range,
-                                                   uint32_t imgIndex) {
-  if (localMemReq.size < memReq.size) return false;
-
-  unsigned long firstUse, lastUse;
-  BitScanForward(&firstUse, range);
-  BitScanReverse(&lastUse, range);
-
-  for (auto it = memory.begin(); it != memory.end(); it++) {
-    for (auto &freeBlock : it->freeStorage) {
-      if (freeBlock.size >= memReq.size) {
-        uint32_t offset = freeBlock.offset;
-        it->usedStorage.push_back(MemoryBlock(memReq.size, offset));
-        freeBlock.size -= memReq.size;
-        freeBlock.offset = offset + memReq.size;
-        if (freeBlock.size == 0) {
-          memory.erase(it);
-        }
-        resourceIndices.push_back(std::make_pair(imgIndex, offset));
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-}  // namespace core_internal::rendering::vulkan
+void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI,
+                               VkMemoryPropertyFlags propertyFlags,
+                               VmaAllocationCreateFlags vmaFlags,
+                               bool renderResource) {}
+}  // namespace core_internal::rendering

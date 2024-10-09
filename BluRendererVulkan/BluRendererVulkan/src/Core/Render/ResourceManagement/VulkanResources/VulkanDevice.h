@@ -12,195 +12,33 @@
 #include "../../../Tools/Debug.hpp"
 #include "VulkanTools.h"
 
-namespace core_internal::rendering::vulkan {
-struct SamplerInfo {
-  VkFilter magFilter = VK_FILTER_LINEAR;
-  VkFilter minFilter = VK_FILTER_LINEAR;
-  VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-  VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-  VkSamplerAddressMode addressModeV = addressModeU;
-  VkSamplerAddressMode addressModeW = addressModeU;
-  float mipLodBias = 0.0f;
-  float maxAnisotropy = 1.0f;
-  float minLod = 0.0f;
-  float maxLod = 1.0f;
-  VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-};
-
-struct ImageViewInfo {
-  VkImageCreateFlags flags;
-};
-
-struct ImageInfo {
-  uint32_t width;
-  uint32_t height;
-  VkFormat format;
-  VkImageTiling tiling;
-  VkImageUsageFlags usage;
-  uint32_t mipLevels = 1;
-  uint32_t arrayLayers = 1;
-  uint32_t depth = 1;
-  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-  VkMemoryPropertyFlags memoryFlags;
-  // The only limitaion to having more than 64 dependency layers is this
-  unsigned long resourceLifespan;
-  bool requireSampler = false;
-  bool requireImageView = false;
-  bool requireMappedData = false;
-  VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  SamplerInfo samplerInfo;
-  ImageViewInfo imageViewInfo;
-  VkDeviceSize offset = 0;
-};
-
+namespace core_internal::rendering {
 class Image {
  public:
+  // Required
   VkImage image = VK_NULL_HANDLE;
-  VkImageLayout imageLayout;
-  VmaAllocation deviceMemory = VK_NULL_HANDLE;
-  VkDeviceSize offset = 0;
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
-  VkDescriptorImageInfo descriptor;
-  VkImageSubresourceRange subresourceRange;
-  void *mappedData = nullptr;
-
-  void transitionImageLayout(VkCommandBuffer cmdbuffer,
-                             VkImageLayout newImageLayout) {
-    transitionImageLayout(cmdbuffer, imageLayout, newImageLayout);
-  }
-
-  void transitionImageLayout(VkCommandBuffer cmdbuffer,
-                             VkImageLayout oldImageLayout,
-                             VkImageLayout newImageLayout) {
-    if (oldImageLayout == newImageLayout) return;
-
-    VkAccessFlags2 srcAccessMask = getAccessFlags(imageLayout);
-    VkAccessFlags2 dstAccessMask = getAccessFlags(newImageLayout);
-    VkPipelineStageFlags2 srcStageMask = getPipelineStageFlags(imageLayout);
-    VkPipelineStageFlags2 dstStageMask = getPipelineStageFlags(newImageLayout);
-
-    VkImageMemoryBarrier2 imageMemoryBarrier{
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .srcStageMask = srcStageMask,
-        .srcAccessMask = srcAccessMask,
-        .dstStageMask = dstStageMask,
-        .dstAccessMask = dstAccessMask,
-        .oldLayout = oldImageLayout,
-        .newLayout = newImageLayout,
-        .image = image,
-        .subresourceRange = subresourceRange,
-    };
-
-    VkDependencyFlags dependencyFlags = 0;
-    // If both stages are in framebuffer space
-    if ((srcStageMask & dstStageMask &
-         (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-          VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)) != 0)
-      dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-
-    VkDependencyInfo info{
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .dependencyFlags = dependencyFlags,
-        .memoryBarrierCount = 0,
-        .pMemoryBarriers = nullptr,
-        .bufferMemoryBarrierCount = 0,
-        .pBufferMemoryBarriers = nullptr,
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &imageMemoryBarrier,
-    };
-
-    vkCmdPipelineBarrier2(cmdbuffer, &info);
-
-    imageLayout = newImageLayout;
-  }
-
-  VkPipelineStageFlags getPipelineStageFlags(VkImageLayout layout) {
-    switch (layout) {
-      case VK_IMAGE_LAYOUT_UNDEFINED:
-        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-      case VK_IMAGE_LAYOUT_PREINITIALIZED:
-        return VK_PIPELINE_STAGE_HOST_BIT;
-      case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-      case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        return VK_PIPELINE_STAGE_TRANSFER_BIT;
-      case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-      case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
-        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-               VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-      case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
-        return VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-      case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-      case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-        return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-      case VK_IMAGE_LAYOUT_GENERAL:
-      default:
-        DEBUG_ERROR(
-            "Don't know how to get a meaningful VkPipelineStageFlags for "
-            "VK_IMAGE_LAYOUT_GENERAL! Don't use it!");
-    }
-  }
-
-  VkAccessFlags getAccessFlags(VkImageLayout layout) {
-    switch (layout) {
-      case VK_IMAGE_LAYOUT_UNDEFINED:
-      case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-        return 0;
-      case VK_IMAGE_LAYOUT_PREINITIALIZED:
-        return VK_ACCESS_HOST_WRITE_BIT;
-      case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-        return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-      case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
-        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-               VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-      case VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR:
-        return VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
-      case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-      case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        return VK_ACCESS_TRANSFER_READ_BIT;
-      case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        return VK_ACCESS_TRANSFER_WRITE_BIT;
-      case VK_IMAGE_LAYOUT_GENERAL:
-      default:
-        DEBUG_ERROR(
-            "Don't know how to get a meaningful VkAccessFlags for "
-            "VK_IMAGE_LAYOUT_GENERAL! Don't use it!");
-    }
-  }
-};
-
-struct BufferInfo {
+  VkImageLayout imageLayout;
+  VmaAllocation alloc = VK_NULL_HANDLE;
   VkDeviceSize size;
-  VkBufferUsageFlags usage;
-  VkMemoryPropertyFlags memoryFlags;
-  bool requireMappedData;
-  VkDescriptorType descriptorType;
-  // The only limitaion to having more than 32 dependency layers is this
-  unsigned long resourceLifespan;
+  VkDeviceSize offset = 0;
+  VkImageSubresourceRange subresourceRange;
+  // Optional
+  void *mappedData = nullptr;
 };
-
-enum class DeviceAddress : uint64_t { Invalid = 0 };
 
 struct Buffer {
-  VkDeviceSize size = 0;
-  VkDeviceSize offset = 0;
+  // Required
   VkBuffer buffer;
-  VmaAllocation deviceMemory;
-  VkDescriptorBufferInfo descriptor;
-  VkDescriptorType descriptorType;
+  VmaAllocation alloc;
+  VkDeviceSize size;
+  VkDeviceSize offset = 0;
+  // Optional
   void *mappedData = nullptr;
-  DeviceAddress deviceAddress;
+  VkDeviceAddress deviceAddress;
 };
 
-// Vulkan Resources are self contained in VulkanDevice
-// VulkanDevice handles all resource creation/deletion
 class VulkanDevice {
  private:
   class ResourceReservation {
@@ -251,16 +89,12 @@ class VulkanDevice {
   std::vector<VkQueueFamilyProperties> queueFamilyProperties;
   std::vector<VkShaderModule> shaderModules;
 
-  operator VkInstance() const { return instance; };
-  operator VkDevice() const { return logicalDevice; };
-  operator VkPhysicalDevice() const { return physicalDevice; };
-  operator VmaAllocator() const { return allocator; };
-  operator VkPhysicalDeviceProperties() const {
-    return physicalDeviceProperties;
-  };
-  operator VkPhysicalDeviceMemoryProperties() const {
-    return physicalDeviceMemoryProperties;
-  };
+  uint32_t getMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties,
+                         VkBool32 *memTypeFound = nullptr) const;
+  uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
+  VkPhysicalDevice choosePhysicalDevice(std::vector<VkPhysicalDevice> devices);
+  int rateDeviceSuitability(VkPhysicalDevice device);
+  bool extensionSupported(std::string extension);
 
  public:
   struct {
@@ -275,6 +109,17 @@ class VulkanDevice {
     VkQueue transfer{VK_NULL_HANDLE};
   } queues;
 
+  operator VkInstance() const { return instance; };
+  operator VkDevice() const { return logicalDevice; };
+  operator VkPhysicalDevice() const { return physicalDevice; };
+  operator VmaAllocator() const { return allocator; };
+  operator VkPhysicalDeviceProperties() const {
+    return physicalDeviceProperties;
+  };
+  operator VkPhysicalDeviceMemoryProperties() const {
+    return physicalDeviceMemoryProperties;
+  };
+
   explicit VulkanDevice(const char *name, bool useValidation,
                         std::vector<const char *> enabledDeviceExtensions,
                         std::vector<const char *> enabledInstanceExtensions,
@@ -282,12 +127,7 @@ class VulkanDevice {
   ~VulkanDevice();
 
   // Helper---------------------------------------------------------------------------------------
-  uint32_t getMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties,
-                         VkBool32 *memTypeFound = nullptr) const;
-  uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
-  VkPhysicalDevice choosePhysicalDevice(std::vector<VkPhysicalDevice> devices);
-  int rateDeviceSuitability(VkPhysicalDevice device);
-  bool extensionSupported(std::string extension);
+
   VkFormat getSupportedDepthFormat(bool checkSamplingSupport);
   void waitIdle();
 
@@ -295,18 +135,24 @@ class VulkanDevice {
                                       bool begin);
   VkCommandBuffer createCommandBuffer(VkCommandBufferLevel, bool begin);
 
+  VkFormat getImageFormat(VkImageUsageFlags);
   // Vulkan Resource Management
   // ---------------------------------------------------------------------------------------
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
                                              VkShaderStageFlagBits stage);
+  void createBuffer(Buffer *buf, const VkBufferCreateInfo &bufCI,
+                    VkMemoryPropertyFlags propertyFlags,
+                    VmaAllocationCreateFlags vmaFlags, bool mapped = false,
+                    bool renderResource = false);
+  void createBuffer(Buffer *buf, const VkBufferCreateInfo &bufCI);
 
-  Image *createImage(const ImageInfo &imageCreateInfo, bool renderResource);
-  Image *createImageFromBuffer(ImageInfo &imageCreateInfo, void **data,
-                               VkDeviceSize dataSize);
-  std::vector<Image *> createAliasedImages(
-      std::vector<ImageInfo> imageCreateInfos);
-  Buffer *createBuffer(const BufferInfo &bufferCreateInfo, bool renderResource);
-  std::vector<Buffer *> createAliasedBuffers(
-      std::vector<BufferInfo> bufferCreateInfos);
+  void createImage(Image *img, const VkImageCreateInfo &imgCI,
+                   VkMemoryPropertyFlags propertyFlags,
+                   VmaAllocationCreateFlags vmaFlags,
+                   bool renderResource = false);
+  void createImage(Image *img, const VkImageCreateInfo &imgCI);
+
+  void copyAllocToMemory(Buffer *buf, void *dst);
+  void copyMemoryToAlloc(Buffer *buf, void *src, VkDeviceSize size);
 };
 }  // namespace core_internal::rendering

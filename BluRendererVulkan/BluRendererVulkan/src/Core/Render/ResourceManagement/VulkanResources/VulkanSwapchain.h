@@ -7,7 +7,7 @@
 
 #include "VulkanDevice.h"
 
-namespace core_internal::rendering::vulkan {
+namespace core_internal::rendering {
 typedef struct _SwapChainBuffers {
   VkImage image;
   VkImageView view;
@@ -15,7 +15,7 @@ typedef struct _SwapChainBuffers {
 
 class VulkanSwapchain {
  private:
-  core_internal::rendering::vulkan::VulkanDevice* vulkanDevice;
+  core_internal::rendering::VulkanDevice* vulkanDevice;
   VkSurfaceKHR surface;
 
  public:
@@ -30,7 +30,7 @@ class VulkanSwapchain {
   uint32_t imageWidth;
   uint32_t imageHeight;
 
-  VulkanSwapchain(core_internal::rendering::vulkan::VulkanDevice*, GLFWwindow*);
+  VulkanSwapchain(core_internal::rendering::VulkanDevice*, GLFWwindow*);
   ~VulkanSwapchain();
 
   void create(int* width, int* height, bool vsync = false,
@@ -40,4 +40,4 @@ class VulkanSwapchain {
   VkResult queuePresent(VkQueue queue, uint32_t imageIndex,
                         VkSemaphore* waitSemaphore = VK_NULL_HANDLE);
 };
-}  // namespace core_internal::rendering::vulkan
+}  // namespace core_internal::rendering

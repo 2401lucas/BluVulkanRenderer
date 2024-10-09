@@ -6,8 +6,7 @@
 // #define DEBUG_ENGINE
 
 #include "BaseRenderer.h"
-#include "Components/Camera.hpp"
-#include "Components/Light.hpp"
+#include "Components/Components.h"
 
 class DemoRenderer : public BaseRenderer {
  public:
@@ -48,8 +47,6 @@ class DemoRenderer : public BaseRenderer {
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
     enabledDeviceExtensions.push_back(
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-
-    // TODO: CREATE INFO
     enabledDeviceExtensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
   }
 
@@ -60,12 +57,30 @@ class DemoRenderer : public BaseRenderer {
   void prepare() override {
     prepareExternalBuffers();
     buildRenderGraph();
+    renderGraph->bake();
   }
 
-  void prepareExternalBuffers() {}
+  void prepareExternalBuffers() {
+    /*core_internal::rendering::Buffer* buf = {};
+
+    VkBufferCreateInfo bufCI{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = 0,
+        .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+    };
+
+    vulkanDevice->createBuffer();
+    vulkanDevice->copyMemoryToAlloc();
+
+    renderGraph->registerExternalData("thing", buf);*/
+  }
 
   void buildRenderGraph() {
-    
+    auto mainP = renderGraph->addGraphicsPass(
+        {{"cubeSpin.vert.spv", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT},
+         {"cubeSpin.frag.spv", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT}});
+
+    mainP->addOutput("mainOut", VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
   }
 
   void mainpassRender(VkCommandBuffer buf) {}
