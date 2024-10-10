@@ -440,6 +440,10 @@ bool VulkanDevice::extensionSupported(std::string extension) {
                     extension) != supportedExtensions.end());
 }
 
+void VulkanDevice::setPreferredColorFormat(VkFormat colorFormat) {
+  this->colorFormat = colorFormat;
+}
+
 VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
   // All depth formats may be optional, so we need to find a suitable depth
   // format to use
@@ -463,18 +467,71 @@ VkFormat VulkanDevice::getSupportedDepthFormat(bool checkSamplingSupport) {
       return format;
     }
   }
-  throw std::runtime_error("Could not find a matching depth format");
+  DEBUG_ERROR("Suitable Depth Format not found");
 }
 
-VkFormat VulkanDevice::getImageFormat(VkImageUsageFlags imageUsageFlags) {
+VkFormat VulkanDevice::getSupportedDepthStencilFormat(
+    bool checkSamplingSupport) {
+  std::vector<VkFormat> formatList = {
+      VK_FORMAT_D32_SFLOAT_S8_UINT,
+      VK_FORMAT_D24_UNORM_S8_UINT,
+      VK_FORMAT_D16_UNORM_S8_UINT,
+  };
+
+  for (auto &format : formatList) {
+    VkFormatProperties formatProperties;
+    vkGetPhysicalDeviceFormatProperties(physicalDevice, format,
+                                        &formatProperties);
+    if (formatProperties.optimalTilingFeatures &
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+      if (checkSamplingSupport) {
+        if (!(formatProperties.optimalTilingFeatures &
+              VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT)) {
+          continue;
+        }
+      }
+      return format;
+    }
+  }
+  DEBUG_ERROR("Suitable Depth Stencil Format not found");
+}
+
+VkImageAspectFlags VulkanDevice::getImageAspectMask(
+    const VkImageUsageFlags &imageUsageFlags, const VkFormat &format) {
   if (imageUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+  }
+  if (imageUsageFlags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+    // Check if format contains stencil
+    std::vector<VkFormat> stencilFormats = {
+        VK_FORMAT_S8_UINT,
+        VK_FORMAT_D16_UNORM_S8_UINT,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+    };
+    if (std::find(stencilFormats.begin(), stencilFormats.end(), format) !=
+        std::end(stencilFormats)) {
+      return (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+    } else {
+      return VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
+  }
+
+  DEBUG_ERROR("Could not find Image Aspect mask based on usage flags");
+  return VK_IMAGE_ASPECT_FLAG_BITS_MAX_ENUM;
+}
+
+VkFormat VulkanDevice::getImageFormat(
+    const VkImageUsageFlags &imageUsageFlags) {
+  if (imageUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) {
+    if (colorFormat == VK_FORMAT_MAX_ENUM) DEBUG_ERROR("colorFormat not set");
     return colorFormat;
   }
   if (imageUsageFlags & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-    return depthFormat;
+    return getSupportedDepthStencilFormat(false);
   }
 
-  DEBUG_ERROR("Could not find format based on usage flags");
+  DEBUG_ERROR("Could not find image format based on usage flags");
   return VK_FORMAT_MAX_ENUM;
 }
 
@@ -531,6 +588,18 @@ void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI) {
   VkMemoryRequirements memReqs;
   vkGetImageMemoryRequirements(logicalDevice, img->image, &memReqs);
   img->memReqs = memReqs;
+}
+
+void VulkanDevice::createImageView(Image *img,
+                                   const VkImageViewCreateInfo &viewCI) {
+  VK_CHECK_RESULT(
+      vkCreateImageView(logicalDevice, &viewCI, nullptr, &img->view));
+}
+
+void VulkanDevice::createImageSampler(Image *img,
+                                      const VkSamplerCreateInfo &samplerCI) {
+  VK_CHECK_RESULT(
+      vkCreateSampler(logicalDevice, &samplerCI, nullptr, &img->sampler));
 }
 
 void VulkanDevice::allocateMemory(VmaAllocation *alloc,

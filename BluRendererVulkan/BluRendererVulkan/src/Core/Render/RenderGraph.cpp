@@ -77,6 +77,10 @@ void RenderGraph::bake() {
   getRenderpassData();
   validateData();
   generateDependencyChain();
+  generateBufferResourceReservations();
+  generateImageResourceReservations();
+  generateResources();
+  generateDescriptorSets();
 #ifdef DEBUG_RENDERGRAPH
   auto tEnd = std::chrono::duration<double, std::milli>(
                   std::chrono::high_resolution_clock::now() - tStart)
@@ -227,9 +231,6 @@ void RenderGraph::generateDependencyChain() {
 }
 
 void RenderGraph::generateResources() {
-  generateBufferResourceReservations();
-  generateImageResourceReservations();
-
   for (auto& bufReservation : buildInfo.bufferReservations) {
     VmaAllocation newAlloc{};
 
@@ -256,6 +257,41 @@ void RenderGraph::generateResources() {
 
     for (auto& imgInd : imgReservation.usedByResources) {
       vulkanDevice->bindMemory(bakedInfo.imageBlackboard[imgInd].img, newAlloc);
+
+      VkImageViewCreateInfo viewCI{
+          .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+          .flags = 0,
+          .image = bakedInfo.imageBlackboard[imgInd].img->image,
+          .viewType = VK_IMAGE_VIEW_TYPE_2D,
+          .format = vulkanDevice->getImageFormat(
+              bakedInfo.imageBlackboard[imgInd].imgInfo.usage),
+          .subresourceRange{
+              vulkanDevice->getImageAspectMask(
+                  bakedInfo.imageBlackboard[imgInd].imgInfo.usage,
+                  vulkanDevice->getImageFormat(
+                      bakedInfo.imageBlackboard[imgInd].imgInfo.usage)),
+              0, 1, 0, 1},
+      };
+
+      vulkanDevice->createImageView(bakedInfo.imageBlackboard[imgInd].img,
+                                    viewCI);
+
+      VkSamplerCreateInfo samplerCI{
+          .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+          .magFilter = VK_FILTER_LINEAR,
+          .minFilter = VK_FILTER_LINEAR,
+          .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+          .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+          .mipLodBias = 0.0f,
+          .maxAnisotropy = 1.0f,
+          .minLod = 0.0f,
+          .maxLod = 1.0f,
+          .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+      };
+      vulkanDevice->createImageSampler(bakedInfo.imageBlackboard[imgInd].img,
+                                       samplerCI);
     }
   }
 }
@@ -283,7 +319,7 @@ void RenderGraph::generateBufferResourceReservations() {
 
     bool success = true;
     for (auto& reservation : buildInfo.bufferReservations) {
-      if (bufferData->first < reservation.size) continue;
+      if (bufferData->first < reservation.memReqs.size) continue;
 
       unsigned long resourceMemReservation = reservation.memoryReservation;
       success = true;
@@ -308,7 +344,7 @@ void RenderGraph::generateBufferResourceReservations() {
     // new
     if (!success) {
       buildInfo.bufferReservations.push_back(RenderResource(
-          bufferData->second, firstUse, lastUse, bufferData->first));
+          bufferData->second, firstUse, lastUse, {bufferData->first, 0, 0}));
       bakedInfo.bakedVRAMBufferSizeActual += bufferData->first;
     }
   }
@@ -332,6 +368,7 @@ void RenderGraph::generateImageResourceReservations() {
         .usage = image.second.imgInfo.usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
+
     image.second.img = new Image();
 
     vulkanDevice->createImage(image.second.img, imageCI);
@@ -351,13 +388,17 @@ void RenderGraph::generateImageResourceReservations() {
 
     bool success = true;
     for (auto& reservation : buildInfo.imageReservations) {
-      if (imageData->first < reservation.size) continue;
+      if (imageData->first < reservation.memReqs.size ||
+          !(img.img->memReqs.memoryTypeBits &
+            reservation.memReqs.memoryTypeBits)) {
+        continue;
+      }
 
       unsigned long resourceMemReservation = reservation.memoryReservation;
       success = true;
 
       for (unsigned long i = firstUse; i < lastUse; i++) {
-        if ((resourceMemReservation & (1 << i)) != 0) {
+        if (resourceMemReservation & (1 << i)) {
           success = false;
           break;
         } else {
@@ -368,6 +409,11 @@ void RenderGraph::generateImageResourceReservations() {
       if (success) {
         reservation.memoryReservation = resourceMemReservation;
         reservation.usedByResources.push_back(imageData->second);
+        reservation.memReqs.memoryTypeBits &=
+            reservation.memReqs.memoryTypeBits;
+        if (reservation.memReqs.alignment < img.img->memReqs.alignment) {
+          reservation.memReqs.alignment = img.img->memReqs.alignment;
+        }
         break;
       }
     }
@@ -376,8 +422,12 @@ void RenderGraph::generateImageResourceReservations() {
     // new
     if (!success) {
       buildInfo.imageReservations.push_back(RenderResource(
-          imageData->second, firstUse, lastUse, imageData->first));
+          imageData->second, firstUse, lastUse, img.img->memReqs));
       bakedInfo.bakedVRAMImageSizeActual += imageData->first;
     }
   }
 }  // namespace core_internal::rendering::rendergraph
+
+void RenderGraph::generateDescriptorSets() {
+  
+}

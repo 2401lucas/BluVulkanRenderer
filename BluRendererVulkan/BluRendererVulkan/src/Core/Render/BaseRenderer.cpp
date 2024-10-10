@@ -14,8 +14,9 @@ BaseRenderer::BaseRenderer() {
   vulkanSwapchain = new core_internal::rendering::VulkanSwapchain(
       vulkanDevice, windowManager->getWindow());
   vulkanSwapchain->create(&width, &height, settings.vsync, settings.fullscreen);
-  renderGraph =
-      new core_internal::rendering::rendergraph::RenderGraph({width, height});
+  vulkanDevice->setPreferredColorFormat(vulkanSwapchain->colorFormat);
+  renderGraph = new core_internal::rendering::rendergraph::RenderGraph(
+      vulkanDevice, {width, height});
   buildEngine();
 }
 
@@ -77,23 +78,25 @@ void BaseRenderer::renderLoop() {
   vulkanDevice->waitIdle();
 }
 
-void BaseRenderer::prepareFrame() { /*renderGraph->prepareFrame();*/ }
+void BaseRenderer::prepareFrame() { /*renderGraph->prepareFrame();*/
+}
 // Instead of submit, this should be validate frame or something, leave Q
 // dispatching to inherited class
 void BaseRenderer::submitFrame() {
   // Needs multiple Q submits, maybe just verify their outputs and dispatch Q
   // submits elsewhere
-  //VkResult result = renderGraph->submitFrame();
+  // VkResult result = renderGraph->submitFrame();
   // Recreate the swapchain if it's no longer compatible with the surface
   //// (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
-  //if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR)) {
-  //  windowResize();
-  //  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-  //    return;
-  //  }
-  //} else {
-  //  VK_CHECK_RESULT(result);
-  //}
+  // if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR))
+  // {
+  //   windowResize();
+  //   if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+  //     return;
+  //   }
+  // } else {
+  //   VK_CHECK_RESULT(result);
+  // }
 }
 
 void BaseRenderer::handleMousepress(GLFWwindow* window, int glfwKey,
@@ -188,7 +191,7 @@ void BaseRenderer::windowResize() {
 
   if ((width > 0.0f) && (height > 0.0f)) {
     engine->onResized((float)width / (float)height);
-    //renderGraph->onResized();
+    // renderGraph->onResized();
   }
 
   windowResized();

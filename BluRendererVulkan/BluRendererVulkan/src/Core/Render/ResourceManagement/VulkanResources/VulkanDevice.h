@@ -90,6 +90,8 @@ class VulkanDevice {
   std::vector<VkQueueFamilyProperties> queueFamilyProperties;
   std::vector<VkShaderModule> shaderModules;
 
+  VkFormat colorFormat = VK_FORMAT_MAX_ENUM;
+
   uint32_t getMemoryType(uint32_t typeBits, VkMemoryPropertyFlags properties,
                          VkBool32 *memTypeFound = nullptr) const;
   uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags) const;
@@ -129,14 +131,20 @@ class VulkanDevice {
 
   // Helper---------------------------------------------------------------------------------------
 
+  void setPreferredColorFormat(VkFormat);
+
   VkFormat getSupportedDepthFormat(bool checkSamplingSupport);
+  VkFormat getSupportedDepthStencilFormat(bool checkSamplingSupport);
+
   void waitIdle();
 
   VkCommandBuffer createCommandBuffer(VkCommandBufferLevel, VkCommandPool,
                                       bool begin);
   VkCommandBuffer createCommandBuffer(VkCommandBufferLevel, bool begin);
 
-  VkFormat getImageFormat(VkImageUsageFlags);
+  VkImageAspectFlags getImageAspectMask(const VkImageUsageFlags &,
+                                        const VkFormat &);
+  VkFormat getImageFormat(const VkImageUsageFlags &);
   // Vulkan Resource Management
   // ---------------------------------------------------------------------------------------
   VkPipelineShaderStageCreateInfo loadShader(std::string fileName,
@@ -151,7 +159,9 @@ class VulkanDevice {
                    VkMemoryPropertyFlags propertyFlags,
                    VmaAllocationCreateFlags vmaFlags,
                    bool renderResource = false);
-  void createImage(Image *img, const VkImageCreateInfo &imgCI);
+  void createImage(Image *img, const VkImageCreateInfo &);
+  void createImageView(Image *img, const VkImageViewCreateInfo &);
+  void createImageSampler(Image *img, const VkSamplerCreateInfo &);
 
   void allocateMemory(VmaAllocation *, VmaAllocationCreateInfo &,
                       VkMemoryRequirements &);

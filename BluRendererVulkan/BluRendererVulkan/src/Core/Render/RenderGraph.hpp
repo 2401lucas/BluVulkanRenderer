@@ -70,8 +70,8 @@ class RenderGraph {
     VkMemoryRequirements memReqs;
 
     RenderResource(std::string name, unsigned long firstUse,
-                   unsigned long lastUse, VkDeviceSize size)
-        : size(size) {
+                   unsigned long lastUse, VkMemoryRequirements memReqs)
+        : memReqs(memReqs) {
       usedByResources.push_back(name);
       for (unsigned long i = firstUse; i < lastUse; i++) {
         memoryReservation |= (1 << i);
