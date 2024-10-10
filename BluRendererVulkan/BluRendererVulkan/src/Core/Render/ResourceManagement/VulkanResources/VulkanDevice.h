@@ -25,6 +25,7 @@ class Image {
   VkDeviceSize offset = 0;
   VkImageSubresourceRange subresourceRange;
   // Optional
+  VkMemoryRequirements memReqs;
   void *mappedData = nullptr;
 };
 
@@ -151,6 +152,11 @@ class VulkanDevice {
                    VmaAllocationCreateFlags vmaFlags,
                    bool renderResource = false);
   void createImage(Image *img, const VkImageCreateInfo &imgCI);
+
+  void allocateMemory(VmaAllocation *, VmaAllocationCreateInfo &,
+                      VkMemoryRequirements &);
+  void bindMemory(Image *, VmaAllocation);
+  void bindMemory(Buffer *, VmaAllocation);
 
   void copyAllocToMemory(Buffer *buf, void *dst);
   void copyMemoryToAlloc(Buffer *buf, void *src, VkDeviceSize size);

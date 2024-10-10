@@ -61,10 +61,13 @@ class RenderGraph {
   // RenderGraph Info
   glm::ivec2 targetSize;
 
+  // TODO: Suballocate Resources
+  //  Also maybe combine buffer & image aliasing but this is much lower prio vs
+  //  suballocation
   struct RenderResource {
     std::vector<std::string> usedByResources;
     unsigned long memoryReservation = 0;  // Based on Dependency Layers
-    VkDeviceSize size = 0;                // Based on Dependency Layers
+    VkMemoryRequirements memReqs;
 
     RenderResource(std::string name, unsigned long firstUse,
                    unsigned long lastUse, VkDeviceSize size)

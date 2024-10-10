@@ -530,7 +530,22 @@ void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI) {
 
   VkMemoryRequirements memReqs;
   vkGetImageMemoryRequirements(logicalDevice, img->image, &memReqs);
-  img->size = memReqs.size;
+  img->memReqs = memReqs;
+}
+
+void VulkanDevice::allocateMemory(VmaAllocation *alloc,
+                                  VmaAllocationCreateInfo &allocCI,
+                                  VkMemoryRequirements &memReqs) {
+  VK_CHECK_RESULT(
+      vmaAllocateMemory(allocator, &memReqs, &allocCI, alloc, nullptr));
+}
+
+void VulkanDevice::bindMemory(Image *img, VmaAllocation alloc) {
+  VK_CHECK_RESULT(vmaBindImageMemory(allocator, alloc, img->image));
+}
+
+void VulkanDevice::bindMemory(Buffer *buf, VmaAllocation alloc) {
+  VK_CHECK_RESULT(vmaBindBufferMemory(allocator, alloc, buf->buffer));
 }
 
 // GPU->CPU Memory
@@ -545,8 +560,4 @@ void VulkanDevice::copyMemoryToAlloc(Buffer *buf, void *src,
   VK_CHECK_RESULT(
       vmaCopyMemoryToAllocation(allocator, src, buf->alloc, 0, size));
 }
-void VulkanDevice::createImage(Image *img, const VkImageCreateInfo &imgCI,
-                               VkMemoryPropertyFlags propertyFlags,
-                               VmaAllocationCreateFlags vmaFlags,
-                               bool renderResource) {}
 }  // namespace core_internal::rendering

@@ -229,6 +229,35 @@ void RenderGraph::generateDependencyChain() {
 void RenderGraph::generateResources() {
   generateBufferResourceReservations();
   generateImageResourceReservations();
+
+  for (auto& bufReservation : buildInfo.bufferReservations) {
+    VmaAllocation newAlloc{};
+
+    VmaAllocationCreateInfo allocCI{
+        .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    };
+
+    vulkanDevice->allocateMemory(&newAlloc, allocCI, bufReservation.memReqs);
+
+    for (auto& bufInd : bufReservation.usedByResources) {
+      vulkanDevice->bindMemory(bakedInfo.bufferBlackboard[bufInd].buf,
+                               newAlloc);
+    }
+  }
+
+  for (auto& imgReservation : buildInfo.imageReservations) {
+    VmaAllocation newAlloc{};
+
+    VmaAllocationCreateInfo allocCI{
+        .preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    };
+
+    vulkanDevice->allocateMemory(&newAlloc, allocCI, imgReservation.memReqs);
+
+    for (auto& imgInd : imgReservation.usedByResources) {
+      vulkanDevice->bindMemory(bakedInfo.imageBlackboard[imgInd].img, newAlloc);
+    }
+  }
 }
 
 void RenderGraph::generateBufferResourceReservations() {
