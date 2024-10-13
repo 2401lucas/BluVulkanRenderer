@@ -431,5 +431,16 @@ void RenderGraph::generateImageResourceReservations() {
 void RenderGraph::generateDescriptorSets() {
   // Descriptor Set Per Pass
   // Maybe flags for generic passes?
-  // Or maybe hash
+  // Or maybe hash sets
+
+  // Should "build" to baked passes
+  // Store Baked Passes based on dependencyIndex
+  // Result of rendering should be multiple VkCommandBuffers
+  // 1 thread per dependencyLayer would load each thread, and
+  // syncing threads with Q submits would keep the GPU pretty busy
+  // This scales well with more threads, but singular big workloads would be
+  // pretty slow
+
+  for (auto& pass : buildInfo.rgPasses) {
+  }
 }
