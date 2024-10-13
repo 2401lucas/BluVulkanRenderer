@@ -429,5 +429,7 @@ void RenderGraph::generateImageResourceReservations() {
 }  // namespace core_internal::rendering::rendergraph
 
 void RenderGraph::generateDescriptorSets() {
-  
+  // Descriptor Set Per Pass
+  // Maybe flags for generic passes?
+  // Or maybe hash
 }
