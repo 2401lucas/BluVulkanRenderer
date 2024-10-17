@@ -5,11 +5,13 @@
 #include <functional>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/mat4x4.hpp>
+#include <map>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include "Components/Model.hpp"
+#include "ResourceManagement/VulkanResources/VulkanDescriptorSet.hpp"
 #include "ResourceManagement/VulkanResources/VulkanDevice.h"
 #include "ResourceManagement/VulkanResources/VulkanSwapchain.h"
 
@@ -32,7 +34,7 @@ class RenderGraphPass {
 
  private:
   RenderGraphPassType passType;
-  glm::ivec3 size;
+  glm::vec3 size;
   std::vector<std::string> shaders;
 
   std::vector<std::string> inputs;
@@ -40,19 +42,19 @@ class RenderGraphPass {
   std::vector<OutputImageInfo> outputImages;
 
  public:
-  RenderGraphPass(RenderGraphPassType, glm::ivec3 size,
+  RenderGraphPass(RenderGraphPassType, glm::vec3 size,
                   std::vector<std::string> shaders);
   ~RenderGraphPass();
 
   void validateData();
+  glm::vec2 getSize();
   std::vector<std::string>& getInputs();
   std::vector<OutputImageInfo>& getImageOutputs();
   std::vector<OutputBufferInfo>& getBufferOutputs();
 
   void addInput(std::string resourceName);
   void addOutput(std::string name, VkBufferUsageFlagBits, VkDeviceSize size);
-  void addOutput(std::string name, VkImageUsageFlagBits,
-                 glm::vec2 size = {1, 1});
+  void addOutput(std::string name, VkImageUsageFlagBits);
 };
 
 class RenderGraph {
@@ -102,6 +104,16 @@ class RenderGraph {
     std::vector<uint32_t> usedIn;
   };
 
+  struct RenderPass {
+    // ALSO NEEDS DYNAMIC RENDERPASS INFO
+    glm::vec2 size;
+    core_internal::rendering::VulkanDescriptorSet* descriptorSet;
+    uint32_t imgCount;
+    uint32_t bufCount;
+    core_internal::rendering::Image** images;
+    core_internal::rendering::Buffer** buffers;
+  };
+
   struct BakedInfo {
     VkDeviceSize bakedVRAMBufferSizeAbsolute = 0;  // Total Size
     VkDeviceSize bakedVRAMImageSizeAbsolute = 0;   // Total Size
@@ -109,6 +121,7 @@ class RenderGraph {
     VkDeviceSize bakedVRAMImageSizeActual = 0;     // Optimized Size (Aliasing)
     std::unordered_map<std::string, BufferInfo> bufferBlackboard;
     std::unordered_map<std::string, ImageInfo> imageBlackboard;
+    std::multimap<uint32_t, RenderPass> renderPasses;
     std::string finalOutput;
   } bakedInfo;
 

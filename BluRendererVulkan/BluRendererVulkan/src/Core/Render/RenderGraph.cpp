@@ -1,6 +1,7 @@
 #include "RenderGraph.hpp"
 
 #include <iostream>
+#include <ranges>
 
 #include "../../libraries/GLTF/tiny_gltf.h"
 #include "../Tools/Debug.hpp"
@@ -8,7 +9,7 @@
 
 // RenderGraphPass
 namespace core_internal::rendering::rendergraph {
-RenderGraphPass::RenderGraphPass(RenderGraphPassType passType, glm::ivec3 size,
+RenderGraphPass::RenderGraphPass(RenderGraphPassType passType, glm::vec3 size,
                                  std::vector<std::string> shaders)
     : passType(passType), size(size), shaders(shaders) {}
 
@@ -34,6 +35,8 @@ void RenderGraphPass::validateData() {
   }
 }
 
+glm::vec2 RenderGraphPass::getSize() { return size; }
+
 void RenderGraphPass::addInput(std::string resourceName) {
   inputs.push_back(resourceName);
 }
@@ -43,8 +46,7 @@ void RenderGraphPass::addOutput(std::string name, VkBufferUsageFlagBits usage,
   outputBuffers.push_back({name, usage, size});
 }
 
-void RenderGraphPass::addOutput(std::string name, VkImageUsageFlagBits usage,
-                                glm::vec2 size) {
+void RenderGraphPass::addOutput(std::string name, VkImageUsageFlagBits usage) {
   outputImages.push_back({name, usage, size});
 }
 
@@ -230,6 +232,7 @@ void RenderGraph::generateDependencyChain() {
   }
 }
 
+// TODO: SUPPORT FIF
 void RenderGraph::generateResources() {
   for (auto& bufReservation : buildInfo.bufferReservations) {
     VmaAllocation newAlloc{};
@@ -360,7 +363,8 @@ void RenderGraph::generateImageResourceReservations() {
         .flags = VK_IMAGE_CREATE_ALIAS_BIT,
         .imageType = VK_IMAGE_TYPE_2D,
         .format = vulkanDevice->getImageFormat(image.second.imgInfo.usage),
-        .extent = {image.second.imgInfo.size.x, image.second.imgInfo.size.y, 1},
+        .extent = {image.second.imgInfo.size.x * targetSize.x,
+                   image.second.imgInfo.size.y * targetSize.y, 1},
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -442,5 +446,26 @@ void RenderGraph::generateDescriptorSets() {
   // pretty slow
 
   for (auto& pass : buildInfo.rgPasses) {
+    RenderPass newBakedPass{};
+
+    auto& imgs = pass->getImageOutputs();
+    auto& bufs = pass->getBufferOutputs();
+
+    newBakedPass.size = pass->getSize();
+    newBakedPass.size *= targetSize;
+    newBakedPass.imgCount = imgs.size();
+    newBakedPass.bufCount = bufs.size();
+
+    newBakedPass.images = new Image*[newBakedPass.imgCount];
+    newBakedPass.buffers = new Buffer*[newBakedPass.bufCount];
+
+    for (uint32_t i = 0; i < newBakedPass.imgCount; i++) {
+      newBakedPass.images[i] = bakedInfo.imageBlackboard[imgs[i].name].img;
+    }
+
+    for (uint32_t i = 0; i < newBakedPass.bufCount; i++) {
+      newBakedPass.buffers[i] = bakedInfo.bufferBlackboard[bufs[i].name].buf;
+    }
   }
 }
+}  // namespace core_internal::rendering::rendergraph
