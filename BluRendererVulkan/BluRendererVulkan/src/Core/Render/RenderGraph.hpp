@@ -37,7 +37,7 @@ class RenderGraphPass {
   glm::vec3 size;
   std::vector<std::string> shaders;
 
-  std::vector<std::string> inputs;
+  std::vector<std::pair<std::string, uint32_t>> inputs;
   std::vector<OutputBufferInfo> outputBuffers;
   std::vector<OutputImageInfo> outputImages;
 
@@ -46,13 +46,15 @@ class RenderGraphPass {
                   std::vector<std::string> shaders);
   ~RenderGraphPass();
 
+  operator RenderGraphPassType() { return passType; }
+
   void validateData();
   glm::vec2 getSize();
-  std::vector<std::string>& getInputs();
+  std::vector<std::pair<std::string, uint32_t>>& getInputs();
   std::vector<OutputImageInfo>& getImageOutputs();
   std::vector<OutputBufferInfo>& getBufferOutputs();
 
-  void addInput(std::string resourceName);
+  void addInput(std::string resourceName, uint32_t binding);
   void addOutput(std::string name, VkBufferUsageFlagBits, VkDeviceSize size);
   void addOutput(std::string name, VkImageUsageFlagBits);
 };
@@ -62,6 +64,7 @@ class RenderGraph {
   core_internal::rendering::VulkanDevice* vulkanDevice;
   // RenderGraph Info
   glm::ivec2 targetSize;
+  uint32_t framesInFlight = 0;
 
   // TODO: Suballocate Resources
   //  Also maybe combine buffer & image aliasing but this is much lower prio vs
@@ -121,8 +124,13 @@ class RenderGraph {
     VkDeviceSize bakedVRAMImageSizeActual = 0;     // Optimized Size (Aliasing)
     std::unordered_map<std::string, BufferInfo> bufferBlackboard;
     std::unordered_map<std::string, ImageInfo> imageBlackboard;
+    std::unordered_map<std::string, BufferInfo> externalBufferBlackboard;
+    std::unordered_map<std::string, ImageInfo> externalImageBlackboard;
     std::multimap<uint32_t, RenderPass> renderPasses;
     std::string finalOutput;
+    VkDescriptorPool* descriptorPools;
+    VulkanDescriptorSet* bindlessDescriptor;
+    VkDescriptorPool bindlessPool;
   } bakedInfo;
 
  public:

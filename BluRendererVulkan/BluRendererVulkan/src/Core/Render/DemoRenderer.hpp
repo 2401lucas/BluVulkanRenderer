@@ -74,13 +74,31 @@ class DemoRenderer : public BaseRenderer {
 
     renderGraph->registerExternalData("thing", buf);*/
   }
-
+  // External Data
+  // Images are added to a container that are sent to/read from the GPU
+  // Image Index is saved at time of creation : (default tex index 0 could be
+  // set by default, or not rendered until model is uploaded? INVESTIGATE)
+  // Model Struct holds
+  // CPU INFO:
+  //   Filepaths(Bypass read into ram, send straigt to gpu memory?)
+  // GPU INFO:
+  // -Generic Model:
+  //    Resource Indices
+  //    Vertex/Index Buffers Indices?
+  // -Rendered Model
+  //    World Tranform
+  //    Model Index for resources
   void buildRenderGraph() {
+    renderGraph->registerExternalData("namr",
+                                      new core_internal::rendering::Buffer());
+
     auto mainP = renderGraph->addGraphicsPass(
         {{"cubeSpin.vert.spv", VK_PIPELINE_STAGE_VERTEX_SHADER_BIT},
          {"cubeSpin.frag.spv", VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT}});
 
     mainP->addOutput("mainOut", VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+
+    mainP->addInput("ubnot", 0);
   }
 
   void mainpassRender(VkCommandBuffer buf) {}

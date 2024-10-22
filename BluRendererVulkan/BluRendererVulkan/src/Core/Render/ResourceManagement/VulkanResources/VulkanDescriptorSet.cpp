@@ -29,91 +29,28 @@ void VulkanDescriptorSet::initLayout() {
                                               &layout));
 }
 
-VkDescriptorPool VulkanDescriptorSet::initPool(uint32_t numSets) {
-  assert(pool == VK_NULL_HANDLE);
-  assert(layout);
+void VulkanDescriptorSet::allocateDescriptorSets(VkDescriptorPool* pools,
+                                                 uint32_t poolCount) {
+  setCount = poolCount;
+  sets = new VkDescriptorSet[setCount];
+  for (size_t i = 0; i < poolCount; i++) {
+    VkDescriptorSetAllocateInfo allocInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = pools[i],
+        .descriptorSetCount = 1,
+        .pSetLayouts = &layout,
+    };
 
-  uint32_t storageBufferCount = 0, uniformBufferCount = 0,
-           combinedImageSamplerCount = 0, accelerationStructureCount = 0;
-
-  for (auto& binding : bindings) {
-    switch (binding.descriptorType) {
-      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-        storageBufferCount++;
-        break;
-      case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-        uniformBufferCount++;
-        break;
-      case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-        combinedImageSamplerCount++;
-        break;
-      case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
-        accelerationStructureCount++;
-        break;
-      default:
-        DEBUG_ERROR("Missing descriptor type implementation: " +
-                    binding.descriptorType);
-        break;
-    }
+    vkAllocateDescriptorSets(vulkanDevice->operator VkDevice(), &allocInfo,
+                             &sets[i]);
   }
-
-  std::vector<VkDescriptorPoolSize> poolSizes = {
-      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBufferCount * numSets},
-      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, storageBufferCount * numSets},
-      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-       combinedImageSamplerCount * numSets},
-      {VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
-       accelerationStructureCount * numSets},
-  };
-
-  VkDescriptorPoolCreateInfo descriptorPoolCI{
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .maxSets = uniformBufferCount + combinedImageSamplerCount +
-                 storageBufferCount + accelerationStructureCount,
-      .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
-      .pPoolSizes = poolSizes.data(),
-  };
-
-  VK_CHECK_RESULT(vkCreateDescriptorPool(vulkanDevice->operator VkDevice(),
-                                         &descriptorPoolCI, nullptr, &pool));
-
-  allocateDescriptorSets(pool);
-  return pool;
 }
 
-VkPipelineLayout VulkanDescriptorSet::initPipelineLayout(
-    uint32_t numRanges, const VkPushConstantRange* ranges,
-    VkPipelineLayoutCreateFlags flags) {
-  assert(pipelineLayout == VK_NULL_HANDLE);
-  assert(layout);
+VkDescriptorSet VulkanDescriptorSet::getSet(uint32_t index) {
+  assert(index < setCount);
 
-  VkPipelineLayoutCreateInfo layoutCI = {
-      VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
-  layoutCI.flags = flags;
-  layoutCI.pushConstantRangeCount = numRanges;
-  layoutCI.pPushConstantRanges = ranges;
-  layoutCI.setLayoutCount = 1;
-  layoutCI.pSetLayouts = &layout;
-
-  VK_CHECK_RESULT(vkCreatePipelineLayout(vulkanDevice->operator VkDevice(),
-                                         &layoutCI, nullptr,
-                                         &pipelineLayout));
-  return pipelineLayout;
+  return sets[index];
 }
-
-void VulkanDescriptorSet::allocateDescriptorSets(VkDescriptorPool pool) {
-  assert(pool);
-
-  VkDescriptorSetAllocateInfo allocInfo{
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-      .descriptorPool = pool,
-      .descriptorSetCount = 1,
-      .pSetLayouts = &layout,
-  };
-
-  vkAllocateDescriptorSets(vulkanDevice->operator VkDevice(), &allocInfo, &set);
-}
-
 
 VkWriteDescriptorSet core_internal::rendering::VulkanDescriptorSet::makeWrite(
     VkDescriptorSet dstSet, uint32_t dstBinding,

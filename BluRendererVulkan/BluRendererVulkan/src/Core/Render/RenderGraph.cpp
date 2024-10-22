@@ -37,8 +37,24 @@ void RenderGraphPass::validateData() {
 
 glm::vec2 RenderGraphPass::getSize() { return size; }
 
-void RenderGraphPass::addInput(std::string resourceName) {
-  inputs.push_back(resourceName);
+std::vector<std::pair<std::string, uint32_t>>& RenderGraphPass::getInputs() {
+  return inputs;
+}
+
+std::vector<
+    core_internal::rendering::rendergraph::RenderGraphPass::OutputImageInfo>&
+RenderGraphPass::getImageOutputs() {
+  return outputImages;
+}
+
+std::vector<
+    core_internal::rendering::rendergraph::RenderGraphPass::OutputBufferInfo>&
+RenderGraphPass::getBufferOutputs() {
+  return outputBuffers;
+}
+
+void RenderGraphPass::addInput(std::string resourceName, uint32_t binding) {
+  inputs.push_back({resourceName, binding});
 }
 
 void RenderGraphPass::addOutput(std::string name, VkBufferUsageFlagBits usage,
@@ -93,8 +109,8 @@ void RenderGraph::bake() {
 
 void RenderGraph::registerExternalData(
     std::string name, core_internal::rendering::Buffer* buffer) {
-  auto [it, success] =
-      bakedInfo.bufferBlackboard.try_emplace(name, BufferInfo(0, buffer));
+  auto [it, success] = bakedInfo.externalBufferBlackboard.try_emplace(
+      name, BufferInfo(0, buffer));
 
   if (!success) {
     DEBUG_ERROR("Buffer with name: << " + name +
@@ -105,7 +121,7 @@ void RenderGraph::registerExternalData(
 void RenderGraph::registerExternalData(std::string name,
                                        core_internal::rendering::Image* image) {
   auto [it, success] =
-      bakedInfo.imageBlackboard.try_emplace(name, ImageInfo(0, image));
+      bakedInfo.externalImageBlackboard.try_emplace(name, ImageInfo(0, image));
 
   if (!success) {
     DEBUG_ERROR("Image with name: << " + name +
@@ -160,12 +176,12 @@ void RenderGraph::getRenderpassData() {
   for (size_t i = 0; i < buildInfo.rgPasses.size(); i++) {
     auto& inputs = buildInfo.rgPasses[i]->getInputs();
     for (auto& input : inputs) {
-      auto bufIt = bakedInfo.bufferBlackboard.find(input);
+      auto bufIt = bakedInfo.bufferBlackboard.find(input.first);
       if (bufIt != bakedInfo.bufferBlackboard.end()) {
         bufIt->second.usedIn.push_back(i);
       }
 
-      auto imgIt = bakedInfo.imageBlackboard.find(input);
+      auto imgIt = bakedInfo.imageBlackboard.find(input.first);
       if (imgIt != bakedInfo.imageBlackboard.end()) {
         imgIt->second.usedIn.push_back(i);
       }
@@ -430,28 +446,23 @@ void RenderGraph::generateImageResourceReservations() {
       bakedInfo.bakedVRAMImageSizeActual += imageData->first;
     }
   }
-}  // namespace core_internal::rendering::rendergraph
-
+}
+// Generate Descriptor Sets for runtime Render resources
 void RenderGraph::generateDescriptorSets() {
-  // Descriptor Set Per Pass
-  // Maybe flags for generic passes?
-  // Or maybe hash sets
+  // Info for Pool Creation
+  uint32_t combinedImageSamplerDescriptorCount = 0;
+  uint32_t uniformBufferDescriptorCount = 0;
+  uint32_t storageBufferDescriptorCount = 0;
 
-  // Should "build" to baked passes
-  // Store Baked Passes based on dependencyIndex
-  // Result of rendering should be multiple VkCommandBuffers
-  // 1 thread per dependencyLayer would load each thread, and
-  // syncing threads with Q submits would keep the GPU pretty busy
-  // This scales well with more threads, but singular big workloads would be
-  // pretty slow
-
-  for (auto& pass : buildInfo.rgPasses) {
+  // First, add layout bindings & create the layout
+  for (uint32_t passIndex = 0; passIndex < buildInfo.rgPasses.size();
+       passIndex++) {
     RenderPass newBakedPass{};
 
-    auto& imgs = pass->getImageOutputs();
-    auto& bufs = pass->getBufferOutputs();
+    auto& imgs = buildInfo.rgPasses[passIndex]->getImageOutputs();
+    auto& bufs = buildInfo.rgPasses[passIndex]->getBufferOutputs();
 
-    newBakedPass.size = pass->getSize();
+    newBakedPass.size = buildInfo.rgPasses[passIndex]->getSize();
     newBakedPass.size *= targetSize;
     newBakedPass.imgCount = imgs.size();
     newBakedPass.bufCount = bufs.size();
@@ -466,6 +477,87 @@ void RenderGraph::generateDescriptorSets() {
     for (uint32_t i = 0; i < newBakedPass.bufCount; i++) {
       newBakedPass.buffers[i] = bakedInfo.bufferBlackboard[bufs[i].name].buf;
     }
+
+    // Generate Descriptor Sets
+    auto inputs = buildInfo.rgPasses[passIndex]->getInputs();
+    newBakedPass.descriptorSet = new VulkanDescriptorSet(vulkanDevice);
+
+    for (uint32_t i = 0; i < inputs.size(); i++) {
+      VkDescriptorType descriptorType;
+
+      // TODO: Clean this up, this is temporary and is making a lot of
+      // assumptions
+      if (bakedInfo.imageBlackboard.contains(inputs[i].first)) {
+        descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        ++combinedImageSamplerDescriptorCount;
+      } else if (bakedInfo.bufferBlackboard.contains(inputs[i].first)) {
+        auto& bufUsage =
+            bakedInfo.bufferBlackboard[inputs[i].first].bufInfo.usage;
+        if (bufUsage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+          descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+          ++storageBufferDescriptorCount;
+        } else {
+          descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+          ++uniformBufferDescriptorCount;
+        }
+
+      } else {
+        DEBUG_ERROR("Couldn't find input");
+      }
+
+      VkPipelineStageFlags stageFlags;
+
+      if (buildInfo.rgPasses[passIndex]->operator core_internal::rendering::
+              rendergraph::RenderGraphPass::RenderGraphPassType() ==
+          core_internal::rendering::rendergraph::RenderGraphPass::
+              RenderGraphPassType::Graphics) {
+        stageFlags = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+      } else {
+        stageFlags = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+      }
+
+      newBakedPass.descriptorSet->addBinding(inputs[i].second, descriptorType,
+                                             1, stageFlags, nullptr);
+    }
+
+    newBakedPass.descriptorSet->initLayout();
+
+    bakedInfo.renderPasses.insert(
+        {buildInfo.rgDependencyLayer[passIndex], newBakedPass});
+  }
+
+  // Then create pools sized for all layout bindings & allocate the sets
+  bakedInfo.descriptorPools = new VkDescriptorPool[framesInFlight];
+
+  std::vector<VkDescriptorPoolSize> poolSizes = {
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBufferDescriptorCount},
+      {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+       combinedImageSamplerDescriptorCount},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, storageBufferDescriptorCount}};
+
+  for (uint32_t i = 0; i < framesInFlight; i++) {
+    VkDescriptorPoolCreateInfo descriptorPoolCI{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = uniformBufferDescriptorCount +
+                   combinedImageSamplerDescriptorCount +
+                   storageBufferDescriptorCount,
+        .poolSizeCount = poolSizes.size(),
+        .pPoolSizes = poolSizes.data(),
+    };
+    VK_CHECK_RESULT(vkCreateDescriptorPool(vulkanDevice->operator VkDevice(),
+                                           &descriptorPoolCI, nullptr,
+                                           &bakedInfo.descriptorPools[i]));
+  }
+
+  for (auto& pass : bakedInfo.renderPasses) {
+    pass.second.descriptorSet->allocateDescriptorSets(bakedInfo.descriptorPools,
+                                                      framesInFlight);
   }
 }
+
+// Bindless Descriptor Sets for model info
+// Set Descriptors for other pass inputs like SSAO
+// Generate multiple sets:
+//  Rendering Related Inputs (Set 0)
+//  External Resources (Generic, Set 1)
 }  // namespace core_internal::rendering::rendergraph
