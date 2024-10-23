@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.11)
 
 set(ENV{VULKAN_SDK} "C:/VulkanSDK/1.3.261.1")
 find_package(Vulkan)
-find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(gli CONFIG REQUIRED)
 find_package(ktx CONFIG REQUIRED)
