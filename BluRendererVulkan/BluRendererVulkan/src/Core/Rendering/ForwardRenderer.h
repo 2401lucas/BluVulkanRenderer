@@ -3,6 +3,7 @@
 
 class ForwardRenderer {
  public:
+
 };
 
 #endif
