@@ -16,8 +16,8 @@ class Device {
          const eastl::vector<const char*>& requested_features, void* p_next);
   ~Device();
 
-  VkPhysicalDevice GetPhysicalDevice() const { return physical_device_; };
-  VkDevice GetLogicalDevice() const { return device_; };
+  VkPhysicalDevice GetPhysicalDevice() const { return physical_device_; }
+  VkDevice GetLogicalDevice() const { return device_; }
 
  private:
   uint32_t GetQueueFamilyIndex(VkQueueFlags queue_flags) const;
