@@ -33,7 +33,7 @@ Instance::Instance(eastl::string name, bool use_validation,
              it = extensions.begin(),
              it_end = extensions.end();
          it != it_end; ++it) {
-      supported_instance_extensions_.insert(
+      supported_extensions_.insert(
           eastl::hash<eastl::string>()(it->extensionName));
     }
   }
@@ -41,12 +41,12 @@ Instance::Instance(eastl::string name, bool use_validation,
   enabled_instance_extensions_.reserve(required_instance_extensions.size() +
                                        requested_instance_extensions.size());
   if (!requested_instance_extensions.empty()) {
-    auto supported_instance_it_end = supported_instance_extensions_.end();
+    auto supported_instance_it_end = supported_extensions_.end();
     for (eastl::vector<eastl::string>::iterator
              it = requested_instance_extensions.begin(),
              it_end = requested_instance_extensions.end();
          it != it_end; ++it) {
-      if (supported_instance_extensions_.find_as(*it) !=
+      if (supported_extensions_.find_as(*it) !=
           supported_instance_it_end) {
         EASTL_ASSERT(false);
       }
