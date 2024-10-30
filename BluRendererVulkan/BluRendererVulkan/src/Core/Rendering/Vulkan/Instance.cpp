@@ -7,7 +7,7 @@
 #include "Tools.h"
 
 namespace vk::core {
-Instance::Instance(eastl::string name, bool use_validation,
+Instance::Instance(const eastl::string name, const bool use_validation,
                    eastl::vector<eastl::string> requested_instance_extensions) {
   // TODO:: CHECK THIS
   // EA::EASTL::Allocator::Init();
@@ -46,8 +46,7 @@ Instance::Instance(eastl::string name, bool use_validation,
              it = requested_instance_extensions.begin(),
              it_end = requested_instance_extensions.end();
          it != it_end; ++it) {
-      if (supported_extensions_.find_as(*it) !=
-          supported_instance_it_end) {
+      if (supported_extensions_.find_as(*it) != supported_instance_it_end) {
         EASTL_ASSERT(false);
       }
       enabled_instance_extensions_.push_back(it->data());

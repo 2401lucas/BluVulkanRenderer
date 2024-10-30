@@ -10,7 +10,7 @@
 namespace vk::core {
 class Instance {
  public:
-  Instance(eastl::string name, bool use_validation,
+  Instance(const eastl::string name, const bool use_validation,
            eastl::vector<eastl::string> requested_instance_extensions);
   ~Instance();
 
