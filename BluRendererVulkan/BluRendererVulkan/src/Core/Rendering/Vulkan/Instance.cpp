@@ -6,7 +6,7 @@
 
 #include "Tools.h"
 
-namespace vk::core {
+namespace blu::core {
 Instance::Instance(const eastl::string name, const bool use_validation,
                    eastl::vector<eastl::string> requested_instance_extensions) {
   // TODO:: CHECK THIS
@@ -109,4 +109,4 @@ Instance::~Instance() {
     vkDestroyInstance(instance_, nullptr);
   }
 }
-}  // namespace vk::core
+}  // namespace blu::core

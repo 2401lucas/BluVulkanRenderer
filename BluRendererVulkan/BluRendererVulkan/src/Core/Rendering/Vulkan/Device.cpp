@@ -2,8 +2,8 @@
 
 #include "Tools.h"
 
-namespace vk::core {
-Device::Device(const vk::core::Instance* instance,
+namespace blu::core {
+Device::Device(const blu::core::Instance* instance,
                const eastl::vector<const char*>& requested_features,
                void* p_next) {
   uint32_t gpu_count;
@@ -222,4 +222,4 @@ uint32_t Device::GetQueueFamilyIndex(VkQueueFlags queue_flags) const {
 
   throw std::runtime_error("Could not find a matching queue family index");
 }
-}  // namespace vk::core
+}  // namespace blu::core

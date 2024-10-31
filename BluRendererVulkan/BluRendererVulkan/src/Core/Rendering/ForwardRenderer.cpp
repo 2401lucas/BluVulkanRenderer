@@ -7,7 +7,7 @@ ForwardRenderer::ForwardRenderer() {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
 
-    instance_ = new vk::core::Instance("Forward Renderer", USE_VALIDATION,
+    instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
                                        instance_extensions);
   }
   // VkDevice Creation
@@ -46,14 +46,14 @@ ForwardRenderer::ForwardRenderer() {
     };
     buffer_device_address.pNext = &device_sync;
 
-    device_ = new vk::core::Device(instance_, device_extensions, pNextChain);
+    device_ = new blu::core::Device(instance_, device_extensions, pNextChain);
 
     delete pNextChain;
   }
   // VkSwapchain Creation
   {
-    swapchain_ = new vk::core::Swapchain(instance_, device_, nullptr);
-    swapchain_->Create(&width_, &height_, false, false);
+    swapchain_ = new blu::core::Swapchain(instance_, device_, window_);
+    swapchain_->Create(false, false);
   }
 }
 
@@ -62,3 +62,9 @@ ForwardRenderer::~ForwardRenderer() {
   delete device_;
   delete instance_;
 }
+
+void ForwardRenderer::Prepare() {
+  
+}
+
+void ForwardRenderer::Render() {}

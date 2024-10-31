@@ -5,16 +5,17 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 
+#include "../../External/Window.h"
 #include "Device.h"
 
-namespace vk::core {
+namespace blu::core {
 class Swapchain {
  public:
-  Swapchain(vk::core::Instance* vk_instance, vk::core::Device* vk_device,
+  Swapchain(blu::core::Instance* vk_instance, blu::core::Device* vk_device,
             GLFWwindow* window);
   ~Swapchain();
 
-  void Create(int* width, int* height, bool vsync, bool fullscreen);
+  void Create(bool vsync, bool fullscreen);
 
   VkSwapchainKHR GetSwapchain() const { return swapchain_; }
   VkFormat GetColorFormat() const { return color_format_; }
@@ -28,8 +29,9 @@ class Swapchain {
     VkImageView view;
   };
 
-  vk::core::Instance* vk_instance_;
-  vk::core::Device* vk_device_;
+  blu::core::Instance* vk_instance_;
+  blu::core::Device* vk_device_;
+  blu::core::Window* window_;
 
   VkSurfaceKHR surface_;
   VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
@@ -41,5 +43,5 @@ class Swapchain {
   uint32_t image_width_;
   uint32_t image_height_;
 };
-}  // namespace vk::core
+}  // namespace blu::core
 #endif

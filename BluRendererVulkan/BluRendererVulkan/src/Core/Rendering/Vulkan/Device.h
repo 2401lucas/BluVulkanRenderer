@@ -9,10 +9,10 @@
 
 #include "Instance.h"
 
-namespace vk::core {
+namespace blu::core {
 class Device {
  public:
-  Device(const vk::core::Instance* instance,
+  Device(const blu::core::Instance* instance,
          const eastl::vector<const char*>& requested_features, void* p_next);
   ~Device();
 
@@ -49,6 +49,6 @@ class Device {
     VkQueue transfer{VK_NULL_HANDLE};
   } queues;
 };
-}  // namespace vk::core
+}  // namespace blu::core
 
 #endif

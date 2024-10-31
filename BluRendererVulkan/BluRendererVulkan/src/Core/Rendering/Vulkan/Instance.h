@@ -7,7 +7,7 @@
 #include <EASTL/vector.h>
 #include <vulkan/vulkan.h>
 
-namespace vk::core {
+namespace blu::core {
 class Instance {
  public:
   Instance(const eastl::string name, const bool use_validation,
@@ -23,6 +23,6 @@ class Instance {
   eastl::hash_set<size_t> supported_extensions_;
   eastl::vector<char*> enabled_instance_extensions_;
 };
-}  // namespace vk::core
+}  // namespace blu::core
 
 #endif

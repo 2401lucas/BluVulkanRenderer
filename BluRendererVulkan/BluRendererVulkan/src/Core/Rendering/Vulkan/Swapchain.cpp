@@ -2,9 +2,9 @@
 
 #include "Tools.h"
 
-namespace vk::core {
-Swapchain::Swapchain(vk::core::Instance* vk_instance,
-                     vk::core::Device* vk_device, GLFWwindow* window) {
+namespace blu::core {
+Swapchain::Swapchain(blu::core::Instance* vk_instance,
+                     blu::core::Device* vk_device, GLFWwindow* window) {
   vk_instance_ = vk_instance;
   vk_device_ = vk_device;
 
@@ -61,7 +61,7 @@ Swapchain::~Swapchain() {
 }
 
 // TODO: CHECK IF FIF CHANGED WHEN WINDOW IS CREATED???
-void Swapchain::Create(int* width, int* height, bool vsync, bool fullscreen) {
+void Swapchain::Create(bool vsync, bool fullscreen) {
   VkSwapchainKHR old_swapchain = swapchain_;
 
   VkSurfaceCapabilitiesKHR surf_caps;
@@ -83,17 +83,15 @@ void Swapchain::Create(int* width, int* height, bool vsync, bool fullscreen) {
   if (surf_caps.currentExtent.width == (uint32_t)-1) {
     // If the surface size is undefined, the size is set to
     // the size of the images requested.
-    swapchain_extent.width = *width;
-    swapchain_extent.height = *height;
+    swapchain_extent.width = window_->GetWidth();
+    swapchain_extent.height = window_->GetHeight();
   } else {
     // If the surface size is defined, the swap chain size must match
     swapchain_extent = surf_caps.currentExtent;
-    *width = surf_caps.currentExtent.width;
-    *height = surf_caps.currentExtent.height;
   }
 
-  image_width_ = *width;
-  image_height_ = *height;
+  image_width_ = swapchain_extent.width;
+  image_height_ = swapchain_extent.height;
 
   VkPresentModeKHR swapchain_present_mode = VK_PRESENT_MODE_FIFO_KHR;
 
@@ -223,4 +221,4 @@ void Swapchain::Create(int* width, int* height, bool vsync, bool fullscreen) {
                                       &buffers_[i].view));
   }
 }
-}  // namespace vk::core
+}  // namespace blu::core
