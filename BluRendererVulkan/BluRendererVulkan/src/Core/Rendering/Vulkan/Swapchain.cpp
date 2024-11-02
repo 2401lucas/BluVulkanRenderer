@@ -4,12 +4,13 @@
 
 namespace blu::core {
 Swapchain::Swapchain(blu::core::Instance* vk_instance,
-                     blu::core::Device* vk_device, GLFWwindow* window) {
+                     blu::core::Device* vk_device, blu::core::Window* window) {
   vk_instance_ = vk_instance;
   vk_device_ = vk_device;
+  window_ = window;
 
-  VK_CHECK_RESULT(
-      glfwCreateWindowSurface(vk_instance->Get(), window, nullptr, &surface_));
+  VK_CHECK_RESULT(glfwCreateWindowSurface(vk_instance->Get(), window->Get(),
+                                          nullptr, &surface_));
 
   // Get list of supported surface formats
   uint32_t format_count;

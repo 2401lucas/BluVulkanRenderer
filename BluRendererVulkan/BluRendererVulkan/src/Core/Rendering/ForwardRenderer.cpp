@@ -1,6 +1,7 @@
 #include "ForwardRenderer.h"
 
-ForwardRenderer::ForwardRenderer() {
+ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
+  window_ = window;
   // VkInstance Creation
   {
     eastl::vector<eastl::string> instance_extensions = {
@@ -8,7 +9,7 @@ ForwardRenderer::ForwardRenderer() {
     };
 
     instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
-                                       instance_extensions);
+                                        instance_extensions);
   }
   // VkDevice Creation
   {
@@ -63,8 +64,18 @@ ForwardRenderer::~ForwardRenderer() {
   delete instance_;
 }
 
-void ForwardRenderer::Prepare() {
-  
-}
+void ForwardRenderer::Prepare() {}
 
-void ForwardRenderer::Render() {}
+void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
+  matrices_.resize(4);
+  matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
+  matrices_[1] = render_data.matrices[0];
+  matrices_[2] = render_data.matrices[1];
+
+  // ...
+  matrices_[3] = render_data.matrices[2];
+  // ...
+
+  memcpy(nullptr /*pointer to GPU memory*/, matrices_.data(),
+         matrices_.size() * sizeof(glm::mat4));
+}

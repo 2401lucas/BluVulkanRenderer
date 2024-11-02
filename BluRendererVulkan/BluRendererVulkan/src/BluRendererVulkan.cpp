@@ -13,7 +13,15 @@ int main(int argc, char** argv) {
 }
 
 void BluRendererVulkan::run(int argc, char** argv) {
-  /*BaseRenderer* forwardRenderer = new ForwardRenderer();
-  forwardRenderer->start();
-  delete (forwardRenderer);*/
+  // Create Window
+  // Create Engine
+  // Create Renderer
+  
+  // Engine Loads Initial Scene
+  
+  // Update Loop
+  // - Window Poll Events
+  // - Engine Updates
+  // - Renderer Updates
+  // - Audio Updates?
 }

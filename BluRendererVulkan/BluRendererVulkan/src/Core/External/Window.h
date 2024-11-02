@@ -7,15 +7,19 @@
 namespace blu::core {
 class Window {
  public:
-  Window();
+  Window(int width, int height, const char* title);
   ~Window();
 
-  GLFWwindow* Get() const { return window_; };
+  GLFWwindow* Get() const { return window_; }
   uint32_t GetWidth() const { return width_; }
   uint32_t GetHeight() const { return height_; }
+  float GetAspectRatio() const { return (float)width_ / (float)height_; };
+  bool ShouldClose();
+  void ProcessEvents();
 
  private:
   GLFWwindow* window_;
+
   uint32_t width_;
   uint32_t height_;
 };

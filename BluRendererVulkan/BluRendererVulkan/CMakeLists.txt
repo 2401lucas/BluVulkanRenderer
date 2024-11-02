@@ -8,6 +8,7 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(eastl CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 file(GLOB_RECURSE SOURCES "*.cpp" "*.h")
 
@@ -21,6 +22,7 @@ target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
   target_link_libraries(BluRendererVulkan PRIVATE imgui::imgui)
   target_link_libraries(BluRendererVulkan PRIVATE Vulkan::Headers GPUOpen::VulkanMemoryAllocator)
   target_link_libraries(BluRendererVulkan PRIVATE eastl)
+  target_link_libraries(BluRendererVulkan PRIVATE nlohmann_json::nlohmann_json)
 
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)

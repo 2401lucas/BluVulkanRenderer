@@ -12,7 +12,7 @@ namespace blu::core {
 class Swapchain {
  public:
   Swapchain(blu::core::Instance* vk_instance, blu::core::Device* vk_device,
-            GLFWwindow* window);
+            blu::core::Window* window);
   ~Swapchain();
 
   void Create(bool vsync, bool fullscreen);
