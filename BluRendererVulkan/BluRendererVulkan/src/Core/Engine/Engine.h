@@ -18,9 +18,14 @@ class Script {
   virtual void Update();
 };
 
-// Seperate Components
 // Compact Render Data
-// Camera Class
+// I would like optimize the memory layout by seperating data based on
+// components, but specifically the data required by the renderer
+// Example, When creating Transforms, it requires a pointer to where the model
+// matrix is stored
+// The model matrix is stored in a vector with other models, so
+// when sending data the the GPU, instead of assembling all of the data into a
+// new array, we can just send it the pointer to the matrix array
 class Engine {
  public:
   Engine(blu::core::Window*);

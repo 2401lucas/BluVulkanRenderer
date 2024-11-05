@@ -10,6 +10,15 @@
 #include "Instance.h"
 
 namespace blu::core {
+struct Buffer {
+  VkBuffer buffer;
+  VmaAllocation alloc;
+  VkDeviceSize size;
+  VkDeviceSize offset = 0;
+  void* mapped_data = nullptr;
+  VkDeviceAddress device_address;
+};
+
 class Device {
  public:
   Device(const blu::core::Instance* instance,

@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : CMake project for BluRendererVulkan, include source and define
 # project specific logic here.
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.13)
 
 set(ENV{VULKAN_SDK} "C:/VulkanSDK/1.3.261.1")
 find_package(Vulkan)

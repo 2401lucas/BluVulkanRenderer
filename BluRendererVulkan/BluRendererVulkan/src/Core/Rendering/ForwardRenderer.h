@@ -9,9 +9,18 @@ constexpr bool USE_VALIDATION = false;
 
 #include "../Engine/Engine.h"
 #include "../External/Window.h"
+#include "Vulkan/DescriptorSet.h"
 #include "Vulkan/Device.h"
 #include "Vulkan/Instance.h"
 #include "Vulkan/Swapchain.h"
+
+constexpr int MAX_BUFFERS = 1;
+
+struct BufferInfo {
+  VkDeviceAddress address;
+  VkDeviceSize offset;
+  VkDeviceSize size;
+};
 
 struct ModelIndices {
   int mesh_id;
@@ -32,12 +41,28 @@ class ForwardRenderer {
   blu::core::Instance* instance_;
   blu::core::Device* device_;
   blu::core::Swapchain* swapchain_;
+  VmaAllocator allocator_;
 
+  // Render Data
   uint32_t frame_index_;
-
   eastl::vector<glm::mat4> matrices_;
+  eastl::vector<BufferInfo> buffer_infos_;
+  eastl::vector<ModelIndices> model_indices_;
 
-  eastl::vector<ModelIndices> model_indices;
+  // Vulkan Render Data Resources
+  VkDescriptorPool descriptor_pool_;
+
+  blu::core::Buffer* buffer_infos_buffer_;
+  blu::core::DescriptorSet* buffer_infos_descriptor_set_;
+
+  blu::core::Buffer* matrices_buffer_;
+  blu::core::Buffer* vertex_buffer_;
+  blu::core::Buffer* index_buffer_;
+
+  blu::core::Buffer* model_indices_buffer_;
+
+  // Vulkan Render Resources
+
 };
 
 #endif
