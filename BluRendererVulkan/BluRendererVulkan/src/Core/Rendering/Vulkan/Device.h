@@ -8,7 +8,6 @@
 #include <vulkan/vulkan.h>
 
 #include "Instance.h"
-#include "Buffer.h"
 
 namespace blu::core {
 class Device {

@@ -9,6 +9,7 @@ constexpr bool USE_VALIDATION = false;
 
 #include "../Engine/Engine.h"
 #include "../External/Window.h"
+#include "Vulkan/Buffer.h"
 #include "Vulkan/DescriptorSet.h"
 #include "Vulkan/Device.h"
 #include "Vulkan/Instance.h"
