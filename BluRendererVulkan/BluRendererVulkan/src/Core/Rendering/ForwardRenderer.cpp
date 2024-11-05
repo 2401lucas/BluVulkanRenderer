@@ -201,8 +201,15 @@ void ForwardRenderer::Prepare() {
                                        matrices_buffer_->offset,
                                        matrices_buffer_->size));
   }
+  
+  // Mesh Vertex Data
+  // Requires: Multiple Chunks of memory instead of one big block
+  // Track Buffer used memory, if no memory then allocate new buffer
+  {
+    
+  }
 
-  // Model Data
+  // Model Index Data
   {
     model_indices_buffer_ = new blu::core::Buffer();
     VkBufferCreateInfo buf_ci{
@@ -255,3 +262,40 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
   memcpy(nullptr /*pointer to GPU memory*/, matrices_.data(),
          matrices_.size() * sizeof(glm::mat4));
 }
+
+  blu::core::Buffer* CreateVertexBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+      VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags, ){
+    blu::core::Buffer* new_buffer = new blu::core::Buffer();
+    VkBufferCreateInfo buf_ci{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = VERTEX_BUFFER_SIZE,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+    };
+
+    VmaAllocationCreateInfo alloc_ci{
+        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
+        .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    };
+
+    VmaAllocationInfo allocInfo;
+    vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
+                    &vertex_buffer_->buffer,
+                    &vertex_buffer_->alloc, &allocInfo);
+
+    vertex_buffer_->size = buf_ci.size;
+    vertex_buffer_->mapped_data = allocInfo.pMappedData;
+
+    VkBufferDeviceAddressInfo info{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = vertex_buffer_->buffer};
+
+    vertex_buffer_->device_address =
+        vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
+
+    buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
+                                       vertex_buffer_->offset,
+                                       vertex_buffer_->size));
+
+  
+  }

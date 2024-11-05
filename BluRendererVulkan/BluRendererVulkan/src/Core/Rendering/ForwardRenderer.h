@@ -14,7 +14,9 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr int MAX_BUFFERS = 1;
+constexpr int MAX_BUFFERS_STORAGE = 1;
+constexpr int VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 100;
+constexpr int INDEX_BUFFER_SIZE = sizeof(uint32_t) * 100;
 
 struct BufferInfo {
   VkDeviceAddress address;
@@ -36,6 +38,8 @@ class ForwardRenderer {
   void Render(blu::core::Engine::RenderData render_data);
 
  private:
+  blu::core::Buffer* CreateVertexBuffer();
+
   blu::core::Window* window_;
 
   blu::core::Instance* instance_;
