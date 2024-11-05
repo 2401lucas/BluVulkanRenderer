@@ -168,34 +168,13 @@ void ForwardRenderer::Prepare() {
 
   // Matrix Buffer Creation
   {
-    matrices_buffer_ = new blu::core::Buffer();
-    VkBufferCreateInfo buf_ci{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(glm::mat4) * 4,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    };
-
-    VmaAllocationCreateInfo alloc_ci{
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-        .preferredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-    };
-
-    VmaAllocationInfo allocInfo;
-    vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci, &matrices_buffer_->buffer,
-                    &matrices_buffer_->alloc, &allocInfo);
-
-    matrices_buffer_->size = buf_ci.size;
-    matrices_buffer_->mapped_data = allocInfo.pMappedData;
-
-    VkBufferDeviceAddressInfo info{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = matrices_buffer_->buffer};
-
-    matrices_buffer_->device_address =
-        vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
+    matrices_buffer_ = CreateBuffer(sizeof(glm::mat4) * 4, 
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                            VMA_ALLOCATION_CREATE_MAPPED_BIT, 
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
                                        matrices_buffer_->offset,
@@ -206,42 +185,28 @@ void ForwardRenderer::Prepare() {
   // Requires: Multiple Chunks of memory instead of one big block
   // Track Buffer used memory, if no memory then allocate new buffer
   {
-    
+    vertex_buffer_ = CreateBuffer(VERTEX_BUFFER_SIZE, 
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+                        0,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                        
+    buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
+                                        new_buffer->offset,
+                                        new_buffer->size));
   }
 
   // Model Index Data
   {
-    model_indices_buffer_ = new blu::core::Buffer();
-    VkBufferCreateInfo buf_ci{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(glm::mat4) * 4,
-        .usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    };
-
-    VmaAllocationCreateInfo alloc_ci{
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-    };
-
-    VmaAllocationInfo allocInfo;
-    vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                    &model_indices_buffer_->buffer,
-                    &model_indices_buffer_->alloc, &allocInfo);
-
-    model_indices_buffer_->size = buf_ci.size;
-    model_indices_buffer_->mapped_data = allocInfo.pMappedData;
-
-    VkBufferDeviceAddressInfo info{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = model_indices_buffer_->buffer};
-
-    model_indices_buffer_->device_address =
-        vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
-
-    buffer_infos_.push_back(BufferInfo(model_indices_buffer_->device_address,
-                                       model_indices_buffer_->offset,
-                                       model_indices_buffer_->size));
+    index_buffer_= CreateBuffer(INDEX_BUFFER_SIZE, 
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
+                        0,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                        
+    buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
+                                        new_buffer->offset,
+                                        new_buffer->size));
   }
 
   memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
@@ -263,39 +228,36 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
          matrices_.size() * sizeof(glm::mat4));
 }
 
-  blu::core::Buffer* CreateVertexBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
-      VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags, ){
-    blu::core::Buffer* new_buffer = new blu::core::Buffer();
+blu::core::Buffer* CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+    VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags){
+  blu::core::Buffer* new_buffer = new blu::core::Buffer();
     VkBufferCreateInfo buf_ci{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = VERTEX_BUFFER_SIZE,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        .size = size,
+        .usage = usage,
     };
 
     VmaAllocationCreateInfo alloc_ci{
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        .flags = flags,
+        .requiredFlags = required_flags,
     };
 
     VmaAllocationInfo allocInfo;
     vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                    &vertex_buffer_->buffer,
-                    &vertex_buffer_->alloc, &allocInfo);
+                    &new_buffer->buffer,
+                    &new_buffer->alloc, &allocInfo);
 
-    vertex_buffer_->size = buf_ci.size;
-    vertex_buffer_->mapped_data = allocInfo.pMappedData;
+    new_buffer->size = buf_ci.size;
+    new_buffer->mapped_data = allocInfo.pMappedData;
 
+    if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
     VkBufferDeviceAddressInfo info{
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = vertex_buffer_->buffer};
+        .buffer = new_buffer->buffer};
 
-    vertex_buffer_->device_address =
+    new_buffer->device_address =
         vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
+    }
 
-    buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
-                                       vertex_buffer_->offset,
-                                       vertex_buffer_->size));
-
-  
-  }
+  return new_buffer;
+}

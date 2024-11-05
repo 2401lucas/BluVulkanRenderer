@@ -14,9 +14,10 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr int MAX_BUFFERS_STORAGE = 1;
-constexpr int VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 100;
-constexpr int INDEX_BUFFER_SIZE = sizeof(uint32_t) * 100;
+constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 1;
+constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 100;
+constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 100;
+constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE = sizeof{VkCmd}
 
 struct BufferInfo {
   VkDeviceAddress address;
@@ -38,7 +39,8 @@ class ForwardRenderer {
   void Render(blu::core::Engine::RenderData render_data);
 
  private:
-  blu::core::Buffer* CreateVertexBuffer();
+  blu::core::Buffer* CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
+    VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags);
 
   blu::core::Window* window_;
 
@@ -62,8 +64,6 @@ class ForwardRenderer {
   blu::core::Buffer* matrices_buffer_;
   blu::core::Buffer* vertex_buffer_;
   blu::core::Buffer* index_buffer_;
-
-  blu::core::Buffer* model_indices_buffer_;
 
   // Vulkan Render Resources
 
