@@ -1,5 +1,5 @@
-#ifndef VULKANSWAPCHAIN_H
-#define VULKANSWAPCHAIN_H
+#ifndef SWAPCHAIN_H
+#define SWAPCHAIN_H
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>

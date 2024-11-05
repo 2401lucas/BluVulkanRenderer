@@ -1,5 +1,5 @@
-#ifndef VULKANDEVICE_H
-#define VULKANDEVICE_H
+#ifndef DEVICE_H
+#define DEVICE_H
 
 #include <EASTL/hash_set.h>
 #include <EASTL/string.h>
@@ -8,17 +8,9 @@
 #include <vulkan/vulkan.h>
 
 #include "Instance.h"
+#include "Buffer.h"
 
 namespace blu::core {
-struct Buffer {
-  VkBuffer buffer;
-  VmaAllocation alloc;
-  VkDeviceSize size;
-  VkDeviceSize offset = 0;
-  void* mapped_data = nullptr;
-  VkDeviceAddress device_address;
-};
-
 class Device {
  public:
   Device(const blu::core::Instance* instance,

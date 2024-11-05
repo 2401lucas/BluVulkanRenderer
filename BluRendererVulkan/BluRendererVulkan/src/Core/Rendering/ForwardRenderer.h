@@ -39,9 +39,6 @@ class ForwardRenderer {
   void Render(blu::core::Engine::RenderData render_data);
 
  private:
-  blu::core::Buffer* CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
-    VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags);
-
   blu::core::Window* window_;
 
   blu::core::Instance* instance_;

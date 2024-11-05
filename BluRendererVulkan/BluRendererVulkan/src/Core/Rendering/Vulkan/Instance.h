@@ -1,5 +1,5 @@
-#ifndef VULKANINSTANCE_H
-#define VULKANINSTANCE_H
+#ifndef INSTANCE_H
+#define INSTANCE_H
 
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <EASTL/hash_set.h>

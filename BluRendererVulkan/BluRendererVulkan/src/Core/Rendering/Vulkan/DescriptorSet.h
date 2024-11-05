@@ -1,5 +1,5 @@
-#ifndef VULKANDESCRIPTORSET_H
-#define VULKANDESCRIPTORSET_H
+#ifndef DESCRIPTORSET_H
+#define DESCRIPTORSET_H
 
 #include <vulkan/vulkan_core.h>
 

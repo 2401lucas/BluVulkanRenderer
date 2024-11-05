@@ -168,7 +168,8 @@ void ForwardRenderer::Prepare() {
 
   // Matrix Buffer Creation
   {
-    matrices_buffer_ = CreateBuffer(sizeof(glm::mat4) * 4, 
+    matrices_buffer_ = CreateBuffer(device->Get(), allocator_, 
+                            sizeof(glm::mat4) * 4, 
                             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                             VMA_ALLOCATION_CREATE_MAPPED_BIT, 
@@ -185,10 +186,10 @@ void ForwardRenderer::Prepare() {
   // Requires: Multiple Chunks of memory instead of one big block
   // Track Buffer used memory, if no memory then allocate new buffer
   {
-    vertex_buffer_ = CreateBuffer(VERTEX_BUFFER_SIZE, 
+    vertex_buffer_ = CreateBuffer(device->Get(), allocator_, 
+                        VERTEX_BUFFER_SIZE, 
                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
-                        0,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                         
     buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
@@ -198,10 +199,10 @@ void ForwardRenderer::Prepare() {
 
   // Model Index Data
   {
-    index_buffer_= CreateBuffer(INDEX_BUFFER_SIZE, 
+    index_buffer_= buffer::CreateBuffer(device->Get(), allocator_, 
+                        INDEX_BUFFER_SIZE, 
                         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
-                        0,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
                         
     buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
@@ -226,38 +227,4 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
   // Use Staging Buffer
   memcpy(nullptr /*pointer to GPU memory*/, matrices_.data(),
          matrices_.size() * sizeof(glm::mat4));
-}
-
-blu::core::Buffer* CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, 
-    VmaAllocationCreateFlags flags, VkMemoryPropertyFlags required_flags){
-  blu::core::Buffer* new_buffer = new blu::core::Buffer();
-    VkBufferCreateInfo buf_ci{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = size,
-        .usage = usage,
-    };
-
-    VmaAllocationCreateInfo alloc_ci{
-        .flags = flags,
-        .requiredFlags = required_flags,
-    };
-
-    VmaAllocationInfo allocInfo;
-    vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci,
-                    &new_buffer->buffer,
-                    &new_buffer->alloc, &allocInfo);
-
-    new_buffer->size = buf_ci.size;
-    new_buffer->mapped_data = allocInfo.pMappedData;
-
-    if(usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-    VkBufferDeviceAddressInfo info{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = new_buffer->buffer};
-
-    new_buffer->device_address =
-        vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
-    }
-
-  return new_buffer;
 }
