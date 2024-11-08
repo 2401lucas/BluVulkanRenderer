@@ -141,7 +141,8 @@ Device::Device(const blu::core::Instance* instance,
     for (eastl::vector<const char*>::iterator it = device_extensions.begin(),
                                               it_end = device_extensions.end();
          it != it_end; ++it) {
-      if (supported_extensions_.find_as(*it) == supported_extensions_it_end) {
+      if (supported_extensions_.find(eastl::hash<eastl::string>()(*it)) ==
+          supported_extensions_it_end) {
         std::cerr << "Enabled device extension \"" << *it
                   << "\" is not present at device level\n";
         exit(-1);

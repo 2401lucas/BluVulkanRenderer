@@ -3,7 +3,7 @@
 blu::core::Buffer* blu::core::Buffer::CreateBuffer(
     const VkDevice& device, const VmaAllocator& allocator, VkDeviceSize size,
     VkBufferUsageFlags usage, VkMemoryPropertyFlags required_flags,
-    VmaAllocationCreateFlags flags = 0) {
+    VmaAllocationCreateFlags flags) {
   blu::core::Buffer* new_buffer = new blu::core::Buffer();
   VkBufferCreateInfo buf_ci{
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,

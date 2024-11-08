@@ -16,8 +16,8 @@ Engine::~Engine() {}
 
 void Engine::LoadScene(const eastl::string& scene_name) {
   camera_ = new components::Camera(
-      components::Transform(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
-                            glm::vec3(1, 1, 1)),
+      new components::Transform(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
+                                glm::vec3(1, 1, 1)),
       window_->GetAspectRatio(), 45, 1, 500);
 
   eastl::vector<glm::vec3> vertices = {
@@ -81,32 +81,32 @@ void Engine::LoadScene(const eastl::string& scene_name) {
 
 // TEMP
 void Engine::Update() {
-  auto cam_front = camera_->GetTransform().Front();
+  auto cam_front = camera_->GetTransform()->Front();
 
   float move_speed = 0.02;
 
   if (input_.IsActionPressed("Forward")) {
-    camera_->GetTransform().AddToPosition(cam_front * move_speed);
+    camera_->GetTransform()->AddToPosition(cam_front * move_speed);
   }
   if (input_.IsActionPressed("Left")) {
-    camera_->GetTransform().AddToPosition(
+    camera_->GetTransform()->AddToPosition(
         -glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
         move_speed);
   }
   if (input_.IsActionPressed("Right")) {
-    camera_->GetTransform().AddToPosition(
+    camera_->GetTransform()->AddToPosition(
         glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
         move_speed);
   }
   if (input_.IsActionPressed("Back")) {
-    camera_->GetTransform().AddToPosition(-cam_front * move_speed);
+    camera_->GetTransform()->AddToPosition(-cam_front * move_speed);
   }
 
   glm::vec2 mouse_pos = input_.GetMousePos();
   glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
 
   if (input_.IsActionPressed("LMB")) {
-    camera_->GetTransform().AddToRotation(
+    camera_->GetTransform()->AddToRotation(
         glm::vec3(mouse_pos_diff.y * 4, -mouse_pos_diff.x * 4, 0.0f));
   }
 }
@@ -114,7 +114,7 @@ void Engine::Update() {
 Engine::RenderData Engine::GetRenderData() {
   eastl::vector<glm::mat4> matrices(3);
 
-  matrices[0] = camera_->GetTransform().GetTransformMat();
+  matrices[0] = camera_->GetTransform()->GetTransformMat();
   matrices[1] = camera_->GetPerspectiveMat();
   matrices[2] = models_[0].transform.GetTransformMat();
 

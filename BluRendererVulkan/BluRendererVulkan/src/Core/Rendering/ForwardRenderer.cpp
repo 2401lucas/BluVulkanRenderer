@@ -1,5 +1,8 @@
 #include "ForwardRenderer.h"
 
+#include <cassert>
+
+#include "../External/FileManager.h"
 #include "Vulkan/Tools.h"
 
 ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
@@ -94,7 +97,7 @@ void ForwardRenderer::Prepare() {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = 0,
         .maxSets = 1,
-        .poolSizeCount = pool_sizes.size(),
+        .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
 
@@ -321,7 +324,7 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
     vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
 
-    //Perform Layout Transition to VK_UNKNOWN_LAYOUT
+    // Perform Layout Transition to VK_UNKNOWN_LAYOUT
 
     VkRenderingAttachmentInfo color_attachment_info{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -342,8 +345,8 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
     vkCmdBeginRenderingKHR(draw_cmd_buffer, &render_info);
 
     VkViewport viewport{
-        .width = width,
-        .height = height,
+        .width = static_cast<float>(width),
+        .height = static_cast<float>(height),
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
@@ -369,4 +372,20 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
     vkCmdEndRenderingKHR(draw_cmd_buffer);
   }
+}
+
+VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(
+    eastl::string file_name, VkShaderStageFlagBits stage) {
+  VkPipelineShaderStageCreateInfo shader_stage {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+      .stage = stage,
+      .module = blu::core::file::LoadShader(file_name.c_str(),
+                                            device_->GetLogicalDevice()),
+      .pName = "main",
+  };
+
+  assert(shader_stage.module != VK_NULL_HANDLE);
+  shader_modules_.push_back(shader_stage.module);
+
+  return shader_stage;
 }

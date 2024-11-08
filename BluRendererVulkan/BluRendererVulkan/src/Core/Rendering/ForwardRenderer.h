@@ -41,6 +41,8 @@ class ForwardRenderer {
   void Render(blu::core::Engine::RenderData render_data);
 
  private:
+  VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name, VkShaderStageFlagBits);
+
   blu::core::Window* window_;
 
   blu::core::Instance* instance_;
@@ -66,6 +68,7 @@ class ForwardRenderer {
   blu::core::Buffer* index_buffer_;
 
   // Vulkan Render Resources
+  eastl::vector<VkShaderModule> shader_modules_;
   VkPipeline graphics_pipeline_;
   VkPipelineLayout graphics_pipeline_layout_;
 };

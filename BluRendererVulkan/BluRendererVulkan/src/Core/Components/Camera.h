@@ -7,10 +7,10 @@
 namespace blu::core::components {
 class Camera {
  public:
-  Camera(Transform transform, float aspect_ratio, float fov, float z_near,
+  Camera(Transform* transform, float aspect_ratio, float fov, float z_near,
          float z_far);
 
-  Transform& GetTransform() { return transform_; }
+  Transform* GetTransform() { return transform_; }
 
   float GetFov() const { return fov_; }
   void SetFov(float new_value) {
@@ -41,7 +41,7 @@ class Camera {
  private:
   void CalculatePerspectiveMatrix();
 
-  Transform transform_;
+  Transform* transform_;
 
   bool perspective_mat_updated_ = false;
   glm::mat4 perspective_mat_;

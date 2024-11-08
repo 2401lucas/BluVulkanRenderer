@@ -27,7 +27,7 @@ class Swapchain {
   uint32_t GetHeight() const { return image_height_; }
 
  private:
-  typedef struct SwapchainBuffer {
+  struct SwapchainBuffer {
     VkImage image;
     VkImageView view;
   };

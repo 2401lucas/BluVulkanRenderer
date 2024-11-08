@@ -5,7 +5,7 @@ blu::core::Image* blu::core::Image::CreateImage(
     uint32_t width, uint32_t height, uint32_t mip_levels,
     VkSampleCountFlagBits samples, VkImageTiling tiling,
     VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
-    VmaAllocationCreateFlags flags = 0) {
+    VmaAllocationCreateFlags flags) {
   Image* new_image = new Image();
   VkImageCreateInfo image_create_info{
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,

@@ -4,8 +4,8 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace blu::core::components {
-Camera::Camera(Transform transform, float aspect_ratio, float fov, float z_near,
-               float z_far) {
+Camera::Camera(Transform* transform, float aspect_ratio, float fov,
+               float z_near, float z_far) {
   transform_ = transform;
   aspect_ratio_ = aspect_ratio;
   fov_ = fov;
