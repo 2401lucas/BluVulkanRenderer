@@ -4,20 +4,22 @@
 #include <Vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
-namespace blu::core{
-struct Buffer {
+namespace blu::core {
+class Buffer {
+ public:
   VkBuffer buffer;
   VmaAllocation alloc;
   VkDeviceSize size;
   VkDeviceSize offset = 0;
   void* mapped_data = nullptr;
   VkDeviceAddress device_address;
+
+  static blu::core::Buffer* CreateBuffer(const VkDevice& device,
+                                         const VmaAllocator& allocator,
+                                         VkDeviceSize size,
+                                         VkBufferUsageFlags usage,
+                                         VkMemoryPropertyFlags required_flags,
+                                         VmaAllocationCreateFlags flags = 0);
 };
-
-namespace buffer{
-blu::core::Buffer* CreateBuffer(const VkLogicalDevice& device, const VmaAllocator& allocator, VkDeviceSize size, VkBufferUsageFlags usage, 
-    VkMemoryPropertyFlags required_flags, VmaAllocationCreateFlags flags = 0);
-}
-}
-
+}  // namespace blu::core
 #endif

@@ -3,15 +3,11 @@
 
 #include <vulkan/vulkan_core.h>
 
-// blu::core gives error qualified name is not allowed
-namespace blu {
-namespace core {
-
+namespace blu::core {
 struct DescriptorSet {
  public:
   VkDescriptorSetLayout layout;
   VkDescriptorSet set;
 };
-}  // namespace core
-}  // namespace blu
+}  // namespace blu::core
 #endif

@@ -18,7 +18,8 @@ constexpr bool USE_VALIDATION = false;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 1;
 constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 100;
 constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 100;
-constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE = sizeof{VkCmd}
+constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
+    sizeof(VkDrawIndexedIndirectCommand);
 
 struct BufferInfo {
   VkDeviceAddress address;
@@ -54,6 +55,7 @@ class ForwardRenderer {
   eastl::vector<ModelIndices> model_indices_;
 
   // Vulkan Render Data Resources
+  VkCommandPool* graphics_command_pools_;
   VkDescriptorPool descriptor_pool_;
 
   blu::core::Buffer* buffer_infos_buffer_;
@@ -64,7 +66,8 @@ class ForwardRenderer {
   blu::core::Buffer* index_buffer_;
 
   // Vulkan Render Resources
-
+  VkPipeline graphics_pipeline_;
+  VkPipelineLayout graphics_pipeline_layout_;
 };
 
 #endif

@@ -18,7 +18,10 @@ class Swapchain {
   void Create(bool vsync, bool fullscreen);
 
   VkSwapchainKHR GetSwapchain() const { return swapchain_; }
-  VkFormat GetColorFormat() const { return color_format_; }
+  const VkFormat* GetColorFormat() const { return &color_format_; }
+  VkImageView GetSwapchainBuffer(uint32_t index) const {
+    return buffers_[index].view;
+  }
   uint32_t GetImageCount() const { return image_count_; }
   uint32_t GetWidth() const { return image_width_; }
   uint32_t GetHeight() const { return image_height_; }

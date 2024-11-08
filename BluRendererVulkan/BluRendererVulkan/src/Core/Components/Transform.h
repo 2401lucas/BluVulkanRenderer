@@ -3,6 +3,7 @@
 
 #include <glm/matrix.hpp>
 #include <glm/vec3.hpp>
+#include <glm/trigonometric.hpp>
 
 namespace blu::core::components {
 class Transform {
@@ -46,7 +47,7 @@ class Transform {
     cam_front.z =
         cos(glm::radians(rotation_.x)) * cos(glm::radians(rotation_.y));
     cam_front = glm::normalize(cam_front);
-    return;
+    return cam_front;
   }
 
   glm::mat4 GetTransformMat() {

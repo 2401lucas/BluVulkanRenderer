@@ -67,13 +67,30 @@ ForwardRenderer::~ForwardRenderer() {
 }
 
 void ForwardRenderer::Prepare() {
+  frame_index_ = 0;
+  auto frame_count = swapchain_->GetImageCount();
+  // Command Pool Creation
+  {
+    graphics_command_pools_ = new VkCommandPool[frame_count];
+
+    for (size_t i = 0; i < frame_count; i++) {
+      VkCommandPoolCreateInfo command_pool_create{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+          .queueFamilyIndex = 0,
+      };
+
+      vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
+                          nullptr, &graphics_command_pools_[i]);
+    }
+  }
+
   // Descriptor Pool Creation
   {
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
     };
 
-    VkDescriptorPoolCreateInfo descriptor_pool_ci{
+    VkDescriptorPoolCreateInfo descriptor_pool_create{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = 0,
         .maxSets = 1,
@@ -82,7 +99,7 @@ void ForwardRenderer::Prepare() {
     };
 
     VK_CHECK_RESULT(vkCreateDescriptorPool(device_->GetLogicalDevice(),
-                                           &descriptor_pool_ci, nullptr,
+                                           &descriptor_pool_create, nullptr,
                                            &descriptor_pool_));
   }
 
@@ -92,7 +109,7 @@ void ForwardRenderer::Prepare() {
 
     VkBufferCreateInfo buf_ci{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(BufferInfo) * MAX_BUFFERS,
+        .size = sizeof(BufferInfo) * MAX_BUFFERS_STORAGE,
         .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
                  VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
     };
@@ -168,63 +185,188 @@ void ForwardRenderer::Prepare() {
 
   // Matrix Buffer Creation
   {
-    matrices_buffer_ = CreateBuffer(device->Get(), allocator_, 
-                            sizeof(glm::mat4) * 4, 
-                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                            VMA_ALLOCATION_CREATE_MAPPED_BIT, 
-                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                            VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+    matrices_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_, sizeof(glm::mat4) * 4,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
                                        matrices_buffer_->offset,
                                        matrices_buffer_->size));
   }
-  
+
   // Mesh Vertex Data
   // Requires: Multiple Chunks of memory instead of one big block
   // Track Buffer used memory, if no memory then allocate new buffer
   {
-    vertex_buffer_ = CreateBuffer(device->Get(), allocator_, 
-                        VERTEX_BUFFER_SIZE, 
-                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                        
-    buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
-                                        new_buffer->offset,
-                                        new_buffer->size));
+    vertex_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_, VERTEX_BUFFER_SIZE,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
+                                       vertex_buffer_->offset,
+                                       vertex_buffer_->size));
   }
 
   // Model Index Data
   {
-    index_buffer_= buffer::CreateBuffer(device->Get(), allocator_, 
-                        INDEX_BUFFER_SIZE, 
-                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-                        
-    buffer_infos_.push_back(BufferInfo(new_buffer->device_address,
-                                        new_buffer->offset,
-                                        new_buffer->size));
+    index_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_, INDEX_BUFFER_SIZE,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    buffer_infos_.push_back(BufferInfo(index_buffer_->device_address,
+                                       index_buffer_->offset,
+                                       index_buffer_->size));
   }
 
   memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
          buffer_infos_.size() * sizeof(BufferInfo));
+
+  // Pipeline Creation
+  {
+    // Important info for Pipeline creation
+    // Attachment Count,
+    // Attachment formats
+    // Descriptor Set Layouts
+    VkPipelineLayoutCreateInfo pipeline_layout_create{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &buffer_infos_descriptor_set_->layout,
+    };
+
+    vkCreatePipelineLayout(device_->GetLogicalDevice(), &pipeline_layout_create,
+                           nullptr, &graphics_pipeline_layout_);
+
+    VkPipelineRenderingCreateInfo pipeline_create{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = swapchain_->GetColorFormat(),
+        .depthAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT,
+        .stencilAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT,
+    };
+
+    VkGraphicsPipelineCreateInfo graphics_create{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = &pipeline_create,
+        .renderPass = VK_NULL_HANDLE,
+    };
+
+    VK_CHECK_RESULT(vkCreateGraphicsPipelines(device_->GetLogicalDevice(),
+                                              nullptr, 1, &graphics_create,
+                                              nullptr, &graphics_pipeline_));
+  }
 }
 
+// Update Render Data
+// -Matrices
+// Render
 void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
-  matrices_.resize(4);
-  matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
-  matrices_[1] = render_data.matrices[0];
-  matrices_[2] = render_data.matrices[1];
+  frame_index_++;
+  if (frame_index_ >= swapchain_->GetImageCount()) {
+    frame_index_ = 0;
+  }
 
-  // ... USE ITERATOR
-  matrices_[3] = render_data.matrices[2];
-  // ...
+  vkResetCommandPool(device_->GetLogicalDevice(),
+                     graphics_command_pools_[frame_index_], 0);
 
-  // Use Staging Buffer
-  memcpy(nullptr /*pointer to GPU memory*/, matrices_.data(),
-         matrices_.size() * sizeof(glm::mat4));
+  // Update Matrix Buffer
+  {
+    matrices_.resize(4);
+    matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
+    matrices_[1] = render_data.matrices[0];
+    matrices_[2] = render_data.matrices[1];
+
+    // ... USE ITERATOR
+    matrices_[3] = render_data.matrices[2];
+    // ...
+
+    memcpy(matrices_buffer_->mapped_data, matrices_.data(),
+           matrices_.size() * sizeof(glm::mat4));
+  }
+
+  // Render Scene
+  {
+    auto width = swapchain_->GetWidth();
+    auto height = swapchain_->GetHeight();
+
+    // Important info for CPU Rendering
+    // VkCommandBuffer
+    // Attachment Info
+    // Renderer Size
+    // Attachment Count
+    VkCommandBufferAllocateInfo command_buffer_alloc{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = graphics_command_pools_[frame_index_],
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer draw_cmd_buffer;
+
+    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &command_buffer_alloc,
+                             &draw_cmd_buffer);
+
+    VkCommandBufferBeginInfo draw_cmd_buffer_begin{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
+
+    //Perform Layout Transition to VK_UNKNOWN_LAYOUT
+
+    VkRenderingAttachmentInfo color_attachment_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = swapchain_->GetSwapchainBuffer(frame_index_),
+    };
+
+    VkRenderingAttachmentInfo depth_attachment_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+    };
+
+    VkRenderingInfo render_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea = {VkOffset2D(), width, height},
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_info,
+    };
+
+    vkCmdBeginRenderingKHR(draw_cmd_buffer, &render_info);
+
+    VkViewport viewport{
+        .width = width,
+        .height = height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+
+    vkCmdSetViewport(draw_cmd_buffer, 0, 1, &viewport);
+
+    VkRect2D scissor{
+        .offset{.x = 0, .y = 0},
+        .extent{
+            .width = width,
+            .height = height,
+        },
+    };
+
+    vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
+
+    vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            graphics_pipeline_layout_, 0, 1,
+                            &buffer_infos_descriptor_set_->set, 0, nullptr);
+    vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      graphics_pipeline_);
+    vkCmdDraw(draw_cmd_buffer, 3, 1, 0, 0);
+
+    vkCmdEndRenderingKHR(draw_cmd_buffer);
+  }
 }
