@@ -532,6 +532,9 @@ void ForwardRenderer::Prepare() {
           // vkWaitForFences
           blu::core::Buffer::DestroyBuffer(allocator_, staging_buffer);
         }
+
+        vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool,
+                           0);
       }
     }
   }
@@ -601,9 +604,13 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
         .baseArrayLayer = 0,
         .layerCount = VK_REMAINING_ARRAY_LAYERS,
     };
-
-    VkImageSubresourceRange depth_range{range};
-    depth_range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    VkImageSubresourceRange depth_range{
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
 
     eastl::array<VkClearValue, 2> clear_values{VkClearValue(0, 0, 0, 0),
                                                VkClearValue(1.0f, 0.0f)};

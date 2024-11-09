@@ -7,6 +7,8 @@ constexpr bool USE_VALIDATION = true;
 constexpr bool USE_VALIDATION = false;
 #endif  // _DEBUG
 
+#include <EASTL/array.h>
+
 #include "../Engine/Engine.h"
 #include "../External/Window.h"
 #include "Vulkan/Buffer.h"
@@ -30,7 +32,7 @@ struct BufferInfo {
 
 struct Vertex {
   eastl::array<float, 3> pos;
-  //eastl::array<float, 2> uv;
+  // eastl::array<float, 2> uv;
 };
 
 struct ModelIndices {

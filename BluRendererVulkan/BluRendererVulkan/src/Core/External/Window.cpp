@@ -14,7 +14,7 @@ Window::Window(int width, int height, const char* title) {
     std::cerr << "GLFW Window failed to be initialized";
     return;
   }
-
+  //glfwSetWindowTitle();
   glfwMakeContextCurrent(window_);
 }
 
