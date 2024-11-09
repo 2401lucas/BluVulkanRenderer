@@ -11,6 +11,8 @@
 namespace blu::core {
 class Swapchain {
  public:
+  struct SwapchainBuffer;
+
   Swapchain(blu::core::Instance* vk_instance, blu::core::Device* vk_device,
             blu::core::Window* window);
   ~Swapchain();
@@ -19,19 +21,19 @@ class Swapchain {
 
   VkSwapchainKHR GetSwapchain() const { return swapchain_; }
   const VkFormat* GetColorFormat() const { return &color_format_; }
-  VkImageView GetSwapchainBuffer(uint32_t index) const {
-    return buffers_[index].view;
+  SwapchainBuffer GetSwapchainBuffer(uint32_t index) const {
+    return buffers_[index];
   }
   uint32_t GetImageCount() const { return image_count_; }
   uint32_t GetWidth() const { return image_width_; }
   uint32_t GetHeight() const { return image_height_; }
 
- private:
   struct SwapchainBuffer {
     VkImage image;
     VkImageView view;
   };
 
+ private:
   blu::core::Instance* vk_instance_;
   blu::core::Device* vk_device_;
   blu::core::Window* window_;

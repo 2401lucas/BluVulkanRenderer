@@ -20,6 +20,8 @@ class Buffer {
                                          VkBufferUsageFlags usage,
                                          VkMemoryPropertyFlags required_flags,
                                          VmaAllocationCreateFlags flags = 0);
+  static void DestroyBuffer(const VmaAllocator& allocator,
+                            blu ::core::Buffer* buf);
 };
 }  // namespace blu::core
 #endif

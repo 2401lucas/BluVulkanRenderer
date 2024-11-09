@@ -11,11 +11,9 @@ class Image {
   VkImage image = VK_NULL_HANDLE;
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
-  VkImageLayout imageLayout;
   VmaAllocation alloc = VK_NULL_HANDLE;
   VkDeviceSize size;
   VkDeviceSize offset = 0;
-  VkImageSubresourceRange subresourceRange;
   // Optional
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
@@ -26,6 +24,22 @@ class Image {
       VkSampleCountFlagBits samples, VkImageTiling tiling,
       VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
       VmaAllocationCreateFlags flags = 0);
+
+  static void CreateImageView(
+      const VkDevice& device, blu::core::Image* image, VkFormat format,
+      VkImageSubresourceRange const& subresource_range,
+      VkImageViewType image_view_type = VK_IMAGE_VIEW_TYPE_2D);
+
+  static void ImageLayoutTransition(
+      VkCommandBuffer, VkImage image, VkPipelineStageFlags src_stage_mask,
+      VkPipelineStageFlags dst_stage_mask, VkAccessFlags src_access_mask,
+      VkAccessFlags dst_access_mask, VkImageLayout old_layout,
+      VkImageLayout new_layout,
+      VkImageSubresourceRange const& subresource_range);
+  static void ImageLayoutTransition(
+      VkCommandBuffer, VkImage image, VkImageLayout old_layout,
+      VkImageLayout new_layout,
+      VkImageSubresourceRange const& subresource_range);
 };
 }  // namespace blu::core
 #endif

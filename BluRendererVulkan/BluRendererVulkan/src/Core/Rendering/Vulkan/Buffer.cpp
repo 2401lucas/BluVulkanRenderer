@@ -33,3 +33,10 @@ blu::core::Buffer* blu::core::Buffer::CreateBuffer(
 
   return new_buffer;
 }
+
+void blu::core::Buffer::DestroyBuffer(const VmaAllocator& allocator,
+                                      blu::core::Buffer* buf) {
+  vmaDestroyBuffer(allocator, buf->buffer, buf->alloc);
+
+  delete buf;
+}

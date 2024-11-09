@@ -19,6 +19,18 @@ class Device {
   VkPhysicalDevice GetPhysicalDevice() const { return physical_device_; }
   VkDevice GetLogicalDevice() const { return device_; }
 
+  struct {
+    VkQueue graphics{VK_NULL_HANDLE};
+    VkQueue compute{VK_NULL_HANDLE};
+    VkQueue transfer{VK_NULL_HANDLE};
+  } queues;
+
+  struct {
+    uint32_t graphics;
+    uint32_t compute;
+    uint32_t transfer;
+  } queue_family_indicies_;
+
  private:
   uint32_t GetQueueFamilyIndex(VkQueueFlags queue_flags) const;
 
@@ -37,17 +49,7 @@ class Device {
   // Managed Vulkan Resources
   eastl::vector<VkShaderModule> shader_modules_;
 
-  struct {
-    uint32_t graphics;
-    uint32_t compute;
-    uint32_t transfer;
-  } queue_family_indicies_;
 
-  struct {
-    VkQueue graphics{VK_NULL_HANDLE};
-    VkQueue compute{VK_NULL_HANDLE};
-    VkQueue transfer{VK_NULL_HANDLE};
-  } queues;
 };
 }  // namespace blu::core
 

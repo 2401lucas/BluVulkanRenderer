@@ -1,5 +1,5 @@
-#ifndef BLU_RENDERING_FORWARDRENDERER_H
-#define BLU_RENDERING_FORWARDRENDERER_H
+#ifndef FORWARDRENDERER_H
+#define FORWARDRENDERER_H
 
 #ifdef _DEBUG
 constexpr bool USE_VALIDATION = true;
@@ -12,12 +12,13 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Buffer.h"
 #include "Vulkan/DescriptorSet.h"
 #include "Vulkan/Device.h"
+#include "Vulkan/Image.h"
 #include "Vulkan/Instance.h"
 #include "Vulkan/Swapchain.h"
 
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 1;
-constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 100;
-constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 100;
+constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 10000;
+constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 10000;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
     sizeof(VkDrawIndexedIndirectCommand);
 
@@ -25,6 +26,11 @@ struct BufferInfo {
   VkDeviceAddress address;
   VkDeviceSize offset;
   VkDeviceSize size;
+};
+
+struct Vertex {
+  eastl::array<float, 3> pos;
+  //eastl::array<float, 2> uv;
 };
 
 struct ModelIndices {
@@ -41,7 +47,8 @@ class ForwardRenderer {
   void Render(blu::core::Engine::RenderData render_data);
 
  private:
-  VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name, VkShaderStageFlagBits);
+  VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
+                                             VkShaderStageFlagBits);
 
   blu::core::Window* window_;
 
@@ -57,8 +64,11 @@ class ForwardRenderer {
   eastl::vector<ModelIndices> model_indices_;
 
   // Vulkan Render Data Resources
+  VkCommandPool transfer_command_pool;
   VkCommandPool* graphics_command_pools_;
   VkDescriptorPool descriptor_pool_;
+
+  blu::core::Image* depth_stencil_image_;
 
   blu::core::Buffer* buffer_infos_buffer_;
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;
