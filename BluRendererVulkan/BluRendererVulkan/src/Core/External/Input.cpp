@@ -5,6 +5,8 @@
 #include <nlohmann/json.hpp>
 
 namespace blu::core {
+KeybindManager::KeybindManager(blu::core::Window* window) { window_ = window; }
+
 void KeybindManager::RegisterKeyBind(const eastl::string& action,
                                      int default_key, int alt_key,
                                      bool allow_mods, int req_mods) {
@@ -14,7 +16,7 @@ void KeybindManager::RegisterKeyBind(const eastl::string& action,
 
 glm::vec2 KeybindManager::GetMousePos() {
   double xpos, ypos;
-  glfwGetCursorPos(glfwGetCurrentContext(), &xpos, &ypos);
+  glfwGetCursorPos(window_->Get(), &xpos, &ypos);
 
   return glm::vec2(xpos, ypos);
 }
@@ -33,16 +35,16 @@ bool KeybindManager::IsActionPressed(const eastl::string& action, int mods) {
 
   // Less than 8 specifies mouse input
   if (bind.primary_key < 8) {
-    return glfwGetMouseButton(glfwGetCurrentContext(), bind.primary_key) ==
+    return glfwGetMouseButton(window_->Get(), bind.primary_key) ==
                GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
-            glfwGetMouseButton(glfwGetCurrentContext(), bind.alternate_key) ==
+            glfwGetMouseButton(window_->Get(), bind.alternate_key) ==
                 GLFW_PRESS);
   } else {
-    return glfwGetKey(glfwGetCurrentContext(), bind.primary_key) ==
+    return glfwGetKey(window_->Get(), bind.primary_key) ==
                GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
-            glfwGetKey(glfwGetCurrentContext(), bind.alternate_key) ==
+            glfwGetKey(window_->Get(), bind.alternate_key) ==
                 GLFW_PRESS);
   }
 }

@@ -48,8 +48,6 @@ class Device {
   eastl::vector<VkQueueFamilyProperties> queue_family_properties_;
   // Managed Vulkan Resources
   eastl::vector<VkShaderModule> shader_modules_;
-
-
 };
 }  // namespace blu::core
 

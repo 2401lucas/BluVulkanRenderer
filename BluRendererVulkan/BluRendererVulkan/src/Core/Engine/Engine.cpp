@@ -5,14 +5,18 @@
 namespace blu::core {
 Engine::Engine(blu::core::Window* window) {
   window_ = window;
-  input_ = {};
-  if (!input_.LoadKeybinds()) {
+  input_ = new KeybindManager(window);
+  if (!input_->LoadKeybinds()) {
     SetDefaultKeybinds();
   }
-  prev_mouse_input_ = input_.GetMousePos();
+  // prev_mouse_input_ = input_->GetMousePos();
+  prev_mouse_input_ = {0, 0};
 }
 
-Engine::~Engine() {}
+Engine::~Engine() {
+  delete input_;
+  delete camera_;
+}
 
 void Engine::LoadScene(const eastl::string& scene_name) {
   camera_ = new components::Camera(
@@ -85,27 +89,27 @@ void Engine::Update() {
 
   float move_speed = 0.02;
 
-  if (input_.IsActionPressed("Forward")) {
+  if (input_->IsActionPressed("Forward")) {
     camera_->GetTransform()->AddToPosition(cam_front * move_speed);
   }
-  if (input_.IsActionPressed("Left")) {
+  if (input_->IsActionPressed("Left")) {
     camera_->GetTransform()->AddToPosition(
         -glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
         move_speed);
   }
-  if (input_.IsActionPressed("Right")) {
+  if (input_->IsActionPressed("Right")) {
     camera_->GetTransform()->AddToPosition(
         glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
         move_speed);
   }
-  if (input_.IsActionPressed("Back")) {
+  if (input_->IsActionPressed("Back")) {
     camera_->GetTransform()->AddToPosition(-cam_front * move_speed);
   }
 
-  glm::vec2 mouse_pos = input_.GetMousePos();
+  glm::vec2 mouse_pos = input_->GetMousePos();
   glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
 
-  if (input_.IsActionPressed("LMB")) {
+  if (input_->IsActionPressed("LMB")) {
     camera_->GetTransform()->AddToRotation(
         glm::vec3(mouse_pos_diff.y * 4, -mouse_pos_diff.x * 4, 0.0f));
   }
@@ -122,11 +126,11 @@ Engine::RenderData Engine::GetRenderData() {
 }
 
 void Engine::SetDefaultKeybinds() {
-  input_.RegisterKeyBind("LMB", GLFW_MOUSE_BUTTON_LEFT);
+  input_->RegisterKeyBind("LMB", GLFW_MOUSE_BUTTON_LEFT);
 
-  input_.RegisterKeyBind("Forward", GLFW_KEY_W, GLFW_KEY_UP);
-  input_.RegisterKeyBind("Left", GLFW_KEY_A, GLFW_KEY_LEFT);
-  input_.RegisterKeyBind("Right", GLFW_KEY_D, GLFW_KEY_RIGHT);
-  input_.RegisterKeyBind("Back", GLFW_KEY_S, GLFW_KEY_DOWN);
+  input_->RegisterKeyBind("Forward", GLFW_KEY_W, GLFW_KEY_UP);
+  input_->RegisterKeyBind("Left", GLFW_KEY_A, GLFW_KEY_LEFT);
+  input_->RegisterKeyBind("Right", GLFW_KEY_D, GLFW_KEY_RIGHT);
+  input_->RegisterKeyBind("Back", GLFW_KEY_S, GLFW_KEY_DOWN);
 }
 }  // namespace blu::core

@@ -1,5 +1,22 @@
 #include "Image.h"
 
+#include <cassert>
+
+void blu::core::Image::Destroy(const VkDevice& device,
+                                    const VmaAllocator& allocator) {
+  if (sampler) {
+    vkDestroySampler(device, sampler, nullptr);
+  }
+
+  if (view) {
+    vkDestroyImageView(device, view, nullptr);
+  }
+
+  if (image) {
+    vmaDestroyImage(allocator, image, alloc);
+  }
+}
+
 blu::core::Image* blu::core::Image::CreateImage(
     const VkDevice& device, const VmaAllocator& allocator, VkFormat format,
     uint32_t width, uint32_t height, uint32_t mip_levels,
@@ -85,7 +102,7 @@ void blu::core::Image::ImageLayoutTransition(
                         new_layout, subresource_range);
 }
 
-static VkAccessFlags GetAccessFlags(VkImageLayout layout) {
+VkAccessFlags blu::core::Image::GetAccessFlags(VkImageLayout layout) {
   switch (layout) {
     case VK_IMAGE_LAYOUT_UNDEFINED:
     case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
@@ -117,7 +134,8 @@ static VkAccessFlags GetAccessFlags(VkImageLayout layout) {
   }
 }
 
-static VkPipelineStageFlags GetPipelineStageFlags(VkImageLayout layout) {
+VkPipelineStageFlags blu::core::Image::GetPipelineStageFlags(
+    VkImageLayout layout) {
   switch (layout) {
     case VK_IMAGE_LAYOUT_UNDEFINED:
       return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -147,3 +165,4 @@ static VkPipelineStageFlags GetPipelineStageFlags(VkImageLayout layout) {
       assert(false);
       return 0;
   }
+}

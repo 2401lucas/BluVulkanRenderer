@@ -6,6 +6,7 @@
 #include <EASTL/vector_map.h>
 #include <GLFW/glfw3.h>
 #include <glm/vec2.hpp>
+#include "Window.h"
 
 namespace blu::core {
 struct InputEvent {
@@ -28,6 +29,8 @@ struct InputEvent {
 // !Was && Is == First Press
 class KeybindManager {
  public:
+  KeybindManager(blu::core::Window*);
+
   void RegisterKeyBind(const eastl::string& action, int default_key,
                        int alt_key = GLFW_KEY_UNKNOWN, bool allow_mods = false,
                        int req_mods = 0);
@@ -47,6 +50,8 @@ class KeybindManager {
     bool allows_modifiers;
     int required_mods;
   };
+
+  blu::core::Window* window_;
 
   glm::vec2 prev_mouse_pos_;
   eastl::vector_map<eastl::string, Keybind_> keybinds_;

@@ -10,12 +10,12 @@
 
 namespace blu::core {
 
-class Script {
+class Script {/*
  public:
   virtual void OnEnable();
   virtual void OnDisable();
   virtual void Start();
-  virtual void Update();
+  virtual void Update();*/
 };
 
 // Compact Render Data
@@ -64,7 +64,7 @@ class Engine {
 
   components::Camera* camera_ = nullptr;
   Window* window_ = nullptr;
-  KeybindManager input_;
+  KeybindManager* input_;
 
   glm::vec2 prev_mouse_input_;
   eastl::vector<Model> models_;

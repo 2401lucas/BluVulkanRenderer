@@ -18,6 +18,8 @@ class Image {
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
 
+  void Destroy(const VkDevice& device, const VmaAllocator& allocator);
+
   static blu::core::Image* CreateImage(
       const VkDevice& device, const VmaAllocator& allocator, VkFormat format,
       uint32_t width, uint32_t height, uint32_t mipLevels,
@@ -40,6 +42,10 @@ class Image {
       VkCommandBuffer, VkImage image, VkImageLayout old_layout,
       VkImageLayout new_layout,
       VkImageSubresourceRange const& subresource_range);
+
+ private:
+  static VkAccessFlags GetAccessFlags(VkImageLayout layout);
+  static VkPipelineStageFlags GetPipelineStageFlags(VkImageLayout layout);
 };
 }  // namespace blu::core
 #endif

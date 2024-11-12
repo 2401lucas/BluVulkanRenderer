@@ -4,10 +4,12 @@
 #include <vulkan/vulkan_core.h>
 
 namespace blu::core {
-struct DescriptorSet {
+class DescriptorSet {
  public:
   VkDescriptorSetLayout layout;
   VkDescriptorSet set;
+
+  void Destroy(const VkDevice& device);
 };
 }  // namespace blu::core
 #endif

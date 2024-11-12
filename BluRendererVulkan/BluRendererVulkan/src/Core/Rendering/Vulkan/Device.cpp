@@ -72,7 +72,7 @@ Device::Device(const blu::core::Instance* instance,
     }
   }
 
-  eastl::vector<VkDeviceQueueCreateInfo> queue_create_infos(4);
+  eastl::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 
   const float defaultQueuePriority(0.0f);
 
@@ -129,7 +129,7 @@ Device::Device(const blu::core::Instance* instance,
     physicalDeviceFeatures2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = p_next,
-        .features = physical_device_enabled_features_,
+        .features = physical_device_features_,
     };
     device_ci.pEnabledFeatures = nullptr;
     device_ci.pNext = &physicalDeviceFeatures2;

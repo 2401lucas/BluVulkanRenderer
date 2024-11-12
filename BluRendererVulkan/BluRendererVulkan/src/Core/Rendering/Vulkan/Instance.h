@@ -2,6 +2,7 @@
 #define INSTANCE_H
 
 #define VK_USE_PLATFORM_WIN32_KHR
+
 #include <EASTL/hash_set.h>
 #include <EASTL/string.h>
 #include <EASTL/vector.h>
@@ -18,7 +19,7 @@ class Instance {
   uint32_t GetApiVersion() const { return api_version_; }
 
  private:
-  uint32_t api_version_ = VK_API_VERSION_1_2;
+  uint32_t api_version_ = VK_API_VERSION_1_3;
   VkInstance instance_;
   eastl::hash_set<size_t> supported_extensions_;
   eastl::vector<char*> enabled_instance_extensions_;

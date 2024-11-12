@@ -21,7 +21,7 @@ void BluRendererVulkan::run(int argc, char** argv) {
   ForwardRenderer* renderer = new ForwardRenderer(window);
 
   // Engine Loads Initial Scene
-  // engine->Prepare();
+  engine->LoadScene("TODO");
   renderer->Prepare();
 
   while (!window->ShouldClose()) {

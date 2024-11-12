@@ -186,6 +186,9 @@ void Swapchain::Create(bool vsync, bool fullscreen) {
     vkDestroySwapchainKHR(vk_device_->GetLogicalDevice(), old_swapchain,
                           nullptr);
   }
+
+  vkCreateSwapchainKHR(vk_device_->GetLogicalDevice(), &swapchain_ci, nullptr, &swapchain_);
+
   VK_CHECK_RESULT(vkGetSwapchainImagesKHR(vk_device_->GetLogicalDevice(),
                                           swapchain_, &image_count_, NULL));
 

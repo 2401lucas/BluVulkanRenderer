@@ -18,7 +18,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
 
-    instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
+    instance_ =
+        new blu::core::Instance("Forward Renderer", true,
                                         instance_extensions);
   }
   // VkDevice Creation
@@ -45,7 +46,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
     dynamic_rendering.pNext = &descriptor_indexing;
 
     VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR,
+        .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
         .bufferDeviceAddress = VK_TRUE,
     };
     descriptor_indexing.pNext = &buffer_device_address;
@@ -58,17 +60,66 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
     buffer_device_address.pNext = &device_sync;
 
     device_ = new blu::core::Device(instance_, device_extensions, pNextChain);
-
-    delete pNextChain;
   }
   // VkSwapchain Creation
   {
     swapchain_ = new blu::core::Swapchain(instance_, device_, window_);
     swapchain_->Create(false, false);
   }
+  // VMA initialization
+  {
+    VmaVulkanFunctions vulkan_functions{
+        .vkGetInstanceProcAddr = &vkGetInstanceProcAddr,
+        .vkGetDeviceProcAddr = &vkGetDeviceProcAddr,
+    };
+
+    VmaAllocatorCreateInfo allocator_create_info{
+        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .physicalDevice = device_->GetPhysicalDevice(),
+        .device = device_->GetLogicalDevice(),
+        .pVulkanFunctions = &vulkan_functions,
+        .instance = instance_->Get(),
+        .vulkanApiVersion = VK_API_VERSION_1_3,
+    };
+
+    vmaCreateAllocator(&allocator_create_info, &allocator_);
+  }
 }
 
 ForwardRenderer::~ForwardRenderer() {
+  for (size_t i = 0; i < swapchain_->GetImageCount(); i++) {
+    vkDestroyCommandPool(device_->GetLogicalDevice(),
+                         graphics_command_pools_[i], nullptr);
+  }
+  delete graphics_command_pools_;
+
+  vkDestroyCommandPool(device_->GetLogicalDevice(), transfer_command_pool,
+                       nullptr);
+  vkDestroyDescriptorPool(device_->GetLogicalDevice(), descriptor_pool_,
+                          nullptr);
+  depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
+  delete depth_stencil_image_;
+  buffer_infos_buffer_->Destroy(allocator_);
+  delete buffer_infos_buffer_;
+  buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete buffer_infos_descriptor_set_;
+  matrices_buffer_->Destroy(allocator_);
+  delete matrices_buffer_;
+  vertex_buffer_->Destroy(allocator_);
+  delete vertex_buffer_;
+  index_buffer_->Destroy(allocator_);
+  delete index_buffer_;
+
+  for (eastl::vector<VkShaderModule>::iterator it = shader_modules_.begin(),
+                                               it_end = shader_modules_.end();
+       it != it_end; ++it) {
+    vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
+  }
+  vkDestroyPipelineLayout(device_->GetLogicalDevice(),
+                          graphics_pipeline_layout_, nullptr);
+  vkDestroyPipeline(device_->GetLogicalDevice(), graphics_pipeline_, nullptr);
+
+  vmaDestroyAllocator(allocator_);
   delete swapchain_;
   delete device_;
   delete instance_;
@@ -117,48 +168,35 @@ void ForwardRenderer::Prepare() {
   // Depth Stencil Creation
   {
     depth_stencil_image_ = blu::core::Image::CreateImage(
-        device_->GetLogicalDevice(), allocator_, VK_FORMAT_D24_UNORM_S8_UINT,
+        device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT,
         swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
         VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    blu::core::Image::CreateImageView(
-        device_->GetLogicalDevice(), depth_stencil_image_,
-        VK_FORMAT_D24_UNORM_S8_UINT, {0, 1, 0, 1, VK_IMAGE_ASPECT_DEPTH_BIT});
+    VkImageSubresourceRange depth_range{
+        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .baseMipLevel = 0,
+        .levelCount = VK_REMAINING_MIP_LEVELS,
+        .baseArrayLayer = 0,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS,
+    };
+
+    blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                      depth_stencil_image_, DEPTH_FORMAT,
+                                      depth_range);
   }
 
   // Buffer Infos Buffer & Descriptor Creation
   {
-    buffer_infos_buffer_ = new blu::core::Buffer();
-
-    VkBufferCreateInfo buf_ci{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = sizeof(BufferInfo) * MAX_BUFFERS_STORAGE,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-    };
-
-    VmaAllocationCreateInfo alloc_ci{
-        .flags = VMA_ALLOCATION_CREATE_MAPPED_BIT,
-        .requiredFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        .preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-    };
-
-    VmaAllocationInfo alloc_info;
-    vmaCreateBuffer(allocator_, &buf_ci, &alloc_ci, &matrices_buffer_->buffer,
-                    &matrices_buffer_->alloc, &alloc_info);
-
-    matrices_buffer_->size = buf_ci.size;
-    matrices_buffer_->mapped_data = alloc_info.pMappedData;
-
-    VkBufferDeviceAddressInfo info{
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = matrices_buffer_->buffer};
-
-    matrices_buffer_->device_address =
-        vkGetBufferDeviceAddress(device_->GetLogicalDevice(), &info);
+    buffer_infos_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(BufferInfo) * MAX_BUFFERS_STORAGE,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     VkDescriptorSetLayoutBinding buffer_metadata_binding{
         .binding = 0,
@@ -174,6 +212,7 @@ void ForwardRenderer::Prepare() {
         .pBindings = &buffer_metadata_binding,
     };
 
+    buffer_infos_descriptor_set_ = new blu::core::DescriptorSet();
     vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
                                 nullptr, &buffer_infos_descriptor_set_->layout);
 
@@ -231,7 +270,8 @@ void ForwardRenderer::Prepare() {
     vertex_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_, VERTEX_BUFFER_SIZE,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
@@ -244,7 +284,8 @@ void ForwardRenderer::Prepare() {
     index_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_, INDEX_BUFFER_SIZE,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     buffer_infos_.push_back(BufferInfo(index_buffer_->device_address,
@@ -253,7 +294,7 @@ void ForwardRenderer::Prepare() {
   }
 
   memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
-         buffer_infos_.size() * sizeof(BufferInfo));
+         MAX_BUFFERS_STORAGE * sizeof(BufferInfo));
 
   // Pipeline Creation
   {
@@ -294,11 +335,11 @@ void ForwardRenderer::Prepare() {
         .depthTestEnable = VK_FALSE,
         .depthWriteEnable = VK_FALSE,
         .depthCompareOp = VK_COMPARE_OP_GREATER,
-        .front = depth_stencil_state.back,
         .back{
             .compareOp = VK_COMPARE_OP_ALWAYS,
         },
     };
+    depth_stencil_state.front = depth_stencil_state.back;
 
     VkPipelineViewportStateCreateInfo viewport_state{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -359,13 +400,13 @@ void ForwardRenderer::Prepare() {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
         .colorAttachmentCount = 1,
         .pColorAttachmentFormats = swapchain_->GetColorFormat(),
-        .depthAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT,
-        .stencilAttachmentFormat = VK_FORMAT_D24_UNORM_S8_UINT,
+        .depthAttachmentFormat = DEPTH_FORMAT,
+        //.stencilAttachmentFormat = DEPTH_FORMAT,
     };
 
     eastl::array<VkPipelineShaderStageCreateInfo, 2> shaders = {
-        LoadShader("tri.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
-        LoadShader("tri.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
+        LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+        LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
     };
 
     VkGraphicsPipelineCreateInfo graphics_create{
@@ -381,6 +422,7 @@ void ForwardRenderer::Prepare() {
         .pDepthStencilState = &depth_stencil_state,
         .pColorBlendState = &color_blend_state,
         .pDynamicState = &dynamic_state,
+        .layout = graphics_pipeline_layout_,
         .renderPass = VK_NULL_HANDLE,
     };
 
@@ -412,7 +454,7 @@ void ForwardRenderer::Prepare() {
 
     if (scene->HasMeshes()) {
       for (size_t i = 0; i < scene->mNumMeshes; ++i) {
-        eastl::vector<int> indices;
+        eastl::vector<uint32_t> indices;
 
         if (scene->mMeshes[i]->HasFaces()) {
           for (size_t j = 0; j < scene->mMeshes[i]->mNumFaces; j++) {
@@ -429,6 +471,7 @@ void ForwardRenderer::Prepare() {
 
         // Vertex Upload
         {
+          vert_count_ = scene->mMeshes[i]->mNumVertices;
           blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
               device_->GetLogicalDevice(), allocator_,
               scene->mMeshes[i]->mNumVertices * sizeof(aiVector3D),
@@ -478,19 +521,22 @@ void ForwardRenderer::Prepare() {
                         VK_NULL_HANDLE);
           vkDeviceWaitIdle(device_->GetLogicalDevice());
           // vkWaitForFences
-          blu::core::Buffer::DestroyBuffer(allocator_, staging_buffer);
+          staging_buffer->Destroy(allocator_);
+          delete staging_buffer;
         }
         // Index Upload
         {
+          ind_count_ = indices.size();
           blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
               device_->GetLogicalDevice(), allocator_,
-              indices.size() * sizeof(int), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+              indices.size() * sizeof(uint32_t),
+              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
               VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
           memcpy(staging_buffer->mapped_data, indices.data(),
-                 indices.size() * sizeof(int));
+                 indices.size() * sizeof(uint32_t));
 
           VkCommandBufferAllocateInfo alloc_info{
               .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -513,7 +559,7 @@ void ForwardRenderer::Prepare() {
           VkBufferCopy copyRegion{
               .srcOffset = 0,
               .dstOffset = 0,
-              .size = indices.size() * sizeof(int),
+              .size = indices.size() * sizeof(uint32_t),
           };
 
           vkCmdCopyBuffer(copy_cmd_buf, staging_buffer->buffer,
@@ -530,7 +576,8 @@ void ForwardRenderer::Prepare() {
                         VK_NULL_HANDLE);
           vkDeviceWaitIdle(device_->GetLogicalDevice());
           // vkWaitForFences
-          blu::core::Buffer::DestroyBuffer(allocator_, staging_buffer);
+          staging_buffer->Destroy(allocator_);
+          delete staging_buffer;
         }
 
         vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool,
@@ -538,19 +585,56 @@ void ForwardRenderer::Prepare() {
       }
     }
   }
+
+  // Create Fence & Semaphores
+  {
+    image_available_semaphores_.resize(frame_count);
+    render_finished_semaphores_.resize(frame_count);
+    in_flight_fences_.resize(frame_count);
+
+    VkSemaphoreCreateInfo semaphore_info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+
+    VkFenceCreateInfo fence_info{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+    for (size_t i = 0; i < frame_count; i++) {
+      vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
+                        &image_available_semaphores_[i]);
+      vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
+                        &render_finished_semaphores_[i]);
+      vkCreateFence(device_->GetLogicalDevice(), &fence_info, nullptr,
+                    &in_flight_fences_[i]);
+    }
+  }
 }
 
 // Update Render Data
 // -Matrices
 // Render
+// Setup Fences & Semaphores
 void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
-  frame_index_++;
+  /*frame_index_++;
   if (frame_index_ >= swapchain_->GetImageCount()) {
     frame_index_ = 0;
-  }
+  }*/
+  auto swapchain = swapchain_->GetSwapchain();
+  frame_index_ = 0;
+  vkWaitForFences(device_->GetLogicalDevice(), 1,
+                  &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
+
+  vkAcquireNextImageKHR(device_->GetLogicalDevice(), swapchain,
+                        UINT64_MAX, image_available_semaphores_[frame_index_],
+                        nullptr, &frame_index_);
+  vkResetFences(device_->GetLogicalDevice(), 1,
+                &in_flight_fences_[frame_index_]);
 
   vkResetCommandPool(device_->GetLogicalDevice(),
                      graphics_command_pools_[frame_index_], 0);
+
+  vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool, 0);
 
   // Update Matrix Buffer
   {
@@ -578,112 +662,159 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
     // Attachment Info
     // Renderer Size
     // Attachment Count
-    VkCommandBufferAllocateInfo command_buffer_alloc{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = graphics_command_pools_[frame_index_],
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
 
-    VkCommandBuffer draw_cmd_buffer;
+    // Graphics Queue
+    {
+      VkCommandBuffer draw_cmd_buffer;
 
-    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &command_buffer_alloc,
-                             &draw_cmd_buffer);
+      VkCommandBufferAllocateInfo command_buffer_alloc{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool = graphics_command_pools_[frame_index_],
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc, &draw_cmd_buffer);
 
-    VkCommandBufferBeginInfo draw_cmd_buffer_begin{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
+      VkCommandBufferBeginInfo draw_cmd_buffer_begin{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      };
 
-    vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
+      vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
 
-    VkImageSubresourceRange range{
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .baseArrayLayer = 0,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS,
-    };
-    VkImageSubresourceRange depth_range{
-        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-        .baseMipLevel = 0,
-        .levelCount = 1,
-        .baseArrayLayer = 0,
-        .layerCount = 1,
-    };
+      VkImageSubresourceRange range{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .baseArrayLayer = 0,
+          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+      };
+      VkImageSubresourceRange depth_range{
+          .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+          .baseMipLevel = 0,
+          .levelCount = 1,
+          .baseArrayLayer = 0,
+          .layerCount = 1,
+      };
 
-    eastl::array<VkClearValue, 2> clear_values{VkClearValue(0, 0, 0, 0),
-                                               VkClearValue(1.0f, 0.0f)};
+      blu::core::Image::ImageLayoutTransition(
+          draw_cmd_buffer, swapchain_buf.image,
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
+          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
 
-    blu::core::Image::ImageLayoutTransition(
-        draw_cmd_buffer, swapchain_buf.image,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+      blu::core::Image::ImageLayoutTransition(
+          draw_cmd_buffer, depth_stencil_image_->image,
+          VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+          depth_range);
 
-    blu::core::Image::ImageLayoutTransition(
-        draw_cmd_buffer, depth_stencil_image_->image, VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, depth_range);
+      eastl::array<VkClearValue, 2> clear_values{};
+      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+      clear_values[1].depthStencil = {0.0f, 0};
 
-    VkRenderingAttachmentInfo color_attachment_info{
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = swapchain_buf.view,
-        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        .resolveMode = VK_RESOLVE_MODE_NONE,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = clear_values[0],
-    };
+      VkRenderingAttachmentInfo color_attachment_info{
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+          .imageView = swapchain_buf.view,
+          .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          .resolveMode = VK_RESOLVE_MODE_NONE,
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+          .clearValue = clear_values[0],
+      };
 
-    VkRenderingAttachmentInfo depth_attachment_info{
-        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = depth_stencil_image_->view,
-        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        .resolveMode = VK_RESOLVE_MODE_NONE,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .clearValue = clear_values[1],
-    };
+      VkRenderingAttachmentInfo depth_attachment_info{
+          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+          .imageView = depth_stencil_image_->view,
+          .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+          .resolveMode = VK_RESOLVE_MODE_NONE,
+          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+          .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+          .clearValue = clear_values[1],
+      };
 
-    VkRenderingInfo render_info{
-        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-        .renderArea = {{.x = 0, .y = 0}, width, height},
-        .colorAttachmentCount = 1,
-        .pColorAttachments = &color_attachment_info,
-        .pDepthAttachment = &depth_attachment_info,
-        .pStencilAttachment = &depth_attachment_info,
-    };
+      VkRenderingInfo render_info{
+          .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+          .renderArea = {{.x = 0, .y = 0}, width, height},
+          .layerCount = 1,
+          .colorAttachmentCount = 1,
+          .pColorAttachments = &color_attachment_info,
+          .pDepthAttachment = &depth_attachment_info,
+          //.pStencilAttachment = &depth_attachment_info,
+      };
 
-    vkCmdBeginRenderingKHR(draw_cmd_buffer, &render_info);
+      vkCmdBeginRendering(draw_cmd_buffer, &render_info);
 
-    VkViewport viewport{
-        .width = static_cast<float>(width),
-        .height = static_cast<float>(height),
-        .minDepth = 0.0f,
-        .maxDepth = 1.0f,
-    };
+      VkViewport viewport{
+          .width = static_cast<float>(width),
+          .height = static_cast<float>(height),
+          .minDepth = 0.0f,
+          .maxDepth = 1.0f,
+      };
 
-    vkCmdSetViewport(draw_cmd_buffer, 0, 1, &viewport);
+      vkCmdSetViewport(draw_cmd_buffer, 0, 1, &viewport);
 
-    VkRect2D scissor{
-        .offset{.x = 0, .y = 0},
-        .extent{
-            .width = width,
-            .height = height,
-        },
-    };
+      VkRect2D scissor{
+          .offset{.x = 0, .y = 0},
+          .extent{
+              .width = width,
+              .height = height,
+          },
+      };
 
-    vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
+      vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
 
-    vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            graphics_pipeline_layout_, 0, 1,
-                            &buffer_infos_descriptor_set_->set, 0, nullptr);
-    vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphics_pipeline_);
-    vkCmdDraw(draw_cmd_buffer, 3, 1, 0, 0);
+      VkDeviceSize offsets[1] = {0};
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
+                             offsets);
+      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
+                           VK_INDEX_TYPE_UINT32);
+      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              graphics_pipeline_layout_, 0, 1,
+                              &buffer_infos_descriptor_set_->set, 0, nullptr);
+      vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        graphics_pipeline_);
+      vkCmdDraw(draw_cmd_buffer, 3, 1, 0, 0);
 
-    vkCmdEndRenderingKHR(draw_cmd_buffer);
+      vkCmdEndRendering(draw_cmd_buffer);
+
+      //blu::core::Image::ImageLayoutTransition(
+      //    draw_cmd_buffer, swapchain_buf.image,
+      //    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      //    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+
+      vkEndCommandBuffer(draw_cmd_buffer);
+
+      VkPipelineStageFlags wait_stages[] = {
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+
+      VkSubmitInfo draw_info{
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores = &image_available_semaphores_[frame_index_],
+          .pWaitDstStageMask = wait_stages,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &draw_cmd_buffer,
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores = &render_finished_semaphores_[frame_index_],
+      };
+
+      VK_CHECK_RESULT(vkQueueSubmit(device_->queues.graphics, 1, &draw_info,
+                                    in_flight_fences_[frame_index_]));
+
+      VkPresentInfoKHR present_info = {
+          .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+          .pNext = NULL,
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores = &render_finished_semaphores_[frame_index_],
+          .swapchainCount = 1,
+          .pSwapchains = &swapchain,
+          .pImageIndices = &frame_index_,
+      };
+
+      vkQueuePresentKHR(device_->queues.graphics, &present_info);
+    }
   }
 }
 
@@ -701,4 +832,9 @@ VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(
   shader_modules_.push_back(shader_stage.module);
 
   return shader_stage;
+}
+
+void* __cdecl operator new[](size_t size, const char* name, int flags,
+                             unsigned debugFlags, const char* file, int line) {
+  return new uint8_t[size];
 }

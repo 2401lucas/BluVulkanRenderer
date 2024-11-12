@@ -4,6 +4,7 @@
 #include <EASTL/functional.h>  // For eastl::hash
 #include <vulkan/vulkan_win32.h>
 
+#include "Debug.h"
 #include "Tools.h"
 
 namespace blu::core {
@@ -19,8 +20,8 @@ Instance::Instance(const eastl::string name, const bool use_validation,
       .apiVersion = api_version_,
   };
 
-  eastl::fixed_vector<const char *, 2> required_instance_extensions = {
-      VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
+  requested_instance_extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+  requested_instance_extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 
   uint32_t extCount = 0;
   vkEnumerateInstanceExtensionProperties(nullptr, &extCount, nullptr);
@@ -38,15 +39,14 @@ Instance::Instance(const eastl::string name, const bool use_validation,
     }
   }
 
-  enabled_instance_extensions_.reserve(required_instance_extensions.size() +
-                                       requested_instance_extensions.size());
+  enabled_instance_extensions_.reserve(requested_instance_extensions.size());
   if (!requested_instance_extensions.empty()) {
     auto supported_instance_it_end = supported_extensions_.end();
     for (eastl::vector<eastl::string>::iterator
              it = requested_instance_extensions.begin(),
              it_end = requested_instance_extensions.end();
          it != it_end; ++it) {
-      if (supported_extensions_.find(eastl::hash<eastl::string>()(*it)) !=
+      if (supported_extensions_.find(eastl::hash<eastl::string>()(*it)) ==
           supported_instance_it_end) {
         EASTL_ASSERT(false);
       }
@@ -64,7 +64,13 @@ Instance::Instance(const eastl::string name, const bool use_validation,
   VkDebugUtilsMessengerCreateInfoEXT debug_utils_Messenger_ci;
   if (use_validation) {
     debug_utils_Messenger_ci = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                       VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+        .pfnUserCallback = debugUtilsMessageCallback,
+    };
     instance_ci.pNext = &debug_utils_Messenger_ci;
   }
 
@@ -74,8 +80,8 @@ Instance::Instance(const eastl::string name, const bool use_validation,
   }
 
   if (use_validation) {
-    const char *validation_layer_name = "VK_LAYER_KHRONOS_validation";
-
+    const char* validation_layer_name = "VK_LAYER_KHRONOS_validation";
+    
     uint32_t instance_layer_count;
     vkEnumerateInstanceLayerProperties(&instance_layer_count, nullptr);
     eastl::vector<VkLayerProperties> instance_layer_properties(
@@ -111,3 +117,9 @@ Instance::~Instance() {
   }
 }
 }  // namespace blu::core
+
+void* __cdecl operator new[](size_t size_x, size_t size_y, size_t size_z,
+                             const char* name, int flags, unsigned debugFlags,
+                             const char* file, int line) {
+  return new uint8_t[size_x + size_y + size_z];
+}

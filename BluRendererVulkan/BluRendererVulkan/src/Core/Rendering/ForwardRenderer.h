@@ -8,6 +8,7 @@ constexpr bool USE_VALIDATION = false;
 #endif  // _DEBUG
 
 #include <EASTL/array.h>
+#include <vk_mem_alloc.h>
 
 #include "../Engine/Engine.h"
 #include "../External/Window.h"
@@ -18,7 +19,8 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 1;
+constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
+constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 3;
 constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 10000;
 constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 10000;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
@@ -65,6 +67,9 @@ class ForwardRenderer {
   eastl::vector<BufferInfo> buffer_infos_;
   eastl::vector<ModelIndices> model_indices_;
 
+  uint32_t vert_count_;
+  uint32_t ind_count_;
+
   // Vulkan Render Data Resources
   VkCommandPool transfer_command_pool;
   VkCommandPool* graphics_command_pools_;
@@ -83,6 +88,9 @@ class ForwardRenderer {
   eastl::vector<VkShaderModule> shader_modules_;
   VkPipeline graphics_pipeline_;
   VkPipelineLayout graphics_pipeline_layout_;
+  eastl::vector<VkSemaphore> image_available_semaphores_;
+  eastl::vector<VkSemaphore> render_finished_semaphores_;
+  eastl::vector<VkFence> in_flight_fences_;
 };
 
 #endif

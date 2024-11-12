@@ -1,5 +1,9 @@
 #include "Buffer.h"
 
+void blu::core::Buffer::Destroy(const VmaAllocator& allocator) {
+  vmaDestroyBuffer(allocator, buffer, alloc);
+}
+
 blu::core::Buffer* blu::core::Buffer::CreateBuffer(
     const VkDevice& device, const VmaAllocator& allocator, VkDeviceSize size,
     VkBufferUsageFlags usage, VkMemoryPropertyFlags required_flags,
@@ -32,11 +36,4 @@ blu::core::Buffer* blu::core::Buffer::CreateBuffer(
   }
 
   return new_buffer;
-}
-
-void blu::core::Buffer::DestroyBuffer(const VmaAllocator& allocator,
-                                      blu::core::Buffer* buf) {
-  vmaDestroyBuffer(allocator, buf->buffer, buf->alloc);
-
-  delete buf;
 }
