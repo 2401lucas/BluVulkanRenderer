@@ -37,11 +37,15 @@ class Image {
       VkPipelineStageFlags dst_stage_mask, VkAccessFlags src_access_mask,
       VkAccessFlags dst_access_mask, VkImageLayout old_layout,
       VkImageLayout new_layout,
-      VkImageSubresourceRange const& subresource_range);
+      VkImageSubresourceRange const& subresource_range,
+      uint32_t src_queue_index = VK_QUEUE_FAMILY_IGNORED,
+      uint32_t dst_queue_index = VK_QUEUE_FAMILY_IGNORED);
   static void ImageLayoutTransition(
       VkCommandBuffer, VkImage image, VkImageLayout old_layout,
       VkImageLayout new_layout,
-      VkImageSubresourceRange const& subresource_range);
+      VkImageSubresourceRange const& subresource_range,
+      uint32_t src_queue_index = VK_QUEUE_FAMILY_IGNORED,
+      uint32_t dst_queue_index = VK_QUEUE_FAMILY_IGNORED);
 
  private:
   static VkAccessFlags GetAccessFlags(VkImageLayout layout);

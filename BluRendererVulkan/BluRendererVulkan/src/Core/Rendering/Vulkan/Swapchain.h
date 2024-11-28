@@ -21,7 +21,7 @@ class Swapchain {
 
   VkSwapchainKHR GetSwapchain() const { return swapchain_; }
   const VkFormat* GetColorFormat() const { return &color_format_; }
-  SwapchainBuffer GetSwapchainBuffer(uint32_t index) const {
+  SwapchainBuffer GetSwapchainBuffer(uint32_t index) {
     return buffers_[index];
   }
   uint32_t GetImageCount() const { return image_count_; }

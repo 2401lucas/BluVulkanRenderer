@@ -2,7 +2,6 @@
 
 #include <EASTL/array.h>
 #include <assimp/postprocess.h>  // Post processing flags
-#include <assimp/scene.h>        // Output data structure
 
 #include <assimp/Importer.hpp>  // C++ importer interface
 #include <cassert>
@@ -18,8 +17,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
     };
 
-    instance_ =
-        new blu::core::Instance("Forward Renderer", true,
+    instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
                                         instance_extensions);
   }
   // VkDevice Creation
@@ -87,9 +85,15 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
 }
 
 ForwardRenderer::~ForwardRenderer() {
+  vkDeviceWaitIdle(device_->GetLogicalDevice());
   for (size_t i = 0; i < swapchain_->GetImageCount(); i++) {
     vkDestroyCommandPool(device_->GetLogicalDevice(),
                          graphics_command_pools_[i], nullptr);
+    vkDestroySemaphore(device_->GetLogicalDevice(),
+                       image_available_semaphores_[i], nullptr);
+    vkDestroySemaphore(device_->GetLogicalDevice(),
+                       render_finished_semaphores_[i], nullptr);
+    vkDestroyFence(device_->GetLogicalDevice(), in_flight_fences_[i], nullptr);
   }
   delete graphics_command_pools_;
 
@@ -115,9 +119,8 @@ ForwardRenderer::~ForwardRenderer() {
        it != it_end; ++it) {
     vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
   }
-  vkDestroyPipelineLayout(device_->GetLogicalDevice(),
-                          graphics_pipeline_layout_, nullptr);
-  vkDestroyPipeline(device_->GetLogicalDevice(), graphics_pipeline_, nullptr);
+  
+  delete triangle_pipeline_;
 
   vmaDestroyAllocator(allocator_);
   delete swapchain_;
@@ -126,7 +129,6 @@ ForwardRenderer::~ForwardRenderer() {
 }
 
 void ForwardRenderer::Prepare() {
-  frame_index_ = 0;
   auto frame_count = swapchain_->GetImageCount();
   // Command Pool Creation
   {
@@ -304,139 +306,52 @@ void ForwardRenderer::Prepare() {
     // Descriptor Set Layouts
     // Shader Sets
 
-    VkPipelineInputAssemblyStateCreateInfo input_assembly_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .flags = 0,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .primitiveRestartEnable = VK_FALSE,
-    };
+    blu::core::rendering::GraphicsPipelineCreateInfo
+        triangle_pipeline_create_info{
+            .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
+            .input_assembly_flags = 0,
+            .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .input_assembly_primitive_restart_enable = VK_FALSE,
+            .rasteriazation_flags = 0,
+            .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+            .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
+            .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            .color_blend_attachment_states = {{
+                .blendEnable = VK_FALSE,
+                .colorWriteMask = 0xf /*RGBA*/,
+            }},
+            .depth_stencil_depth_test = VK_FALSE,
+            .depth_stencil_depth_write = VK_FALSE,
+            .depth_stencil_depth_compare_op = VK_COMPARE_OP_GREATER,
+            .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+            .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+            .viewport_count = 1,
+            .scissor_count = 1,
+            .multisample_flags = 0,
+            .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+            .dynamic_state_flags = 0,
+            .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                      VK_DYNAMIC_STATE_SCISSOR},
+            //.vertex_input_bindings =
+            //    {
+            //        {0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX},
+            //    },
+            //.vertex_input_attributes =
+            //    {
+            //        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)},
+            //    },
+            .color_attachment_formats = {{*swapchain_->GetColorFormat()}},
+            .depth_format = DEPTH_FORMAT,
 
-    VkPipelineRasterizationStateCreateInfo rasterization_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .flags = 0,
-        .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_BACK_BIT,
-        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-    };
+            .shaders{
+                LoadShader("shaders/postProcessing.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+                LoadShader("shaders/postProcessing.frag.spv",
+                           VK_SHADER_STAGE_FRAGMENT_BIT),
+            },
+        };
 
-    VkPipelineColorBlendAttachmentState blend_attachment_state{
-        .blendEnable = VK_FALSE,
-        .colorWriteMask = 0xf /*RGBA*/,
-    };
-
-    VkPipelineColorBlendStateCreateInfo color_blend_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments = &blend_attachment_state,
-    };
-
-    VkPipelineDepthStencilStateCreateInfo depth_stencil_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = VK_FALSE,
-        .depthWriteEnable = VK_FALSE,
-        .depthCompareOp = VK_COMPARE_OP_GREATER,
-        .back{
-            .compareOp = VK_COMPARE_OP_ALWAYS,
-        },
-    };
-    depth_stencil_state.front = depth_stencil_state.back;
-
-    VkPipelineViewportStateCreateInfo viewport_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .flags = 0,
-        .viewportCount = 1,
-        .scissorCount = 1,
-    };
-
-    VkPipelineMultisampleStateCreateInfo multisample_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .flags = 0,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-    };
-
-    eastl::array<VkDynamicState, 2> dynamic_state_enables{
-        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamic_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .flags = 0,
-        .dynamicStateCount = 2,
-        .pDynamicStates = dynamic_state_enables.data(),
-    };
-
-    // Binding description
-    eastl::array<VkVertexInputBindingDescription, 1> vertex_input_bindings{
-        VkVertexInputBindingDescription(0, sizeof(Vertex),
-                                        VK_VERTEX_INPUT_RATE_VERTEX)};
-
-    // Attribute descriptions
-    eastl::array<VkVertexInputAttributeDescription, 1> vertex_input_attributes{
-
-        VkVertexInputAttributeDescription(0, 0, VK_FORMAT_R32G32B32_SFLOAT,
-                                          0)  // Position
-/*      ,  VkVertexInputAttributeDescription(0, 1, VK_FORMAT_R32G32_SFLOAT,
-                                          sizeof(float) * 3),*/  // UV
-    };
-
-    VkPipelineLayoutCreateInfo pipeline_layout_create{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &buffer_infos_descriptor_set_->layout,
-    };
-
-    VkPipelineVertexInputStateCreateInfo vertex_input_state{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount =
-            static_cast<uint32_t>(vertex_input_bindings.size()),
-        .pVertexBindingDescriptions = vertex_input_bindings.data(),
-        .vertexAttributeDescriptionCount =
-            static_cast<uint32_t>(vertex_input_attributes.size()),
-        .pVertexAttributeDescriptions = vertex_input_attributes.data(),
-    };
-
-    vkCreatePipelineLayout(device_->GetLogicalDevice(), &pipeline_layout_create,
-                           nullptr, &graphics_pipeline_layout_);
-
-    VkPipelineRenderingCreateInfo pipeline_create{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
-        .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = swapchain_->GetColorFormat(),
-        .depthAttachmentFormat = DEPTH_FORMAT,
-        //.stencilAttachmentFormat = DEPTH_FORMAT,
-    };
-
-    eastl::array<VkPipelineShaderStageCreateInfo, 2> shaders = {
-        LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
-        LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
-    };
-
-    VkGraphicsPipelineCreateInfo graphics_create{
-        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .pNext = &pipeline_create,
-        .stageCount = 2,
-        .pStages = shaders.data(),
-        .pVertexInputState = &vertex_input_state,
-        .pInputAssemblyState = &input_assembly_state,
-        .pViewportState = &viewport_state,
-        .pRasterizationState = &rasterization_state,
-        .pMultisampleState = &multisample_state,
-        .pDepthStencilState = &depth_stencil_state,
-        .pColorBlendState = &color_blend_state,
-        .pDynamicState = &dynamic_state,
-        .layout = graphics_pipeline_layout_,
-        .renderPass = VK_NULL_HANDLE,
-    };
-
-    // ^ For Skybox
-    // Enable depth test and write
-    graphics_create.stageCount = 2;
-    graphics_create.pStages = shaders.data();
-    depth_stencil_state.depthWriteEnable = VK_TRUE;
-    depth_stencil_state.depthTestEnable = VK_TRUE;
-    rasterization_state.cullMode = VK_CULL_MODE_FRONT_BIT;
-
-    VK_CHECK_RESULT(vkCreateGraphicsPipelines(device_->GetLogicalDevice(),
-                                              nullptr, 1, &graphics_create,
-                                              nullptr, &graphics_pipeline_));
+    triangle_pipeline_ = new blu::core::rendering::Pipeline(
+        device_, triangle_pipeline_create_info);
   }
 
   // Load Model
@@ -469,19 +384,26 @@ void ForwardRenderer::Prepare() {
         if (scene->mMeshes[i]->HasTangentsAndBitangents()) {
         }
 
+        eastl::vector<glm::vec3> vertices;
+
+        for (size_t vI = 0; vI < scene->mMeshes[i]->mNumVertices; vI++) {
+          vertices.push_back(glm::vec3(scene->mMeshes[i]->mVertices[vI].x,
+                                       scene->mMeshes[i]->mVertices[vI].y,
+                                       scene->mMeshes[i]->mVertices[vI].z));
+        }
+
         // Vertex Upload
         {
           vert_count_ = scene->mMeshes[i]->mNumVertices;
           blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
               device_->GetLogicalDevice(), allocator_,
-              scene->mMeshes[i]->mNumVertices * sizeof(aiVector3D),
-              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+              vert_count_ * sizeof(glm::vec3), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
               VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-          memcpy(staging_buffer->mapped_data, scene->mMeshes[i]->mVertices,
-                 scene->mMeshes[i]->mNumVertices * sizeof(aiVector3D));
+          memcpy(staging_buffer->mapped_data, vertices.data(),
+                 vert_count_ * sizeof(glm::vec3));
 
           VkCommandBufferAllocateInfo alloc_info{
               .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -504,11 +426,15 @@ void ForwardRenderer::Prepare() {
           VkBufferCopy copyRegion{
               .srcOffset = 0,
               .dstOffset = 0,
-              .size = scene->mMeshes[i]->mNumVertices * sizeof(aiVector3D),
+              .size = vert_count_ * sizeof(glm::vec3),
           };
 
           vkCmdCopyBuffer(copy_cmd_buf, staging_buffer->buffer,
                           vertex_buffer_->buffer, 1, &copyRegion);
+
+          // blu::core::Buffer::BufferMemoryBarrier(copy_cmd_buf,
+          //                                        vertex_buffer_->buffer, );
+
           vkEndCommandBuffer(copy_cmd_buf);
 
           VkSubmitInfo submitInfo{
@@ -529,14 +455,13 @@ void ForwardRenderer::Prepare() {
           ind_count_ = indices.size();
           blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
               device_->GetLogicalDevice(), allocator_,
-              indices.size() * sizeof(uint32_t),
-              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+              ind_count_ * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
               VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
           memcpy(staging_buffer->mapped_data, indices.data(),
-                 indices.size() * sizeof(uint32_t));
+                 ind_count_ * sizeof(uint32_t));
 
           VkCommandBufferAllocateInfo alloc_info{
               .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -559,7 +484,7 @@ void ForwardRenderer::Prepare() {
           VkBufferCopy copyRegion{
               .srcOffset = 0,
               .dstOffset = 0,
-              .size = indices.size() * sizeof(uint32_t),
+              .size = ind_count_ * sizeof(uint32_t),
           };
 
           vkCmdCopyBuffer(copy_cmd_buf, staging_buffer->buffer,
@@ -609,6 +534,19 @@ void ForwardRenderer::Prepare() {
                     &in_flight_fences_[i]);
     }
   }
+  matrices_.resize(4);
+
+  draw_command_buffers_.resize(frame_count);
+  for (size_t i = 0; i < frame_count; i++) {
+    VkCommandBufferAllocateInfo command_buffer_alloc{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = graphics_command_pools_[i],
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &command_buffer_alloc,
+                             &draw_command_buffers_[i]);
+  }
 }
 
 // Update Render Data
@@ -616,18 +554,13 @@ void ForwardRenderer::Prepare() {
 // Render
 // Setup Fences & Semaphores
 void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
-  /*frame_index_++;
-  if (frame_index_ >= swapchain_->GetImageCount()) {
-    frame_index_ = 0;
-  }*/
   auto swapchain = swapchain_->GetSwapchain();
-  frame_index_ = 0;
   vkWaitForFences(device_->GetLogicalDevice(), 1,
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
 
-  vkAcquireNextImageKHR(device_->GetLogicalDevice(), swapchain,
-                        UINT64_MAX, image_available_semaphores_[frame_index_],
-                        nullptr, &frame_index_);
+  VK_CHECK_RESULT(vkAcquireNextImageKHR(
+      device_->GetLogicalDevice(), swapchain, UINT64_MAX,
+      image_available_semaphores_[frame_index_], nullptr, &image_index_));
   vkResetFences(device_->GetLogicalDevice(), 1,
                 &in_flight_fences_[frame_index_]);
 
@@ -638,7 +571,6 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
   // Update Matrix Buffer
   {
-    matrices_.resize(4);
     matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
     matrices_[1] = render_data.matrices[0];
     matrices_[2] = render_data.matrices[1];
@@ -665,16 +597,7 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
     // Graphics Queue
     {
-      VkCommandBuffer draw_cmd_buffer;
-
-      VkCommandBufferAllocateInfo command_buffer_alloc{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool = graphics_command_pools_[frame_index_],
-          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1,
-      };
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc, &draw_cmd_buffer);
+      VkCommandBuffer draw_cmd_buffer = draw_command_buffers_[frame_index_];
 
       VkCommandBufferBeginInfo draw_cmd_buffer_begin{
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -699,11 +622,8 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
       };
 
       blu::core::Image::ImageLayoutTransition(
-          draw_cmd_buffer, swapchain_buf.image,
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0,
-          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+          draw_cmd_buffer, swapchain_buf.image, VK_IMAGE_LAYOUT_UNDEFINED,
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
       blu::core::Image::ImageLayoutTransition(
           draw_cmd_buffer, depth_stencil_image_->image,
@@ -711,8 +631,8 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
           depth_range);
 
       eastl::array<VkClearValue, 2> clear_values{};
-      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
-      clear_values[1].depthStencil = {0.0f, 0};
+      clear_values[0].color = {{0.0f, 0.0f, 1.0f, 1.0f}};
+      clear_values[1].depthStencil = {1.0f, 0};
 
       VkRenderingAttachmentInfo color_attachment_info{
           .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -738,6 +658,7 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
           .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
           .renderArea = {{.x = 0, .y = 0}, width, height},
           .layerCount = 1,
+          .viewMask = 0,
           .colorAttachmentCount = 1,
           .pColorAttachments = &color_attachment_info,
           .pDepthAttachment = &depth_attachment_info,
@@ -766,23 +687,30 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
       vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
 
       VkDeviceSize offsets[1] = {0};
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
-                             offsets);
-      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
-                           VK_INDEX_TYPE_UINT32);
-      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              graphics_pipeline_layout_, 0, 1,
-                              &buffer_infos_descriptor_set_->set, 0, nullptr);
+
+      // For a cube to be rendered
+      // Bind Vertices & Indices
+      // Bind Descriptor Sets
+      // Bind Pipeline
+      // Draw
+
+      // vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
+      // offsets);
+      // vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
+      // VK_INDEX_TYPE_UINT32);
+      // vkCmdBindDescriptorSets(draw_cmd_buffer,
+      // VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout_, 0, 1,
+      //&buffer_infos_descriptor_set_->set, 0, nullptr);
       vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        graphics_pipeline_);
+                        *triangle_pipeline_->GetPipeline());
       vkCmdDraw(draw_cmd_buffer, 3, 1, 0, 0);
 
       vkCmdEndRendering(draw_cmd_buffer);
 
-      //blu::core::Image::ImageLayoutTransition(
-      //    draw_cmd_buffer, swapchain_buf.image,
-      //    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      //    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+      blu::core::Image::ImageLayoutTransition(
+          draw_cmd_buffer, swapchain_buf.image,
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
 
       vkEndCommandBuffer(draw_cmd_buffer);
 
@@ -813,8 +741,14 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
           .pImageIndices = &frame_index_,
       };
 
-      vkQueuePresentKHR(device_->queues.graphics, &present_info);
+      VK_CHECK_RESULT(
+          vkQueuePresentKHR(device_->queues.graphics, &present_info));
     }
+  }
+
+  frame_index_++;
+  if (frame_index_ >= swapchain_->GetImageCount()) {
+    frame_index_ = 0;
   }
 }
 

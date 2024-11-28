@@ -3,7 +3,7 @@
 #include <cassert>
 
 void blu::core::Image::Destroy(const VkDevice& device,
-                                    const VmaAllocator& allocator) {
+                               const VmaAllocator& allocator) {
   if (sampler) {
     vkDestroySampler(device, sampler, nullptr);
   }
@@ -38,6 +38,7 @@ blu::core::Image* blu::core::Image::CreateImage(
       .samples = samples,
       .tiling = tiling,
       .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
 
   VmaAllocationCreateInfo vma_create_info{
@@ -72,15 +73,16 @@ void blu::core::Image::ImageLayoutTransition(
     VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask,
     VkAccessFlags src_access_mask, VkAccessFlags dst_access_mask,
     VkImageLayout old_layout, VkImageLayout new_layout,
-    VkImageSubresourceRange const& subresource_range) {
+    VkImageSubresourceRange const& subresource_range, uint32_t src_queue_index,
+    uint32_t dst_queue_index) {
   VkImageMemoryBarrier image_memory_barrier{
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
       .srcAccessMask = src_access_mask,
       .dstAccessMask = dst_access_mask,
       .oldLayout = old_layout,
       .newLayout = new_layout,
-      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .srcQueueFamilyIndex = src_queue_index,
+      .dstQueueFamilyIndex = dst_queue_index,
       .image = image,
       .subresourceRange = subresource_range,
   };
@@ -90,8 +92,8 @@ void blu::core::Image::ImageLayoutTransition(
 
 void blu::core::Image::ImageLayoutTransition(
     VkCommandBuffer command_buffer, VkImage image, VkImageLayout old_layout,
-    VkImageLayout new_layout,
-    VkImageSubresourceRange const& subresource_range) {
+    VkImageLayout new_layout, VkImageSubresourceRange const& subresource_range,
+    uint32_t src_queue_index, uint32_t dst_queue_index) {
   VkPipelineStageFlags src_stage_mask = GetPipelineStageFlags(old_layout);
   VkPipelineStageFlags dst_stage_mask = GetPipelineStageFlags(new_layout);
   VkAccessFlags src_access_mask = GetAccessFlags(old_layout);
@@ -99,7 +101,8 @@ void blu::core::Image::ImageLayoutTransition(
 
   ImageLayoutTransition(command_buffer, image, src_stage_mask, dst_stage_mask,
                         src_access_mask, dst_access_mask, old_layout,
-                        new_layout, subresource_range);
+                        new_layout, subresource_range, src_queue_index,
+                        dst_queue_index);
 }
 
 VkAccessFlags blu::core::Image::GetAccessFlags(VkImageLayout layout) {

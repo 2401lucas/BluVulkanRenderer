@@ -8,6 +8,7 @@ constexpr bool USE_VALIDATION = false;
 #endif  // _DEBUG
 
 #include <EASTL/array.h>
+#include <assimp/scene.h>  // Output data structure
 #include <vk_mem_alloc.h>
 
 #include "../Engine/Engine.h"
@@ -17,12 +18,13 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Device.h"
 #include "Vulkan/Image.h"
 #include "Vulkan/Instance.h"
+#include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 3;
-constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(uint32_t) * 3 * 10000;
-constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 10000;
+constexpr VkDeviceSize VERTEX_BUFFER_SIZE = sizeof(aiVector3D) * 1000;
+constexpr VkDeviceSize INDEX_BUFFER_SIZE = sizeof(uint32_t) * 1000;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
     sizeof(VkDrawIndexedIndirectCommand);
 
@@ -33,7 +35,7 @@ struct BufferInfo {
 };
 
 struct Vertex {
-  eastl::array<float, 3> pos;
+  glm::vec3 pos;
   // eastl::array<float, 2> uv;
 };
 
@@ -62,7 +64,8 @@ class ForwardRenderer {
   VmaAllocator allocator_;
 
   // Render Data
-  uint32_t frame_index_;
+  uint32_t frame_index_ = 0;
+  uint32_t image_index_ = 0;
   eastl::vector<glm::mat4> matrices_;
   eastl::vector<BufferInfo> buffer_infos_;
   eastl::vector<ModelIndices> model_indices_;
@@ -73,6 +76,7 @@ class ForwardRenderer {
   // Vulkan Render Data Resources
   VkCommandPool transfer_command_pool;
   VkCommandPool* graphics_command_pools_;
+  eastl::vector<VkCommandBuffer> draw_command_buffers_;
   VkDescriptorPool descriptor_pool_;
 
   blu::core::Image* depth_stencil_image_;
@@ -86,8 +90,7 @@ class ForwardRenderer {
 
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;
-  VkPipeline graphics_pipeline_;
-  VkPipelineLayout graphics_pipeline_layout_;
+  blu::core::rendering::Pipeline* triangle_pipeline_;
   eastl::vector<VkSemaphore> image_available_semaphores_;
   eastl::vector<VkSemaphore> render_finished_semaphores_;
   eastl::vector<VkFence> in_flight_fences_;

@@ -19,12 +19,12 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer MatrixBuffe
 
 layout (set = 0, binding = 0) buffer buffers{
   BufferPointer bufferPointers[];
-};
+} bufferAddresses;
 
 layout (location = 0) out vec3 outPos;
 
 void main() {
-  MatrixBuffer matBuf = MatrixBuffer(bufferPointers[0].address);
+  MatrixBuffer matBuf = MatrixBuffer(bufferAddresses.bufferPointers[0].address);
 
   vec4 locPos = matBuf.matrices[3] * vec4(inPos, 0.0f);
   outPos = locPos.xyz / locPos.w;
