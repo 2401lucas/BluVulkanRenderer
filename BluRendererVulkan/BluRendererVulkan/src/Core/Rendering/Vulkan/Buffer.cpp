@@ -1,4 +1,5 @@
 #include "Buffer.h"
+#include <cstring>
 
 void blu::core::Buffer::Destroy(const VmaAllocator& allocator) {
   vmaDestroyBuffer(allocator, buffer, alloc);
@@ -65,4 +66,27 @@ void blu::core::Buffer::BufferMemoryBarrier(
   };
 
   vkCmdPipelineBarrier2(command_buffer, &dependency_info);
+}
+
+void blu::core::Buffer::UploadToBuffer(
+    const VkDevice& device, const VmaAllocator& allocator,
+    blu::core::Buffer* dst_buffer, VkDeviceSize dst_offset,
+    VkCommandBuffer copy_command, void* data, VkDeviceSize size,
+    VkDeviceSize src_offset, blu::core::Buffer*& stg_buffer) {
+  stg_buffer = blu::core::Buffer::CreateBuffer(
+      device, allocator, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+  memcpy(stg_buffer->mapped_data, data, size);
+
+  VkBufferCopy copy_region{
+      .srcOffset = src_offset,
+      .dstOffset = dst_offset,
+      .size = size,
+  };
+
+  vkCmdCopyBuffer(copy_command, stg_buffer->buffer, dst_buffer->buffer, 1,
+                  &copy_region);
 }

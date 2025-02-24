@@ -30,6 +30,14 @@ class Buffer {
       VkAccessFlagBits2 dst_access_mask,
       uint32_t src_queue_index = VK_QUEUE_FAMILY_IGNORED,
       uint32_t dst_queue_index = VK_QUEUE_FAMILY_IGNORED);
+
+  static void UploadToBuffer(const VkDevice& device,
+                             const VmaAllocator& allocator,
+                             blu::core::Buffer* dst_buffer,
+                             VkDeviceSize dst_offset,
+                             VkCommandBuffer copy_command, void* data,
+                             VkDeviceSize size, VkDeviceSize src_offset,
+                             blu::core::Buffer*& stg_buffer);
 };
 }  // namespace blu::core
 #endif

@@ -1,9 +1,5 @@
 #include "ForwardRenderer.h"
 
-#include <EASTL/array.h>
-#include <assimp/postprocess.h>  // Post processing flags
-
-#include <assimp/Importer.hpp>  // C++ importer interface
 #include <cassert>
 
 #include "../External/FileManager.h"
@@ -109,23 +105,152 @@ ForwardRenderer::~ForwardRenderer() {
   delete buffer_infos_descriptor_set_;
   matrices_buffer_->Destroy(allocator_);
   delete matrices_buffer_;
-  vertex_buffer_->Destroy(allocator_);
-  delete vertex_buffer_;
-  index_buffer_->Destroy(allocator_);
-  delete index_buffer_;
+
+  for (auto& buf : vertex_buffers_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+  for (auto& buf : index_buffers_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+  for (auto& buf : normal_buffers_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
 
   for (eastl::vector<VkShaderModule>::iterator it = shader_modules_.begin(),
                                                it_end = shader_modules_.end();
        it != it_end; ++it) {
     vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
   }
-  
+
   delete triangle_pipeline_;
 
   vmaDestroyAllocator(allocator_);
   delete swapchain_;
   delete device_;
   delete instance_;
+}
+
+// For now each model will get it's own buffer, eventually this will be replaced
+// to use large, shared buffers
+// For now- NOT ASYNC
+uint32_t ForwardRenderer::LoadModel(eastl::string filepath) {
+  if (loaded_model_indices_.find(filepath) != loaded_model_indices_.end()) {
+    return loaded_model_indices_[filepath];
+  }
+  uint32_t model_index = loaded_models_.size();
+  auto new_model = blu::core::components::Model(filepath);
+
+  if (new_model.GetVertexData() == nullptr) {
+    return -1;
+  }
+
+  loaded_models_.push_back(new_model);
+  auto& model = loaded_models_[model_index];
+  loaded_model_indices_[filepath] = model_index;
+
+  blu::core::Buffer* vertex_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, model.GetVertexDataSize(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
+                                     vertex_buffer_->offset,
+                                     vertex_buffer_->size));
+
+  blu::core::Buffer* index_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, model.GetIndexDataSize(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  buffer_infos_.push_back(BufferInfo(index_buffer_->device_address,
+                                     index_buffer_->offset,
+                                     index_buffer_->size));
+
+  blu::core::Buffer* normal_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, model.GetNormalDataSize(),
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  buffer_infos_.push_back(BufferInfo(normal_buffer_->device_address,
+                                     normal_buffer_->offset,
+                                     normal_buffer_->size));
+
+  memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
+         buffer_infos_.size() * sizeof(BufferInfo));
+
+  VkCommandBufferAllocateInfo alloc_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = transfer_command_pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+  };
+
+  VkCommandBuffer copy_cmd_buf;
+  vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
+                           &copy_cmd_buf);
+
+  VkCommandBufferBeginInfo begin_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
+
+  blu::core::Buffer* vert_staging_buffer;
+  blu::core::Buffer::UploadToBuffer(
+      device_->GetLogicalDevice(), allocator_, vertex_buffer_, 0, copy_cmd_buf,
+      model.GetVertexData(), sizeof(model.GetVertexData()), 0,
+      vert_staging_buffer);
+  blu::core::Buffer* normal_staging_buffer;
+  blu::core::Buffer::UploadToBuffer(
+      device_->GetLogicalDevice(), allocator_, normal_buffer_, 0, copy_cmd_buf,
+      model.GetNormalData(), sizeof(model.GetNormalData()), 0,
+      normal_staging_buffer);
+  blu::core::Buffer* index_staging_buffer;
+  blu::core::Buffer::UploadToBuffer(
+      device_->GetLogicalDevice(), allocator_, index_buffer_, 0, copy_cmd_buf,
+      model.GetIndexData(), sizeof(model.GetIndexData()), 0,
+      index_staging_buffer);
+
+  model_indices_.push_back({
+      .pipeline_index = 0,
+      .vert_count = model.GetVertexCount(),
+      .ind_count = model.GetIndexCount(),
+      .mesh_vert_buf_index = static_cast<uint32_t>(vertex_buffers_.size()),
+      .mesh_norm_buf_index = static_cast<uint32_t>(normal_buffers_.size()),
+      .mesh_ind_buf_index = static_cast<uint32_t>(index_buffers_.size()),
+  });
+
+  vertex_buffers_.push_back(vertex_buffer_);
+  normal_buffers_.push_back(normal_buffer_);
+  index_buffers_.push_back(index_buffer_);
+
+  vkEndCommandBuffer(copy_cmd_buf);
+
+  VkSubmitInfo submitInfo{
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &copy_cmd_buf,
+  };
+
+  vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
+
+  // TODO: REMOVE
+  vkDeviceWaitIdle(device_->GetLogicalDevice());
+  vert_staging_buffer->Destroy(allocator_);
+  delete vert_staging_buffer;
+  normal_staging_buffer->Destroy(allocator_);
+  delete normal_staging_buffer;
+  index_staging_buffer->Destroy(allocator_);
+  delete index_staging_buffer;
 }
 
 void ForwardRenderer::Prepare() {
@@ -265,47 +390,11 @@ void ForwardRenderer::Prepare() {
                                        matrices_buffer_->size));
   }
 
-  // Mesh Vertex Data
-  // Requires: Multiple Chunks of memory instead of one big block
-  // Track Buffer used memory, if no memory then allocate new buffer
-  {
-    vertex_buffer_ = blu::core::Buffer::CreateBuffer(
-        device_->GetLogicalDevice(), allocator_, VERTEX_BUFFER_SIZE,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
-                                       vertex_buffer_->offset,
-                                       vertex_buffer_->size));
-  }
-
-  // Model Index Data
-  {
-    index_buffer_ = blu::core::Buffer::CreateBuffer(
-        device_->GetLogicalDevice(), allocator_, INDEX_BUFFER_SIZE,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    buffer_infos_.push_back(BufferInfo(index_buffer_->device_address,
-                                       index_buffer_->offset,
-                                       index_buffer_->size));
-  }
-
   memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
          MAX_BUFFERS_STORAGE * sizeof(BufferInfo));
 
   // Pipeline Creation
   {
-    // Important info for Pipeline creation
-    // Attachment Count,
-    // Attachment formats
-    // Descriptor Set Layouts
-    // Shader Sets
-
     blu::core::rendering::GraphicsPipelineCreateInfo
         triangle_pipeline_create_info{
             .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
@@ -344,7 +433,8 @@ void ForwardRenderer::Prepare() {
             .depth_format = DEPTH_FORMAT,
 
             .shaders{
-                LoadShader("shaders/postProcessing.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+                LoadShader("shaders/postProcessing.vert.spv",
+                           VK_SHADER_STAGE_VERTEX_BIT),
                 LoadShader("shaders/postProcessing.frag.spv",
                            VK_SHADER_STAGE_FRAGMENT_BIT),
             },
@@ -352,163 +442,52 @@ void ForwardRenderer::Prepare() {
 
     triangle_pipeline_ = new blu::core::rendering::Pipeline(
         device_, triangle_pipeline_create_info);
-  }
 
-  // Load Model
-  {
-    Assimp::Importer importer;
+    blu::core::rendering::GraphicsPipelineCreateInfo cube_pipeline_create_info{
+        .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
+        .input_assembly_flags = 0,
+        .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .input_assembly_primitive_restart_enable = VK_FALSE,
+        .rasteriazation_flags = 0,
+        .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+        .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
+        .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .color_blend_attachment_states = {{
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = 0xf /*RGBA*/,
+        }},
+        .depth_stencil_depth_test = VK_TRUE,
+        .depth_stencil_depth_write = VK_TRUE,
+        .depth_stencil_depth_compare_op = VK_COMPARE_OP_GREATER,
+        .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+        .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+        .viewport_count = 1,
+        .scissor_count = 1,
+        .multisample_flags = 0,
+        .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+        .dynamic_state_flags = 0,
+        .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                  VK_DYNAMIC_STATE_SCISSOR},
+        .vertex_input_bindings =
+            {
+                {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+            },
+        .vertex_input_attributes =
+            {
+                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
+            },
+        .color_attachment_formats = {{*swapchain_->GetColorFormat()}},
+        .depth_format = DEPTH_FORMAT,
+        .shaders{
+            LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+            LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
+        },
+    };
 
-    const aiScene* scene = importer.ReadFile(
-        "assets/cube.glTF", aiProcess_Triangulate |
-                                aiProcess_JoinIdenticalVertices |
-                                aiProcess_SortByPType);
-    if (scene == nullptr) {
-      std::cerr << importer.GetErrorString() << std::endl;
-      return;
-    }
-
-    if (scene->HasMeshes()) {
-      for (size_t i = 0; i < scene->mNumMeshes; ++i) {
-        eastl::vector<uint32_t> indices;
-
-        if (scene->mMeshes[i]->HasFaces()) {
-          for (size_t j = 0; j < scene->mMeshes[i]->mNumFaces; j++) {
-            for (size_t ind = 0; ind < scene->mMeshes[i]->mFaces[j].mNumIndices;
-                 ind++) {
-              indices.push_back(scene->mMeshes[i]->mFaces[j].mIndices[ind]);
-            }
-          }
-        }
-        if (scene->mMeshes[i]->HasNormals()) {
-        }
-        if (scene->mMeshes[i]->HasTangentsAndBitangents()) {
-        }
-
-        eastl::vector<glm::vec3> vertices;
-
-        for (size_t vI = 0; vI < scene->mMeshes[i]->mNumVertices; vI++) {
-          vertices.push_back(glm::vec3(scene->mMeshes[i]->mVertices[vI].x,
-                                       scene->mMeshes[i]->mVertices[vI].y,
-                                       scene->mMeshes[i]->mVertices[vI].z));
-        }
-
-        // Vertex Upload
-        {
-          vert_count_ = scene->mMeshes[i]->mNumVertices;
-          blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
-              device_->GetLogicalDevice(), allocator_,
-              vert_count_ * sizeof(glm::vec3), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-              VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-          memcpy(staging_buffer->mapped_data, vertices.data(),
-                 vert_count_ * sizeof(glm::vec3));
-
-          VkCommandBufferAllocateInfo alloc_info{
-              .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-              .commandPool = transfer_command_pool,
-              .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-              .commandBufferCount = 1,
-          };
-
-          VkCommandBuffer copy_cmd_buf;
-
-          vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
-                                   &copy_cmd_buf);
-
-          VkCommandBufferBeginInfo begin_info{
-              .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-              .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-          };
-          vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
-
-          VkBufferCopy copyRegion{
-              .srcOffset = 0,
-              .dstOffset = 0,
-              .size = vert_count_ * sizeof(glm::vec3),
-          };
-
-          vkCmdCopyBuffer(copy_cmd_buf, staging_buffer->buffer,
-                          vertex_buffer_->buffer, 1, &copyRegion);
-
-          // blu::core::Buffer::BufferMemoryBarrier(copy_cmd_buf,
-          //                                        vertex_buffer_->buffer, );
-
-          vkEndCommandBuffer(copy_cmd_buf);
-
-          VkSubmitInfo submitInfo{
-              .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-              .commandBufferCount = 1,
-              .pCommandBuffers = &copy_cmd_buf,
-          };
-
-          vkQueueSubmit(device_->queues.transfer, 1, &submitInfo,
-                        VK_NULL_HANDLE);
-          vkDeviceWaitIdle(device_->GetLogicalDevice());
-          // vkWaitForFences
-          staging_buffer->Destroy(allocator_);
-          delete staging_buffer;
-        }
-        // Index Upload
-        {
-          ind_count_ = indices.size();
-          blu::core::Buffer* staging_buffer = blu::core::Buffer::CreateBuffer(
-              device_->GetLogicalDevice(), allocator_,
-              ind_count_ * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-              VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-          memcpy(staging_buffer->mapped_data, indices.data(),
-                 ind_count_ * sizeof(uint32_t));
-
-          VkCommandBufferAllocateInfo alloc_info{
-              .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-              .commandPool = transfer_command_pool,
-              .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-              .commandBufferCount = 1,
-          };
-
-          VkCommandBuffer copy_cmd_buf;
-
-          vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
-                                   &copy_cmd_buf);
-
-          VkCommandBufferBeginInfo begin_info{
-              .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-              .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-          };
-          vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
-
-          VkBufferCopy copyRegion{
-              .srcOffset = 0,
-              .dstOffset = 0,
-              .size = ind_count_ * sizeof(uint32_t),
-          };
-
-          vkCmdCopyBuffer(copy_cmd_buf, staging_buffer->buffer,
-                          index_buffer_->buffer, 1, &copyRegion);
-          vkEndCommandBuffer(copy_cmd_buf);
-
-          VkSubmitInfo submitInfo{
-              .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-              .commandBufferCount = 1,
-              .pCommandBuffers = &copy_cmd_buf,
-          };
-
-          vkQueueSubmit(device_->queues.transfer, 1, &submitInfo,
-                        VK_NULL_HANDLE);
-          vkDeviceWaitIdle(device_->GetLogicalDevice());
-          // vkWaitForFences
-          staging_buffer->Destroy(allocator_);
-          delete staging_buffer;
-        }
-
-        vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool,
-                           0);
-      }
-    }
+    cube_pipeline_ =
+        new blu::core::rendering::Pipeline(device_, cube_pipeline_create_info);
   }
 
   // Create Fence & Semaphores
@@ -535,41 +514,32 @@ void ForwardRenderer::Prepare() {
     }
   }
   matrices_.resize(4);
-
-  draw_command_buffers_.resize(frame_count);
-  for (size_t i = 0; i < frame_count; i++) {
-    VkCommandBufferAllocateInfo command_buffer_alloc{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = graphics_command_pools_[i],
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &command_buffer_alloc,
-                             &draw_command_buffers_[i]);
-  }
 }
 
 // Update Render Data
 // -Matrices
 // Render
 // Setup Fences & Semaphores
-void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
+void ForwardRenderer::Render(RenderData render_data) {
   auto swapchain = swapchain_->GetSwapchain();
+
   vkWaitForFences(device_->GetLogicalDevice(), 1,
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
+  vkResetFences(device_->GetLogicalDevice(), 1,
+                &in_flight_fences_[frame_index_]);
 
+  // Handle Window Resize
   VK_CHECK_RESULT(vkAcquireNextImageKHR(
       device_->GetLogicalDevice(), swapchain, UINT64_MAX,
       image_available_semaphores_[frame_index_], nullptr, &image_index_));
-  vkResetFences(device_->GetLogicalDevice(), 1,
-                &in_flight_fences_[frame_index_]);
+
 
   vkResetCommandPool(device_->GetLogicalDevice(),
                      graphics_command_pools_[frame_index_], 0);
 
-  vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool, 0);
+  //vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool, 0);
 
-  // Update Matrix Buffer
+  // Update Data
   {
     matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
     matrices_[1] = render_data.matrices[0];
@@ -597,7 +567,15 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
     // Graphics Queue
     {
-      VkCommandBuffer draw_cmd_buffer = draw_command_buffers_[frame_index_];
+      VkCommandBufferAllocateInfo graphics_cmd_buf_alloc_info{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool = graphics_command_pools_[frame_index_],
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1};
+
+      VkCommandBuffer draw_cmd_buffer;
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &graphics_cmd_buf_alloc_info, &draw_cmd_buffer);
 
       VkCommandBufferBeginInfo draw_cmd_buffer_begin{
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -631,7 +609,7 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
           depth_range);
 
       eastl::array<VkClearValue, 2> clear_values{};
-      clear_values[0].color = {{0.0f, 0.0f, 1.0f, 1.0f}};
+      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
       clear_values[1].depthStencil = {1.0f, 0};
 
       VkRenderingAttachmentInfo color_attachment_info{
@@ -688,22 +666,23 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
       VkDeviceSize offsets[1] = {0};
 
-      // For a cube to be rendered
-      // Bind Vertices & Indices
-      // Bind Descriptor Sets
-      // Bind Pipeline
-      // Draw
+      // Models need to be sorted by Pipeline index
 
-      // vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
-      // offsets);
-      // vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
-      // VK_INDEX_TYPE_UINT32);
-      // vkCmdBindDescriptorSets(draw_cmd_buffer,
-      // VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout_, 0, 1,
-      //&buffer_infos_descriptor_set_->set, 0, nullptr);
       vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        *triangle_pipeline_->GetPipeline());
-      vkCmdDraw(draw_cmd_buffer, 3, 1, 0, 0);
+                        *cube_pipeline_->GetPipeline());
+
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffers_[0]->buffer,
+                             offsets);
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &normal_buffers_[0]->buffer,
+                             offsets);
+      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
+                           VK_INDEX_TYPE_UINT32);
+      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              *cube_pipeline_->GetPipelineLayout(), 0, 1,
+                              &buffer_infos_descriptor_set_->set, 0, nullptr);
+
+      vkCmdDrawIndexed(draw_cmd_buffer, loaded_models_[0].GetIndexCount(), 1, 0,
+                       0, 0);
 
       vkCmdEndRendering(draw_cmd_buffer);
 
@@ -714,18 +693,24 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
 
       vkEndCommandBuffer(draw_cmd_buffer);
 
-      VkPipelineStageFlags wait_stages[] = {
-          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+      VkSemaphore draw_wait_semaphores[] = {
+          image_available_semaphores_[frame_index_]};
+
+      VkPipelineStageFlags draw_wait_stages[] = {
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+      VkSemaphore draw_signal_semaphores[] = {
+          render_finished_semaphores_[frame_index_]};
 
       VkSubmitInfo draw_info{
           .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
           .waitSemaphoreCount = 1,
-          .pWaitSemaphores = &image_available_semaphores_[frame_index_],
-          .pWaitDstStageMask = wait_stages,
+          .pWaitSemaphores = draw_wait_semaphores,
+          .pWaitDstStageMask = draw_wait_stages,
           .commandBufferCount = 1,
           .pCommandBuffers = &draw_cmd_buffer,
           .signalSemaphoreCount = 1,
-          .pSignalSemaphores = &render_finished_semaphores_[frame_index_],
+          .pSignalSemaphores = draw_signal_semaphores,
       };
 
       VK_CHECK_RESULT(vkQueueSubmit(device_->queues.graphics, 1, &draw_info,
@@ -735,10 +720,10 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
           .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
           .pNext = NULL,
           .waitSemaphoreCount = 1,
-          .pWaitSemaphores = &render_finished_semaphores_[frame_index_],
+          .pWaitSemaphores = draw_signal_semaphores,
           .swapchainCount = 1,
           .pSwapchains = &swapchain,
-          .pImageIndices = &frame_index_,
+          .pImageIndices = &image_index_,
       };
 
       VK_CHECK_RESULT(
@@ -746,10 +731,7 @@ void ForwardRenderer::Render(blu::core::Engine::RenderData render_data) {
     }
   }
 
-  frame_index_++;
-  if (frame_index_ >= swapchain_->GetImageCount()) {
-    frame_index_ = 0;
-  }
+  frame_index_ = (frame_index_ + 1) % swapchain_->GetImageCount();
 }
 
 VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(

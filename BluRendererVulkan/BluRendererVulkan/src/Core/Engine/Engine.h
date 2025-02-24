@@ -4,18 +4,21 @@
 #include <glm/vec3.hpp>
 
 #include "../Components/Camera.h"
+#include "../Components/Model.h"
 #include "../Components/Transform.h"
 #include "../External/Input.h"
 #include "../External/Window.h"
+#include "../Rendering/ForwardRenderer.h"
+#include "../Rendering/RenderData.h"
 
 namespace blu::core {
 
-class Script {/*
- public:
-  virtual void OnEnable();
-  virtual void OnDisable();
-  virtual void Start();
-  virtual void Update();*/
+class Script { /*
+  public:
+   virtual void OnEnable();
+   virtual void OnDisable();
+   virtual void Start();
+   virtual void Update();*/
 };
 
 // Compact Render Data
@@ -23,7 +26,7 @@ class Script {/*
 // components, but specifically the data required by the renderer
 // Example, When creating Transforms, it requires a pointer to where the model
 // matrix is stored
-// The model matrix is stored in a vector with other models, so
+// The model matrix is stored in a vector with other models_, so
 // when sending data the the GPU, instead of assembling all of the data into a
 // new array, we can just send it the pointer to the matrix array
 class Engine {
@@ -31,33 +34,11 @@ class Engine {
   Engine(blu::core::Window*);
   ~Engine();
 
-  struct Mesh;
-  struct Model;
-  struct RenderData;
-
-  void LoadScene(const eastl::string& scene_name);
+  void LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr);
 
   void Update();
 
   RenderData GetRenderData();
-
-  struct Mesh {
-    eastl::vector<glm::vec3> vertices;
-    eastl::vector<uint32_t> indices;
-  };
-
-  struct Model {
-    blu::core::components::Transform transform;
-    Mesh mesh;
-    Script script;
-  };
-
-  struct RenderData {
-    // Matrix[0] - Camera View
-    // Matrix[1] - Camera Perspective
-    // Matrix[2...] - Model Position
-    eastl::vector<glm::mat4> matrices;
-  };
 
  private:
   void SetDefaultKeybinds();
@@ -66,8 +47,16 @@ class Engine {
   Window* window_ = nullptr;
   KeybindManager* input_;
 
-  glm::vec2 prev_mouse_input_;
+  // Saves Model Index?
+
+  struct Model {
+    uint32_t model_index;
+    blu::core::components::Transform transform;
+  };
+
   eastl::vector<Model> models_;
+
+  glm::vec2 prev_mouse_input_;
 };
 }  // namespace blu::core
 #endif
