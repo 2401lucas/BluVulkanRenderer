@@ -28,7 +28,7 @@ blu::core::components::Model::Model(eastl::string filepath) {
     if (mesh->HasPositions()) {
       vertex_count_ = mesh->mNumVertices;
       vertex_data_size_ = sizeof(float) * 3 * vertex_count_;
-      vertex_data_ = malloc(vertex_data_size_);
+      vertex_data_ = new char[vertex_data_size_];
       memcpy(vertex_data_, mesh->mVertices, vertex_data_size_);
     }
     if (mesh->HasFaces()) {
@@ -40,12 +40,12 @@ blu::core::components::Model::Model(eastl::string filepath) {
       }
       index_count_ = indices.size();
       index_data_size_ = sizeof(uint32_t) * index_count_;
-      index_data_ = malloc(index_data_size_);
+      index_data_ = new char[index_data_size_];
       memcpy(index_data_, indices.data(), index_data_size_);
     }
     if (mesh->HasNormals()) {
       normal_data_size_ = sizeof(float) * 3 * vertex_count_;
-      normal_data_ = malloc(normal_data_size_);
+      normal_data_ = new char[normal_data_size_];
       memcpy(normal_data_, mesh->mNormals, normal_data_size_);
     }
   }
@@ -53,7 +53,7 @@ blu::core::components::Model::Model(eastl::string filepath) {
   return;
 }
 
-blu::core::components::Model::~Model() {
+void blu::core::components::Model::Delete() {
   delete vertex_data_;
   delete index_data_;
   delete normal_data_;

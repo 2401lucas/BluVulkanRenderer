@@ -77,7 +77,7 @@ class ForwardRenderer {
   VmaAllocator allocator_;
 
   // Render Data
-  //What is the difference?
+  // What is the difference?
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
   eastl::vector<glm::mat4> matrices_;
@@ -91,9 +91,12 @@ class ForwardRenderer {
   eastl::vector<ModelIndices> model_indices_;
 
   // Vulkan Render Data Resources
+  VkDescriptorPool descriptor_pool_;
+
   VkCommandPool transfer_command_pool;
   VkCommandPool* graphics_command_pools_;
-  VkDescriptorPool descriptor_pool_;
+
+  VkCommandBuffer* draw_command_buffers;
 
   blu::core::Image* depth_stencil_image_;
 

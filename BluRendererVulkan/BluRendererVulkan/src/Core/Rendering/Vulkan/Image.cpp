@@ -59,6 +59,7 @@ void blu::core::Image::CreateImageView(
     VkImageViewType image_view_type) {
   VkImageViewCreateInfo image_view_info{
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .pNext = nullptr,
       .image = image->image,
       .viewType = image_view_type,
       .format = format,
@@ -73,10 +74,11 @@ void blu::core::Image::ImageLayoutTransition(
     VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask,
     VkAccessFlags src_access_mask, VkAccessFlags dst_access_mask,
     VkImageLayout old_layout, VkImageLayout new_layout,
-    VkImageSubresourceRange const& subresource_range, uint32_t src_queue_index,
+    const VkImageSubresourceRange& subresource_range, uint32_t src_queue_index,
     uint32_t dst_queue_index) {
   VkImageMemoryBarrier image_memory_barrier{
       .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .pNext = nullptr,
       .srcAccessMask = src_access_mask,
       .dstAccessMask = dst_access_mask,
       .oldLayout = old_layout,
@@ -92,7 +94,7 @@ void blu::core::Image::ImageLayoutTransition(
 
 void blu::core::Image::ImageLayoutTransition(
     VkCommandBuffer command_buffer, VkImage image, VkImageLayout old_layout,
-    VkImageLayout new_layout, VkImageSubresourceRange const& subresource_range,
+    VkImageLayout new_layout, const VkImageSubresourceRange& subresource_range,
     uint32_t src_queue_index, uint32_t dst_queue_index) {
   VkPipelineStageFlags src_stage_mask = GetPipelineStageFlags(old_layout);
   VkPipelineStageFlags dst_stage_mask = GetPipelineStageFlags(new_layout);

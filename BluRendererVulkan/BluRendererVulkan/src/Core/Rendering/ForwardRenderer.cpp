@@ -119,6 +119,13 @@ ForwardRenderer::~ForwardRenderer() {
     delete buf;
   }
 
+  for (eastl::vector<blu::core::components::Model>::iterator
+           it = loaded_models_.begin(),
+           it_end = loaded_models_.end();
+       it != it_end; ++it) {
+    it->Delete();
+  }
+
   for (eastl::vector<VkShaderModule>::iterator it = shader_modules_.begin(),
                                                it_end = shader_modules_.end();
        it != it_end; ++it) {
@@ -126,6 +133,7 @@ ForwardRenderer::~ForwardRenderer() {
   }
 
   delete triangle_pipeline_;
+  delete cube_pipeline_;
 
   vmaDestroyAllocator(allocator_);
   delete swapchain_;
@@ -265,16 +273,32 @@ void ForwardRenderer::Prepare() {
                         nullptr, &transfer_command_pool);
 
     graphics_command_pools_ = new VkCommandPool[frame_count];
+    draw_command_buffers = new VkCommandBuffer[frame_count];
+
     command_pool_create.queueFamilyIndex =
         device_->queue_family_indicies_.graphics;
+    command_pool_create.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     for (size_t i = 0; i < frame_count; i++) {
       vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
                           nullptr, &graphics_command_pools_[i]);
+
+      VkCommandBufferAllocateInfo command_buffer_alloc_info{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .commandPool = graphics_command_pools_[i],
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info,
+                               &draw_command_buffers[i]);
     }
   }
 
   // Descriptor Pool Creation
   {
+    // One VK_DESCRIPTOR_TYPE_STORAGE_BUFFER for holding references to Buffer
+    // Device Pointers
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
     };
@@ -315,6 +339,8 @@ void ForwardRenderer::Prepare() {
   }
 
   // Buffer Infos Buffer & Descriptor Creation
+  // I would like to use more than one buffer so that each frame
+  // could access frame specific resources
   {
     buffer_infos_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
@@ -429,7 +455,7 @@ void ForwardRenderer::Prepare() {
             //    {
             //        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)},
             //    },
-            .color_attachment_formats = {{*swapchain_->GetColorFormat()}},
+            .color_attachment_formats = {swapchain_->GetColorFormat()},
             .depth_format = DEPTH_FORMAT,
 
             .shaders{
@@ -471,14 +497,14 @@ void ForwardRenderer::Prepare() {
         .vertex_input_bindings =
             {
                 {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
-                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+                //{1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
             },
         .vertex_input_attributes =
             {
                 {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
+                //{1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
             },
-        .color_attachment_formats = {{*swapchain_->GetColorFormat()}},
+        .color_attachment_formats = {swapchain_->GetColorFormat()},
         .depth_format = DEPTH_FORMAT,
         .shaders{
             LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
@@ -521,23 +547,20 @@ void ForwardRenderer::Prepare() {
 // Render
 // Setup Fences & Semaphores
 void ForwardRenderer::Render(RenderData render_data) {
-  auto swapchain = swapchain_->GetSwapchain();
-
   vkWaitForFences(device_->GetLogicalDevice(), 1,
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
-  vkResetFences(device_->GetLogicalDevice(), 1,
-                &in_flight_fences_[frame_index_]);
 
+  auto swapchain = swapchain_->GetSwapchain();
   // Handle Window Resize
   VK_CHECK_RESULT(vkAcquireNextImageKHR(
       device_->GetLogicalDevice(), swapchain, UINT64_MAX,
       image_available_semaphores_[frame_index_], nullptr, &image_index_));
 
+  vkResetFences(device_->GetLogicalDevice(), 1,
+                &in_flight_fences_[frame_index_]);
 
-  vkResetCommandPool(device_->GetLogicalDevice(),
-                     graphics_command_pools_[frame_index_], 0);
-
-  //vkResetCommandPool(device_->GetLogicalDevice(), transfer_command_pool, 0);
+  VkCommandBuffer draw_cmd_buffer = draw_command_buffers[frame_index_];
+  vkResetCommandBuffer(draw_cmd_buffer, 0);
 
   // Update Data
   {
@@ -553,33 +576,26 @@ void ForwardRenderer::Render(RenderData render_data) {
            matrices_.size() * sizeof(glm::mat4));
   }
 
-  // Render Scene
+  // Render
   {
-    auto swapchain_buf = swapchain_->GetSwapchainBuffer(frame_index_);
+    auto swapchain_buf = swapchain_->GetSwapchainBuffer(image_index_);
     auto width = swapchain_->GetWidth();
     auto height = swapchain_->GetHeight();
-
-    // Important info for CPU Rendering
-    // VkCommandBuffer
-    // Attachment Info
-    // Renderer Size
-    // Attachment Count
-
     // Graphics Queue
     {
       VkCommandBufferAllocateInfo graphics_cmd_buf_alloc_info{
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .pNext = nullptr,
           .commandPool = graphics_command_pools_[frame_index_],
           .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1};
-
-      VkCommandBuffer draw_cmd_buffer;
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &graphics_cmd_buf_alloc_info, &draw_cmd_buffer);
+          .commandBufferCount = 1,
+      };
 
       VkCommandBufferBeginInfo draw_cmd_buffer_begin{
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .pNext = nullptr,
           .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+          .pInheritanceInfo = nullptr,
       };
 
       vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
@@ -591,6 +607,7 @@ void ForwardRenderer::Render(RenderData render_data) {
           .baseArrayLayer = 0,
           .layerCount = VK_REMAINING_ARRAY_LAYERS,
       };
+
       VkImageSubresourceRange depth_range{
           .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
           .baseMipLevel = 0,
@@ -599,17 +616,19 @@ void ForwardRenderer::Render(RenderData render_data) {
           .layerCount = 1,
       };
 
+      // Clears & prepares Image memory
       blu::core::Image::ImageLayoutTransition(
           draw_cmd_buffer, swapchain_buf.image, VK_IMAGE_LAYOUT_UNDEFINED,
           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
+      // Clears & prepares Image memory
       blu::core::Image::ImageLayoutTransition(
           draw_cmd_buffer, depth_stencil_image_->image,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
           depth_range);
 
       eastl::array<VkClearValue, 2> clear_values{};
-      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+      clear_values[0].color = {{0.0f, 0.0f, 1.0f, 1.0f}};
       clear_values[1].depthStencil = {1.0f, 0};
 
       VkRenderingAttachmentInfo color_attachment_info{
@@ -631,7 +650,6 @@ void ForwardRenderer::Render(RenderData render_data) {
           .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
           .clearValue = clear_values[1],
       };
-
       VkRenderingInfo render_info{
           .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
           .renderArea = {{.x = 0, .y = 0}, width, height},
@@ -663,27 +681,23 @@ void ForwardRenderer::Render(RenderData render_data) {
       };
 
       vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
-
       VkDeviceSize offsets[1] = {0};
 
-      // Models need to be sorted by Pipeline index
+      // vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1,
+      // &vertex_buffers_[0]->buffer,
+      //                        offsets);
+      // vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
+      //                      VK_INDEX_TYPE_UINT32);
 
-      vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        *cube_pipeline_->GetPipeline());
+      // vkCmdBindDescriptorSets(draw_cmd_buffer,
+      // VK_PIPELINE_BIND_POINT_GRAPHICS,
+      //                         *cube_pipeline_->GetPipelineLayout(), 0, 1,
+      //                         &buffer_infos_descriptor_set_->set, 0,
+      //                         nullptr);
 
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffers_[0]->buffer,
-                             offsets);
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &normal_buffers_[0]->buffer,
-                             offsets);
-      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
-                           VK_INDEX_TYPE_UINT32);
-      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              *cube_pipeline_->GetPipelineLayout(), 0, 1,
-                              &buffer_infos_descriptor_set_->set, 0, nullptr);
-
-      vkCmdDrawIndexed(draw_cmd_buffer, loaded_models_[0].GetIndexCount(), 1, 0,
-                       0, 0);
-
+      // vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+      //                   *cube_pipeline_->GetPipeline());
+      // vkCmdDrawIndexed(draw_cmd_buffer, 12, 1, 0, 0, 0);
       vkCmdEndRendering(draw_cmd_buffer);
 
       blu::core::Image::ImageLayoutTransition(

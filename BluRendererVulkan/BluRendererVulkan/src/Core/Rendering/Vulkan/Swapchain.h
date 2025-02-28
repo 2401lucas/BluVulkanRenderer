@@ -20,7 +20,7 @@ class Swapchain {
   void Create(bool vsync, bool fullscreen);
 
   VkSwapchainKHR GetSwapchain() const { return swapchain_; }
-  const VkFormat* GetColorFormat() const { return &color_format_; }
+  const VkFormat GetColorFormat() const { return color_format_; }
   SwapchainBuffer GetSwapchainBuffer(uint32_t index) {
     return buffers_[index];
   }

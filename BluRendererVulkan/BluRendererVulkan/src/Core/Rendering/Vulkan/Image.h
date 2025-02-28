@@ -29,7 +29,7 @@ class Image {
 
   static void CreateImageView(
       const VkDevice& device, blu::core::Image* image, VkFormat format,
-      VkImageSubresourceRange const& subresource_range,
+      const VkImageSubresourceRange& subresource_range,
       VkImageViewType image_view_type = VK_IMAGE_VIEW_TYPE_2D);
 
   static void ImageLayoutTransition(
@@ -37,13 +37,13 @@ class Image {
       VkPipelineStageFlags dst_stage_mask, VkAccessFlags src_access_mask,
       VkAccessFlags dst_access_mask, VkImageLayout old_layout,
       VkImageLayout new_layout,
-      VkImageSubresourceRange const& subresource_range,
+      const VkImageSubresourceRange& subresource_range,
       uint32_t src_queue_index = VK_QUEUE_FAMILY_IGNORED,
       uint32_t dst_queue_index = VK_QUEUE_FAMILY_IGNORED);
   static void ImageLayoutTransition(
       VkCommandBuffer, VkImage image, VkImageLayout old_layout,
       VkImageLayout new_layout,
-      VkImageSubresourceRange const& subresource_range,
+      const VkImageSubresourceRange& subresource_range,
       uint32_t src_queue_index = VK_QUEUE_FAMILY_IGNORED,
       uint32_t dst_queue_index = VK_QUEUE_FAMILY_IGNORED);
 

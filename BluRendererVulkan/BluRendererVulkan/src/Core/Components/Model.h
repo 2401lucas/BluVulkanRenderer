@@ -12,7 +12,7 @@ namespace blu::core::components {
 class Model {
  public:
   Model(eastl::string filepath);
-  ~Model();
+  void Delete();
 
   void* GetVertexData() { return vertex_data_; }
   uint32_t GetVertexDataSize() { return vertex_data_size_; }
@@ -30,11 +30,11 @@ class Model {
   uint32_t vertex_count_;
   uint32_t index_count_;
 
-  void* vertex_data_ = nullptr;
+  char* vertex_data_ = nullptr;
   uint32_t vertex_data_size_ = 0;
-  void* index_data_ = nullptr;
+  char* index_data_ = nullptr;
   uint32_t index_data_size_ = 0;
-  void* normal_data_ = nullptr;
+  char* normal_data_ = nullptr;
   uint32_t normal_data_size_ = 0;
   // One Model can have several Mesh
   // Each mesh only has 1 material

@@ -14,6 +14,10 @@ layout(buffer_reference, std430, buffer_reference_align = 8) buffer BufferPointe
 };
 
 layout(buffer_reference, std430, buffer_reference_align = 64) buffer MatrixBuffer {
+  // [0] - Perspective * View
+  // [1] - Perspective
+  // [2] - View
+  // [3+] - Model Pos
   mat4 matrices[];
 };
 
