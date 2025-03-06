@@ -1,0 +1,55 @@
+#version 450
+
+#extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_buffer_reference2 : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
+
+struct BufferInfo {
+  uint64_t address;
+  uint64_t offset;
+  uint64_t size;
+};
+
+struct VkDrawIndexedIndirectCommand
+{
+	uint indexCount;
+	uint instanceCount;
+	uint firstIndex;
+	int  vertexOffset;
+	uint firstInstance;
+};
+
+struct ModelInfo
+{
+	int vert_offset;
+	uint ind_count;
+	uint ind_offset;
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer InputBuffer {
+	ModelInfo model_infos[];
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 64) buffer OutputBuffer {
+	VkDrawIndexedIndirectCommand draw_cmd[];
+};
+
+layout( push_constant ) uniform constants
+{
+	float draw_count;
+	BufferInfo model_input_buffer;
+	BufferInfo model_output_buffer;
+} push_const;
+
+void main() {
+  uint index = gl_GlobalInvocationID.x;
+
+  if(index >= push_const.draw_count) { return; }
+
+	InputBuffer input_buf = InputBuffer(push_const.model_input_buffer.address);
+	OutputBuffer output_buf = OutputBuffer(push_const.model_output_buffer.address);
+	output_buf.draw_cmd[index] =  VkDrawIndexedIndirectCommand(input_buf.model_infos[index].ind_count, 
+							1, input_buf.model_infos[index].ind_offset, 
+							input_buf.model_infos[index].vert_offset, 0);
+  
+}

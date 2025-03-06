@@ -43,9 +43,12 @@ struct Vertex {
 
 // Contains all draw related data
 struct ModelIndices {
-  uint32_t pipeline_index;
-  uint32_t vert_count;
+  // uint32_t pipeline_index; // UberShader ?
+  // uint32_t vert_count;
+  int vert_offset;
   uint32_t ind_count;
+  uint32_t ind_offset;
+  
   uint32_t mesh_vert_buf_index;
   uint32_t mesh_norm_buf_index;
   uint32_t mesh_ind_buf_index;
@@ -99,6 +102,8 @@ class ForwardRenderer {
   VkCommandBuffer* draw_command_buffers;
 
   blu::core::Image* depth_stencil_image_;
+
+ eastl::vector<blu::core::Buffer*> draw_gpu_command_buffers; //TODO: GENERATE BUFFERS
 
   blu::core::Buffer* buffer_infos_buffer_;
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;

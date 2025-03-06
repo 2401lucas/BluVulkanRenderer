@@ -683,21 +683,21 @@ void ForwardRenderer::Render(RenderData render_data) {
       vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
       VkDeviceSize offsets[1] = {0};
 
-      // vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1,
-      // &vertex_buffers_[0]->buffer,
-      //                        offsets);
-      // vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
-      //                      VK_INDEX_TYPE_UINT32);
+      // Required Resources
+      // Model Info
+      // Gpu Buffer of VkDrawIndexedIndirectCommand filled by compute shader
 
-      // vkCmdBindDescriptorSets(draw_cmd_buffer,
-      // VK_PIPELINE_BIND_POINT_GRAPHICS,
-      //                         *cube_pipeline_->GetPipelineLayout(), 0, 1,
-      //                         &buffer_infos_descriptor_set_->set, 0,
-      //                         nullptr);
+      // Execution Order
+      // Update Model Buffer (Vert, Ind, Norm...)
+      // Send Model Render info (indexCount,instanceCount, firstIndex,
+      // vertexOffset, firstInstance)
+      // Set Destination Command Buffer (BDA) for Draw Calls info
+      // Execute Draw Commands
 
-      // vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-      //                   *cube_pipeline_->GetPipeline());
-      // vkCmdDrawIndexed(draw_cmd_buffer, 12, 1, 0, 0, 0);
+      // Potential roadblocks
+      // Because everything is bindless, each model needs to receive it's
+      // texture/transform indexes in the vert/frag shader
+      // Instanced rendering ?
       vkCmdEndRendering(draw_cmd_buffer);
 
       blu::core::Image::ImageLayoutTransition(
