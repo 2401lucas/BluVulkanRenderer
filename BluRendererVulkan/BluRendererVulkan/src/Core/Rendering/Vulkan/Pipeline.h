@@ -47,14 +47,22 @@ struct GraphicsPipelineCreateInfo {
   VkFormat stencil_depth_format;
 
   eastl::vector<VkPipelineShaderStageCreateInfo> shaders;
+  
+  eastl::vector<VkPushConstantRange> push_const;
 };
 
-struct ComputePipelineCreateInfo {};
+struct ComputePipelineCreateInfo {
+  eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts;
+
+  VkPipelineShaderStageCreateInfo shader;
+
+  eastl::vector<VkPushConstantRange> push_const;
+};
 
 class Pipeline {
  public:
   Pipeline(Device*, const GraphicsPipelineCreateInfo& pipeline_create_info);
-  // Pipeline(Device*, const ComputePipelineCreateInfo& pipeline_create_info);
+  Pipeline(Device*, const ComputePipelineCreateInfo& pipeline_create_info);
 
   ~Pipeline();
 

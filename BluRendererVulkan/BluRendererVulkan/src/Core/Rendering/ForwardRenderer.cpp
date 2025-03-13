@@ -85,16 +85,19 @@ ForwardRenderer::~ForwardRenderer() {
   for (size_t i = 0; i < swapchain_->GetImageCount(); i++) {
     vkDestroyCommandPool(device_->GetLogicalDevice(),
                          graphics_command_pools_[i], nullptr);
+    vkDestroyCommandPool(device_->GetLogicalDevice(), transfer_command_pools[i],
+                         nullptr);
+    vkDestroyCommandPool(device_->GetLogicalDevice(), compute_command_pools_[i],
+                         nullptr);
     vkDestroySemaphore(device_->GetLogicalDevice(),
                        image_available_semaphores_[i], nullptr);
     vkDestroySemaphore(device_->GetLogicalDevice(),
                        render_finished_semaphores_[i], nullptr);
+    vkDestroySemaphore(device_->GetLogicalDevice(), dcg_semaphores_[i],
+                       nullptr);
     vkDestroyFence(device_->GetLogicalDevice(), in_flight_fences_[i], nullptr);
   }
-  delete graphics_command_pools_;
 
-  vkDestroyCommandPool(device_->GetLogicalDevice(), transfer_command_pool,
-                       nullptr);
   vkDestroyDescriptorPool(device_->GetLogicalDevice(), descriptor_pool_,
                           nullptr);
   depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
@@ -118,6 +121,14 @@ ForwardRenderer::~ForwardRenderer() {
     buf->Destroy(allocator_);
     delete buf;
   }
+  for (auto& buf : dcg_input_buffers_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+  for (auto& buf : dcg_output_buffers_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
 
   for (eastl::vector<blu::core::components::Model>::iterator
            it = loaded_models_.begin(),
@@ -132,6 +143,7 @@ ForwardRenderer::~ForwardRenderer() {
     vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
   }
 
+  delete dcg_pipeline_;
   delete triangle_pipeline_;
   delete cube_pipeline_;
 
@@ -144,7 +156,7 @@ ForwardRenderer::~ForwardRenderer() {
 // For now each model will get it's own buffer, eventually this will be replaced
 // to use large, shared buffers
 // For now- NOT ASYNC
-uint32_t ForwardRenderer::LoadModel(eastl::string filepath) {
+int ForwardRenderer::LoadModel(eastl::string filepath) {
   if (loaded_model_indices_.find(filepath) != loaded_model_indices_.end()) {
     return loaded_model_indices_[filepath];
   }
@@ -166,20 +178,12 @@ uint32_t ForwardRenderer::LoadModel(eastl::string filepath) {
           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-  buffer_infos_.push_back(BufferInfo(vertex_buffer_->device_address,
-                                     vertex_buffer_->offset,
-                                     vertex_buffer_->size));
-
   blu::core::Buffer* index_buffer_ = blu::core::Buffer::CreateBuffer(
       device_->GetLogicalDevice(), allocator_, model.GetIndexDataSize(),
       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
           VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  buffer_infos_.push_back(BufferInfo(index_buffer_->device_address,
-                                     index_buffer_->offset,
-                                     index_buffer_->size));
 
   blu::core::Buffer* normal_buffer_ = blu::core::Buffer::CreateBuffer(
       device_->GetLogicalDevice(), allocator_, model.GetNormalDataSize(),
@@ -188,16 +192,9 @@ uint32_t ForwardRenderer::LoadModel(eastl::string filepath) {
           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-  buffer_infos_.push_back(BufferInfo(normal_buffer_->device_address,
-                                     normal_buffer_->offset,
-                                     normal_buffer_->size));
-
-  memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
-         buffer_infos_.size() * sizeof(BufferInfo));
-
   VkCommandBufferAllocateInfo alloc_info{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .commandPool = transfer_command_pool,
+      .commandPool = transfer_command_pools[frame_index_],
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
       .commandBufferCount = 1,
   };
@@ -215,26 +212,26 @@ uint32_t ForwardRenderer::LoadModel(eastl::string filepath) {
   blu::core::Buffer* vert_staging_buffer;
   blu::core::Buffer::UploadToBuffer(
       device_->GetLogicalDevice(), allocator_, vertex_buffer_, 0, copy_cmd_buf,
-      model.GetVertexData(), sizeof(model.GetVertexData()), 0,
-      vert_staging_buffer);
+      model.GetVertexData(), model.GetVertexDataSize(), 0, vert_staging_buffer);
   blu::core::Buffer* normal_staging_buffer;
   blu::core::Buffer::UploadToBuffer(
       device_->GetLogicalDevice(), allocator_, normal_buffer_, 0, copy_cmd_buf,
-      model.GetNormalData(), sizeof(model.GetNormalData()), 0,
+      model.GetNormalData(), model.GetNormalDataSize(), 0,
       normal_staging_buffer);
   blu::core::Buffer* index_staging_buffer;
   blu::core::Buffer::UploadToBuffer(
       device_->GetLogicalDevice(), allocator_, index_buffer_, 0, copy_cmd_buf,
-      model.GetIndexData(), sizeof(model.GetIndexData()), 0,
-      index_staging_buffer);
+      model.GetIndexData(), model.GetIndexDataSize(), 0, index_staging_buffer);
 
   model_indices_.push_back({
-      .pipeline_index = 0,
-      .vert_count = model.GetVertexCount(),
+      //.pipeline_index = 0,
+      //.vert_count = model.GetVertexCount(),
+      .vert_offset = 0,
       .ind_count = model.GetIndexCount(),
-      .mesh_vert_buf_index = static_cast<uint32_t>(vertex_buffers_.size()),
-      .mesh_norm_buf_index = static_cast<uint32_t>(normal_buffers_.size()),
-      .mesh_ind_buf_index = static_cast<uint32_t>(index_buffers_.size()),
+      .ind_offset = 0,
+      //.mesh_vert_buf_index = static_cast<uint32_t>(vertex_buffers_.size()),
+      //.mesh_norm_buf_index = static_cast<uint32_t>(normal_buffers_.size()),
+      //.mesh_ind_buf_index = static_cast<uint32_t>(index_buffers_.size()),
   });
 
   vertex_buffers_.push_back(vertex_buffer_);
@@ -265,33 +262,52 @@ void ForwardRenderer::Prepare() {
   auto frame_count = swapchain_->GetImageCount();
   // Command Pool Creation
   {
+    transfer_command_pools.resize(frame_count);
+    graphics_command_pools_.resize(frame_count);
+    compute_command_pools_.resize(frame_count);
+
     VkCommandPoolCreateInfo command_pool_create{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .queueFamilyIndex = device_->queue_family_indicies_.transfer,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
     };
-    vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
-                        nullptr, &transfer_command_pool);
 
-    graphics_command_pools_ = new VkCommandPool[frame_count];
-    draw_command_buffers = new VkCommandBuffer[frame_count];
-
-    command_pool_create.queueFamilyIndex =
-        device_->queue_family_indicies_.graphics;
-    command_pool_create.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     for (size_t i = 0; i < frame_count; i++) {
+      command_pool_create.queueFamilyIndex =
+          device_->queue_family_indicies_.transfer;
+      vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
+                          nullptr, &transfer_command_pools[i]);
+      command_pool_create.queueFamilyIndex =
+          device_->queue_family_indicies_.graphics;
       vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
                           nullptr, &graphics_command_pools_[i]);
+      command_pool_create.queueFamilyIndex =
+          device_->queue_family_indicies_.compute;
+      vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
+                          nullptr, &compute_command_pools_[i]);
+    }
 
-      VkCommandBufferAllocateInfo command_buffer_alloc_info{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .pNext = nullptr,
-          .commandPool = graphics_command_pools_[i],
-          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1,
-      };
+    draw_command_buffers.resize(frame_count);
+    dcg_buffers.resize(frame_count);
+
+    VkCommandBufferAllocateInfo command_buffer_alloc_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    for (size_t i = 0; i < frame_count; i++) {
+      /*command_buffer_alloc_info.commandPool = *transfer_command_pools[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info,
+                               draw_command_buffers[i]);*/
+      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
       vkAllocateCommandBuffers(device_->GetLogicalDevice(),
                                &command_buffer_alloc_info,
                                &draw_command_buffers[i]);
+      command_buffer_alloc_info.commandPool = compute_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info, &dcg_buffers[i]);
     }
   }
 
@@ -414,13 +430,50 @@ void ForwardRenderer::Prepare() {
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
                                        matrices_buffer_->offset,
                                        matrices_buffer_->size));
+
+    memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
+           buffer_infos_.size() * sizeof(BufferInfo));
   }
 
-  memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
-         MAX_BUFFERS_STORAGE * sizeof(BufferInfo));
+  // DCG Buffer Creation
+  {
+    dcg_input_buffers_.resize(frame_count);
+    dcg_output_buffers_.resize(frame_count);
+
+    for (size_t i = 0; i < frame_count; i++) {
+      dcg_input_buffers_[i] = blu::core::Buffer::CreateBuffer(
+          device_->GetLogicalDevice(), allocator_,
+          sizeof(ModelIndices) * MAX_MODELS,
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+              VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+          VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+      dcg_output_buffers_[i] = blu::core::Buffer::CreateBuffer(
+          device_->GetLogicalDevice(), allocator_,
+          DRAW_COMMAND_BUFFER_SIZE * MAX_MODELS,
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+              VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
+  }
 
   // Pipeline Creation
   {
+    blu::core::rendering::ComputePipelineCreateInfo dcg_compute_create_info{
+        //.descriptor_set_layouts = {dcg_descriptor_set_->layout},
+        .shader = LoadShader("shaders/dcg_opaque.comp.spv",
+                             VK_SHADER_STAGE_COMPUTE_BIT),
+        .push_const = {VkPushConstantRange(VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                                           sizeof(DCGPushConst))},
+    };
+
+    dcg_pipeline_ =
+        new blu::core::rendering::Pipeline(device_, dcg_compute_create_info);
+
     blu::core::rendering::GraphicsPipelineCreateInfo
         triangle_pipeline_create_info{
             .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
@@ -520,6 +573,7 @@ void ForwardRenderer::Prepare() {
   {
     image_available_semaphores_.resize(frame_count);
     render_finished_semaphores_.resize(frame_count);
+    dcg_semaphores_.resize(frame_count);
     in_flight_fences_.resize(frame_count);
 
     VkSemaphoreCreateInfo semaphore_info{
@@ -535,6 +589,8 @@ void ForwardRenderer::Prepare() {
                         &image_available_semaphores_[i]);
       vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
                         &render_finished_semaphores_[i]);
+      vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
+                        &dcg_semaphores_[i]);
       vkCreateFence(device_->GetLogicalDevice(), &fence_info, nullptr,
                     &in_flight_fences_[i]);
     }
@@ -559,8 +615,62 @@ void ForwardRenderer::Render(RenderData render_data) {
   vkResetFences(device_->GetLogicalDevice(), 1,
                 &in_flight_fences_[frame_index_]);
 
-  VkCommandBuffer draw_cmd_buffer = draw_command_buffers[frame_index_];
-  vkResetCommandBuffer(draw_cmd_buffer, 0);
+  // DCG_COMMAND_GEN
+  {
+    // Update Model Buffers
+    memcpy(dcg_input_buffers_[frame_index_]->mapped_data, model_indices_.data(),
+           model_indices_.size() * sizeof(ModelIndices));
+
+    VkCommandBuffer dcg_command = dcg_buffers[frame_index_];
+    vkResetCommandBuffer(dcg_command, 0);
+
+    VkCommandBufferBeginInfo dcg_cmd_buffer_begin{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr,
+    };
+
+    vkBeginCommandBuffer(dcg_command, &dcg_cmd_buffer_begin);
+
+    vkCmdBindPipeline(dcg_command, VK_PIPELINE_BIND_POINT_COMPUTE,
+                      *dcg_pipeline_->GetPipeline());
+
+    DCGPushConst dcg_push_const{
+        .input_model_data =
+            BufferInfo(dcg_input_buffers_[frame_index_]->device_address, 0, 0),
+        .output_command_data =
+            BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
+        .draw_count = 1,
+    };
+
+    vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
+                       VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(DCGPushConst),
+                       &dcg_push_const);
+
+    // NVIDIA warp size is 32, AMD is 64
+    //  Heavy parallel work is better on smaller worksizes
+    //  Memory heavy accesses can work better on larger workgroup sizes
+
+    uint32_t workgroupSizeX = 16;
+    uint32_t workgroupSizeY = 16;
+    uint32_t workgroupSizeZ = 1;
+
+    vkCmdDispatch(dcg_command, workgroupSizeX, workgroupSizeY, workgroupSizeZ);
+
+    vkEndCommandBuffer(dcg_command);
+
+    VkSubmitInfo draw_info{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &dcg_command,
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &dcg_semaphores_[frame_index_],
+    };
+
+    VK_CHECK_RESULT(
+        vkQueueSubmit(device_->queues.compute, 1, &draw_info, nullptr));
+  }
 
   // Update Data
   {
@@ -583,13 +693,8 @@ void ForwardRenderer::Render(RenderData render_data) {
     auto height = swapchain_->GetHeight();
     // Graphics Queue
     {
-      VkCommandBufferAllocateInfo graphics_cmd_buf_alloc_info{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .pNext = nullptr,
-          .commandPool = graphics_command_pools_[frame_index_],
-          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1,
-      };
+      VkCommandBuffer draw_cmd_buffer = draw_command_buffers[frame_index_];
+      vkResetCommandBuffer(draw_cmd_buffer, 0);
 
       VkCommandBufferBeginInfo draw_cmd_buffer_begin{
           .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -683,6 +788,22 @@ void ForwardRenderer::Render(RenderData render_data) {
       vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
       VkDeviceSize offsets[1] = {0};
 
+      vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        *cube_pipeline_->GetPipeline());
+
+      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              *cube_pipeline_->GetPipelineLayout(), 0, 1,
+                              &buffer_infos_descriptor_set_->set, 0, nullptr);
+
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffers_[0]->buffer,
+                             offsets);
+      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
+                           VK_INDEX_TYPE_UINT32);
+
+      vkCmdDrawIndexedIndirect(draw_cmd_buffer,
+                               dcg_output_buffers_[frame_index_]->buffer, 0, 1,
+                               DRAW_COMMAND_BUFFER_SIZE);
+
       // Required Resources
       // Model Info
       // Gpu Buffer of VkDrawIndexedIndirectCommand filled by compute shader
@@ -708,17 +829,20 @@ void ForwardRenderer::Render(RenderData render_data) {
       vkEndCommandBuffer(draw_cmd_buffer);
 
       VkSemaphore draw_wait_semaphores[] = {
-          image_available_semaphores_[frame_index_]};
+          image_available_semaphores_[frame_index_],
+          dcg_semaphores_[frame_index_]};
 
       VkPipelineStageFlags draw_wait_stages[] = {
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+          VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+      };
 
       VkSemaphore draw_signal_semaphores[] = {
           render_finished_semaphores_[frame_index_]};
 
       VkSubmitInfo draw_info{
           .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .waitSemaphoreCount = 1,
+          .waitSemaphoreCount = 2,
           .pWaitSemaphores = draw_wait_semaphores,
           .pWaitDstStageMask = draw_wait_stages,
           .commandBufferCount = 1,

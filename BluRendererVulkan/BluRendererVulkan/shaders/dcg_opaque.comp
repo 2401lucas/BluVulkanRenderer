@@ -24,6 +24,7 @@ struct ModelInfo
 	int vert_offset;
 	uint ind_count;
 	uint ind_offset;
+	uint pad;
 };
 
 layout(buffer_reference, std430, buffer_reference_align = 16) buffer InputBuffer {
@@ -36,20 +37,19 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer OutputBuffe
 
 layout( push_constant ) uniform constants
 {
-	float draw_count;
 	BufferInfo model_input_buffer;
 	BufferInfo model_output_buffer;
+	uint draw_count;
 } push_const;
 
 void main() {
-  uint index = gl_GlobalInvocationID.x;
+	uint index = gl_GlobalInvocationID.x;
 
-  if(index >= push_const.draw_count) { return; }
+	if(index >= push_const.draw_count) { return; }
 
 	InputBuffer input_buf = InputBuffer(push_const.model_input_buffer.address);
 	OutputBuffer output_buf = OutputBuffer(push_const.model_output_buffer.address);
 	output_buf.draw_cmd[index] =  VkDrawIndexedIndirectCommand(input_buf.model_infos[index].ind_count, 
 							1, input_buf.model_infos[index].ind_offset, 
 							input_buf.model_infos[index].vert_offset, 0);
-  
 }

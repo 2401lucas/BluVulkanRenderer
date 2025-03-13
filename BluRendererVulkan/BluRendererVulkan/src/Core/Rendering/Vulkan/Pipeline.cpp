@@ -12,6 +12,9 @@ Pipeline::Pipeline(Device* device,
       .setLayoutCount = static_cast<uint32_t>(
           pipeline_create_info.descriptor_set_layouts.size()),
       .pSetLayouts = pipeline_create_info.descriptor_set_layouts.data(),
+      .pushConstantRangeCount =
+          static_cast<uint32_t>(pipeline_create_info.push_const.size()),
+      .pPushConstantRanges = pipeline_create_info.push_const.data(),
   };
 
   vkCreatePipelineLayout(device->GetLogicalDevice(), &pipeline_layout_create,
@@ -122,6 +125,35 @@ Pipeline::Pipeline(Device* device,
   VK_CHECK_RESULT(vkCreateGraphicsPipelines(device->GetLogicalDevice(), nullptr,
                                             1, &graphics_create, nullptr,
                                             &pipeline_));
+}
+
+Pipeline::Pipeline(Device* device,
+                   const ComputePipelineCreateInfo& pipeline_create_info) {
+  device_ = device;
+  VkPipelineLayoutCreateInfo pipeline_layout_create{
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+      .setLayoutCount = static_cast<uint32_t>(
+          pipeline_create_info.descriptor_set_layouts.size()),
+      .pSetLayouts = pipeline_create_info.descriptor_set_layouts.data(),
+      .pushConstantRangeCount =
+          static_cast<uint32_t>(pipeline_create_info.push_const.size()),
+      .pPushConstantRanges = pipeline_create_info.push_const.data(),
+  };
+
+  VK_CHECK_RESULT(vkCreatePipelineLayout(
+      device->GetLogicalDevice(), &pipeline_layout_create, nullptr, &layout_));
+
+  VkComputePipelineCreateInfo compute_create{
+      .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = 0,
+      .stage = pipeline_create_info.shader,
+      .layout = layout_,
+  };
+
+  VK_CHECK_RESULT(vkCreateComputePipelines(device->GetLogicalDevice(), nullptr,
+                                           1, &compute_create, nullptr,
+                                           &pipeline_));
 }
 
 Pipeline::~Pipeline() {

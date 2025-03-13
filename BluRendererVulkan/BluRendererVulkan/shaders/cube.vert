@@ -2,12 +2,12 @@
 
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_ARB_shader_draw_parameters : enable
-#extension GL_EXT_buffer_reference : enable
+#extension GL_EXT_buffer_reference2 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 
 layout (location = 0) in vec3 inPos;
 
-layout(buffer_reference, std430, buffer_reference_align = 8) buffer BufferPointer {
+struct BufferInfo {
   uint64_t address;
   uint64_t offset;
   uint64_t size;
@@ -21,8 +21,8 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer MatrixBuffe
   mat4 matrices[];
 };
 
-layout (set = 0, binding = 0) buffer buffers{
-  BufferPointer bufferPointers[];
+layout (set = 0, binding = 0) buffer {
+  BufferInfo bufferPointers[];
 } bufferAddresses;
 
 layout (location = 0) out vec3 outPos;

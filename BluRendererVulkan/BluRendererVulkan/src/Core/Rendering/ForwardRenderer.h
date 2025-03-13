@@ -25,6 +25,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
+constexpr uint32_t MAX_MODELS = 1;
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
@@ -48,11 +49,14 @@ struct ModelIndices {
   int vert_offset;
   uint32_t ind_count;
   uint32_t ind_offset;
-  
-  uint32_t mesh_vert_buf_index;
-  uint32_t mesh_norm_buf_index;
-  uint32_t mesh_ind_buf_index;
+
   // int texture_id;
+};
+
+struct DCGPushConst {
+  BufferInfo input_model_data;
+  BufferInfo output_command_data;
+  uint32_t draw_count;
 };
 
 class ForwardRenderer {
@@ -60,8 +64,8 @@ class ForwardRenderer {
   ForwardRenderer(blu::core::Window* window);
   ~ForwardRenderer();
 
-  uint32_t LoadModel(eastl::string filepath);
-  uint32_t LoadModel(blu::core::components::Model);
+  int LoadModel(eastl::string filepath);
+  int LoadModel(blu::core::components::Model);
 
   void Prepare();
   void Render(RenderData render_data);
@@ -80,7 +84,6 @@ class ForwardRenderer {
   VmaAllocator allocator_;
 
   // Render Data
-  // What is the difference?
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
   eastl::vector<glm::mat4> matrices_;
@@ -96,14 +99,17 @@ class ForwardRenderer {
   // Vulkan Render Data Resources
   VkDescriptorPool descriptor_pool_;
 
-  VkCommandPool transfer_command_pool;
-  VkCommandPool* graphics_command_pools_;
+  eastl::vector<VkCommandPool> transfer_command_pools;
+  eastl::vector<VkCommandPool> graphics_command_pools_;
+  eastl::vector<VkCommandPool> compute_command_pools_;
 
-  VkCommandBuffer* draw_command_buffers;
+  eastl::vector<VkCommandBuffer> draw_command_buffers;
+  eastl::vector<VkCommandBuffer> dcg_buffers;
 
   blu::core::Image* depth_stencil_image_;
 
- eastl::vector<blu::core::Buffer*> draw_gpu_command_buffers; //TODO: GENERATE BUFFERS
+  eastl::vector<blu::core::Buffer*> dcg_input_buffers_;
+  eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
 
   blu::core::Buffer* buffer_infos_buffer_;
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;
@@ -116,11 +122,13 @@ class ForwardRenderer {
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;
 
+  blu::core::rendering::Pipeline* dcg_pipeline_;
   blu::core::rendering::Pipeline* triangle_pipeline_;
   blu::core::rendering::Pipeline* cube_pipeline_;
 
   eastl::vector<VkSemaphore> image_available_semaphores_;
   eastl::vector<VkSemaphore> render_finished_semaphores_;
+  eastl::vector<VkSemaphore> dcg_semaphores_;
   eastl::vector<VkFence> in_flight_fences_;
 };
 
