@@ -20,8 +20,10 @@ void Transform::CalculateTransformMat() {
   rot_mat = glm::rotate(rot_mat, glm::radians(rotation_.z),
                         glm::vec3(0.0f, 0.0f, 1.0f));
 
-  glm::mat4 trans_mat = glm::translate(glm::mat4(1.0f), position_);
-  transform_mat_ = rot_mat * trans_mat;
+  glm::mat4 pos_mat = glm::translate(glm::mat4(1.0f), position_);
+  glm::mat4 scale_mat = glm::scale(glm::mat4(1.0f), scale_);
+
+  transform_mat_ = (scale_mat * rot_mat) * pos_mat;
   transform_mat_updated_ = false;
 }
 }  // namespace blu::core::components

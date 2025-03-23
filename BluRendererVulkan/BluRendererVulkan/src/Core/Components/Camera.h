@@ -10,6 +10,8 @@ class Camera {
   Camera(Transform* transform, float aspect_ratio, float fov, float z_near,
          float z_far);
 
+  void Update();
+
   Transform* GetTransform() { return transform_; }
 
   float GetFov() const { return fov_; }

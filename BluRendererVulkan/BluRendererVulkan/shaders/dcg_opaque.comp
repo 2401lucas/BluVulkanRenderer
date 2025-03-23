@@ -27,8 +27,12 @@ struct ModelInfo
 	uint pad;
 };
 
-layout(buffer_reference, std430, buffer_reference_align = 16) buffer InputBuffer {
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer ModelData {
 	ModelInfo model_infos[];
+};
+
+layout(buffer_reference, std430, buffer_reference_align = 16) buffer ModelIDs {
+	uint model_ids[];
 };
 
 layout(buffer_reference, std430, buffer_reference_align = 64) buffer OutputBuffer {
@@ -37,7 +41,8 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer OutputBuffe
 
 layout( push_constant ) uniform constants
 {
-	BufferInfo model_input_buffer;
+	BufferInfo model_input_model_data;
+	BufferInfo model_input_models;
 	BufferInfo model_output_buffer;
 	uint draw_count;
 } push_const;
@@ -47,9 +52,14 @@ void main() {
 
 	if(index >= push_const.draw_count) { return; }
 
-	InputBuffer input_buf = InputBuffer(push_const.model_input_buffer.address);
+	ModelData model_data = ModelData(push_const.model_input_model_data.address);
+	ModelIDs model_ids = ModelIDs(push_const.model_input_models.address);
 	OutputBuffer output_buf = OutputBuffer(push_const.model_output_buffer.address);
-	output_buf.draw_cmd[index] =  VkDrawIndexedIndirectCommand(input_buf.model_infos[index].ind_count, 
-							1, input_buf.model_infos[index].ind_offset, 
-							input_buf.model_infos[index].vert_offset, 0);
+
+	output_buf.draw_cmd[index] = VkDrawIndexedIndirectCommand(
+		model_data.model_infos[model_ids.model_ids[index]].ind_count, 
+		1, 
+		model_data.model_infos[model_ids.model_ids[index]].ind_offset, 
+		model_data.model_infos[model_ids.model_ids[index]].vert_offset, 
+		index);
 }

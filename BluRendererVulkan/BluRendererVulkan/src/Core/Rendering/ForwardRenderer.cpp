@@ -121,7 +121,11 @@ ForwardRenderer::~ForwardRenderer() {
     buf->Destroy(allocator_);
     delete buf;
   }
-  for (auto& buf : dcg_input_buffers_) {
+  for (auto& buf : dcg_input_model_data_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+  for (auto& buf : dcg_input_models_) {
     buf->Destroy(allocator_);
     delete buf;
   }
@@ -256,6 +260,8 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
   delete normal_staging_buffer;
   index_staging_buffer->Destroy(allocator_);
   delete index_staging_buffer;
+
+  return model_index;
 }
 
 void ForwardRenderer::Prepare() {
@@ -419,7 +425,8 @@ void ForwardRenderer::Prepare() {
   // Matrix Buffer Creation
   {
     matrices_buffer_ = blu::core::Buffer::CreateBuffer(
-        device_->GetLogicalDevice(), allocator_, sizeof(glm::mat4) * 4,
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(glm::mat4) * (3 + MAX_MODELS),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -437,13 +444,24 @@ void ForwardRenderer::Prepare() {
 
   // DCG Buffer Creation
   {
-    dcg_input_buffers_.resize(frame_count);
+    dcg_input_model_data_.resize(frame_count);
+    dcg_input_models_.resize(frame_count);
     dcg_output_buffers_.resize(frame_count);
 
     for (size_t i = 0; i < frame_count; i++) {
-      dcg_input_buffers_[i] = blu::core::Buffer::CreateBuffer(
+      dcg_input_model_data_[i] = blu::core::Buffer::CreateBuffer(
           device_->GetLogicalDevice(), allocator_,
           sizeof(ModelIndices) * MAX_MODELS,
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+              VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+          VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+      dcg_input_models_[i] = blu::core::Buffer::CreateBuffer(
+          device_->GetLogicalDevice(), allocator_,
+          sizeof(uint32_t) * MAX_MODELS,
           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -490,7 +508,7 @@ void ForwardRenderer::Prepare() {
             }},
             .depth_stencil_depth_test = VK_FALSE,
             .depth_stencil_depth_write = VK_FALSE,
-            .depth_stencil_depth_compare_op = VK_COMPARE_OP_GREATER,
+            .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
             .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
             .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
             .viewport_count = 1,
@@ -537,7 +555,7 @@ void ForwardRenderer::Prepare() {
         }},
         .depth_stencil_depth_test = VK_TRUE,
         .depth_stencil_depth_write = VK_TRUE,
-        .depth_stencil_depth_compare_op = VK_COMPARE_OP_GREATER,
+        .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
         .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
         .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
         .viewport_count = 1,
@@ -595,7 +613,6 @@ void ForwardRenderer::Prepare() {
                     &in_flight_fences_[i]);
     }
   }
-  matrices_.resize(4);
 }
 
 // Update Render Data
@@ -618,8 +635,12 @@ void ForwardRenderer::Render(RenderData render_data) {
   // DCG_COMMAND_GEN
   {
     // Update Model Buffers
-    memcpy(dcg_input_buffers_[frame_index_]->mapped_data, model_indices_.data(),
+    memcpy(dcg_input_model_data_[frame_index_]->mapped_data, model_indices_.data(),
            model_indices_.size() * sizeof(ModelIndices));
+
+    memcpy(dcg_input_models_[frame_index_]->mapped_data,
+           render_data.model_ids.data(),
+           render_data.model_ids.size() * sizeof(uint32_t));
 
     VkCommandBuffer dcg_command = dcg_buffers[frame_index_];
     vkResetCommandBuffer(dcg_command, 0);
@@ -638,10 +659,12 @@ void ForwardRenderer::Render(RenderData render_data) {
 
     DCGPushConst dcg_push_const{
         .input_model_data =
-            BufferInfo(dcg_input_buffers_[frame_index_]->device_address, 0, 0),
+            BufferInfo(dcg_input_model_data_[frame_index_]->device_address, 0, 0),
+        .input_models =
+            BufferInfo(dcg_input_models_[frame_index_]->device_address, 0, 0),
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
-        .draw_count = 1,
+        .draw_count = static_cast<uint32_t>(render_data.matrices.size() - 3),
     };
 
     vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
@@ -674,16 +697,8 @@ void ForwardRenderer::Render(RenderData render_data) {
 
   // Update Data
   {
-    matrices_[0] = render_data.matrices[0] * render_data.matrices[1];
-    matrices_[1] = render_data.matrices[0];
-    matrices_[2] = render_data.matrices[1];
-
-    // ... USE ITERATOR
-    matrices_[3] = render_data.matrices[2];
-    // ...
-
-    memcpy(matrices_buffer_->mapped_data, matrices_.data(),
-           matrices_.size() * sizeof(glm::mat4));
+    memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
+           render_data.matrices.size() * sizeof(glm::mat4));
   }
 
   // Render
@@ -800,25 +815,10 @@ void ForwardRenderer::Render(RenderData render_data) {
       vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
                            VK_INDEX_TYPE_UINT32);
 
-      vkCmdDrawIndexedIndirect(draw_cmd_buffer,
-                               dcg_output_buffers_[frame_index_]->buffer, 0, 1,
-                               DRAW_COMMAND_BUFFER_SIZE);
+      vkCmdDrawIndexedIndirect(
+          draw_cmd_buffer, dcg_output_buffers_[frame_index_]->buffer, 0,
+          render_data.matrices.size() - 3, DRAW_COMMAND_BUFFER_SIZE);
 
-      // Required Resources
-      // Model Info
-      // Gpu Buffer of VkDrawIndexedIndirectCommand filled by compute shader
-
-      // Execution Order
-      // Update Model Buffer (Vert, Ind, Norm...)
-      // Send Model Render info (indexCount,instanceCount, firstIndex,
-      // vertexOffset, firstInstance)
-      // Set Destination Command Buffer (BDA) for Draw Calls info
-      // Execute Draw Commands
-
-      // Potential roadblocks
-      // Because everything is bindless, each model needs to receive it's
-      // texture/transform indexes in the vert/frag shader
-      // Instanced rendering ?
       vkCmdEndRendering(draw_cmd_buffer);
 
       blu::core::Image::ImageLayoutTransition(

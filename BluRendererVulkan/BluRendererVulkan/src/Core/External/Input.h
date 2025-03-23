@@ -17,7 +17,6 @@ struct InputEvent {
 };
 
 // TODO:
-//  - Mouse Inputs
 //  - Axis Input -1<->1
 //  - USE CALLBACKS!
 // Maybe base kay remaps OnApplySettings() so that the KeyMap isn't updated as

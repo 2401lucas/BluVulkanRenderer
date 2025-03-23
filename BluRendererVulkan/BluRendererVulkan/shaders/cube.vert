@@ -13,7 +13,7 @@ struct BufferInfo {
   uint64_t size;
 };
 
-layout(buffer_reference, std430, buffer_reference_align = 64) buffer MatrixBuffer {
+layout(buffer_reference, std430) buffer MatrixBuffer {
   // [0] - Perspective * View
   // [1] - Perspective
   // [2] - View
@@ -21,7 +21,7 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer MatrixBuffe
   mat4 matrices[];
 };
 
-layout (set = 0, binding = 0) buffer {
+layout (set = 0, binding = 0) buffer BufferAddresses{
   BufferInfo bufferPointers[];
 } bufferAddresses;
 
@@ -30,7 +30,7 @@ layout (location = 0) out vec3 outPos;
 void main() {
   MatrixBuffer matBuf = MatrixBuffer(bufferAddresses.bufferPointers[0].address);
 
-  vec4 locPos = matBuf.matrices[3] * vec4(inPos, 0.0f);
+  vec4 locPos = matBuf.matrices[3 + gl_InstanceIndex] * vec4(inPos, 1.0f);
   outPos = locPos.xyz / locPos.w;
   gl_Position =  matBuf.matrices[0] * vec4(outPos, 1.0);
 }

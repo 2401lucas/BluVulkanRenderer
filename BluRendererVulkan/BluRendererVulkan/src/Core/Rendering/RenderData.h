@@ -4,10 +4,12 @@
 #include <EASTL/vector.h>
 
 struct RenderData {
-  // Matrix[0] - Camera View
-  // Matrix[1] - Camera Perspective
-  // Matrix[2...] - Model Position
+  // Matrix[0] - V * P
+  // Matrix[1] - Camera View
+  // Matrix[2] - Camera Perspective
+  // Matrix[3...] - Model Position
   eastl::vector<glm::mat4> matrices;
+  eastl::vector<uint32_t> model_ids;
 };
 
 #endif

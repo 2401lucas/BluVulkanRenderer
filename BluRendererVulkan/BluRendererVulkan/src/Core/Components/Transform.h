@@ -43,7 +43,7 @@ class Transform {
     glm::vec3 cam_front;
     cam_front.x =
         -cos(glm::radians(rotation_.x)) * sin(glm::radians(rotation_.y));
-    cam_front.y = sin(glm::radians(rotation_.x));
+    cam_front.y = -sin(glm::radians(rotation_.x));
     cam_front.z =
         cos(glm::radians(rotation_.x)) * cos(glm::radians(rotation_.y));
     cam_front = glm::normalize(cam_front);

@@ -47,15 +47,13 @@ class Engine {
   Window* window_ = nullptr;
   KeybindManager* input_;
 
-  // Saves Model Index?
-
   struct Model {
     uint32_t model_index;
     blu::core::components::Transform transform;
   };
 
   eastl::vector<Model> models_;
-
+  float mouse_sens_ = 1;
   glm::vec2 prev_mouse_input_;
 };
 }  // namespace blu::core

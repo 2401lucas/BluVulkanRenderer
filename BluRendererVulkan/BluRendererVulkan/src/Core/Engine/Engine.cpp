@@ -1,6 +1,7 @@
 #include "Engine.h"
 
 #include <glm/glm.hpp>
+#include <iostream>
 
 #define MODEL_DEBUG 1
 
@@ -22,7 +23,7 @@ Engine::~Engine() {
 
 void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
   camera_ = new components::Camera(
-      new components::Transform(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
+      new components::Transform(glm::vec3(0, 0, -5), glm::vec3(0, 0, 0),
                                 glm::vec3(1, 1, 1)),
       window_->GetAspectRatio(), 45, 1, 500);
 
@@ -31,6 +32,20 @@ void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
     models_.push_back(
         Model(model_index,
               components::Transform(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
+                                    glm::vec3(1, 1, 1))));
+  }
+  model_index = rndr->LoadModel("assets/Cube/cube.glTF");
+  if (model_index >= 0) {
+    models_.push_back(
+        Model(model_index,
+              components::Transform(glm::vec3(1, 1.5, 0), glm::vec3(0, 0, 0),
+                                    glm::vec3(1, 1, 1))));
+  }
+  model_index = rndr->LoadModel("assets/Cube/cube.glTF");
+  if (model_index >= 0) {
+    models_.push_back(
+        Model(model_index,
+              components::Transform(glm::vec3(0, 3, 1), glm::vec3(0, 0, 0),
                                     glm::vec3(1, 1, 1))));
   }
 }
@@ -55,6 +70,7 @@ void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
 // assign a new index. This index would point to all respective model data
 // including texture indices, mesh indices & used in generating draw commands
 void Engine::Update() {
+  camera_->Update();
   auto cam_front = camera_->GetTransform()->Front();
 
   float move_speed = 0.02;
@@ -76,23 +92,50 @@ void Engine::Update() {
     camera_->GetTransform()->AddToPosition(-cam_front * move_speed);
   }
 
+  if (input_->IsActionPressed("LCTRL")) {
+    camera_->GetTransform()->AddToPosition(glm::vec3(0.0f, 1.0f, 0.0f) *
+                                           move_speed);
+  }
+  if (input_->IsActionPressed("SPACE")) {
+    camera_->GetTransform()->AddToPosition(glm::vec3(0.0f, -1.0f, 0.0f) *
+                                           move_speed);
+  }
+
+  //if (input_->IsActionPressed("LCTRL")) {
+  //  camera_->GetTransform()->AddToPosition(
+  //      glm::normalize(glm::cross(cam_front, glm::vec3(1.0f, 0.0f, 0.0f))) *
+  //      move_speed);
+  //}
+  //if (input_->IsActionPressed("SPACE")) {
+  //  camera_->GetTransform()->AddToPosition(
+  //      -glm::normalize(glm::cross(cam_front, glm::vec3(1.0f, 0.0f, 0.0f))) *
+  //      move_speed);
+  //}
+
   glm::vec2 mouse_pos = input_->GetMousePos();
   glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
+  prev_mouse_input_ = mouse_pos;
 
-  if (input_->IsActionPressed("LMB")) {
-    camera_->GetTransform()->AddToRotation(
-        glm::vec3(mouse_pos_diff.y * 4, -mouse_pos_diff.x * 4, 0.0f));
+  if (input_->IsActionPressed("Mouse 1")) {
+    camera_->GetTransform()->AddToRotation(glm::vec3(
+        mouse_pos_diff.y * mouse_sens_, -mouse_pos_diff.x * mouse_sens_, 0.0f));
   }
 }
 
 RenderData Engine::GetRenderData() {
+  eastl::vector<uint32_t> model_ids;
+
   eastl::vector<glm::mat4> matrices(3);
+  matrices[1] = camera_->GetTransform()->GetTransformMat();
+  matrices[2] = camera_->GetPerspectiveMat();
+  matrices[0] = matrices[2] * matrices[1];
 
-  matrices[0] = camera_->GetTransform()->GetTransformMat();
-  matrices[1] = camera_->GetPerspectiveMat();
-  matrices[2] = models_[0].transform.GetTransformMat();
+  for (auto& m : models_) {
+    matrices.push_back(m.transform.GetTransformMat());
+    model_ids.push_back(m.model_index);
+  }
 
-  return RenderData(matrices);
+  return RenderData(matrices, model_ids);
 }
 
 void Engine::SetDefaultKeybinds() {
@@ -102,5 +145,7 @@ void Engine::SetDefaultKeybinds() {
   input_->RegisterKeyBind("A", GLFW_KEY_A, GLFW_KEY_LEFT);
   input_->RegisterKeyBind("D", GLFW_KEY_D, GLFW_KEY_RIGHT);
   input_->RegisterKeyBind("S", GLFW_KEY_S, GLFW_KEY_DOWN);
+  input_->RegisterKeyBind("LCTRL", GLFW_KEY_LEFT_CONTROL);
+  input_->RegisterKeyBind("SPACE", GLFW_KEY_SPACE);
 }
 }  // namespace blu::core

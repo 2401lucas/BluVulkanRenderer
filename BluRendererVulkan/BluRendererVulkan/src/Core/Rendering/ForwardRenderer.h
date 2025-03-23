@@ -25,7 +25,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr uint32_t MAX_MODELS = 1;
+constexpr uint32_t MAX_MODELS = 10;
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
@@ -55,6 +55,7 @@ struct ModelIndices {
 
 struct DCGPushConst {
   BufferInfo input_model_data;
+  BufferInfo input_models;
   BufferInfo output_command_data;
   uint32_t draw_count;
 };
@@ -86,7 +87,6 @@ class ForwardRenderer {
   // Render Data
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
-  eastl::vector<glm::mat4> matrices_;
   eastl::vector<BufferInfo> buffer_infos_;
 
   eastl::queue<eastl::string> model_loading_queue_;
@@ -108,7 +108,8 @@ class ForwardRenderer {
 
   blu::core::Image* depth_stencil_image_;
 
-  eastl::vector<blu::core::Buffer*> dcg_input_buffers_;
+  eastl::vector<blu::core::Buffer*> dcg_input_model_data_;
+  eastl::vector<blu::core::Buffer*> dcg_input_models_;
   eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
 
   blu::core::Buffer* buffer_infos_buffer_;
