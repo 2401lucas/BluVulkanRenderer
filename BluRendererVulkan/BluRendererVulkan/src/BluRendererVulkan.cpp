@@ -27,7 +27,10 @@ void BluRendererVulkan::run(int argc, char** argv) {
   while (!window->ShouldClose()) {
     window->ProcessEvents();
     engine->Update();
-    renderer->Render(engine->GetRenderData());
+    auto res = renderer->Render(engine->GetRenderData());
+    if (res == RendererState::ASPECT_RATIO_UPDATED) {
+      engine->SetCameraAspectRatio(renderer->GetAspectRatio());
+    }
     // - Audio Updates?
   }
 

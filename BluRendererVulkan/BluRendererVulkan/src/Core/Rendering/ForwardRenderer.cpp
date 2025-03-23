@@ -619,15 +619,21 @@ void ForwardRenderer::Prepare() {
 // -Matrices
 // Render
 // Setup Fences & Semaphores
-void ForwardRenderer::Render(RenderData render_data) {
+RendererState ForwardRenderer::Render(RenderData render_data) {
   vkWaitForFences(device_->GetLogicalDevice(), 1,
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
 
   auto swapchain = swapchain_->GetSwapchain();
   // Handle Window Resize
-  VK_CHECK_RESULT(vkAcquireNextImageKHR(
+  auto acquire_image_result = vkAcquireNextImageKHR(
       device_->GetLogicalDevice(), swapchain, UINT64_MAX,
-      image_available_semaphores_[frame_index_], nullptr, &image_index_));
+      image_available_semaphores_[frame_index_], nullptr, &image_index_);
+
+  if ((acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR) ||
+      (acquire_image_result == VK_SUBOPTIMAL_KHR)) {
+    OnResize();
+    return RendererState::ASPECT_RATIO_UPDATED;
+  }
 
   vkResetFences(device_->GetLogicalDevice(), 1,
                 &in_flight_fences_[frame_index_]);
@@ -635,8 +641,8 @@ void ForwardRenderer::Render(RenderData render_data) {
   // DCG_COMMAND_GEN
   {
     // Update Model Buffers
-    memcpy(dcg_input_model_data_[frame_index_]->mapped_data, model_indices_.data(),
-           model_indices_.size() * sizeof(ModelIndices));
+    memcpy(dcg_input_model_data_[frame_index_]->mapped_data,
+           model_indices_.data(), model_indices_.size() * sizeof(ModelIndices));
 
     memcpy(dcg_input_models_[frame_index_]->mapped_data,
            render_data.model_ids.data(),
@@ -658,8 +664,8 @@ void ForwardRenderer::Render(RenderData render_data) {
                       *dcg_pipeline_->GetPipeline());
 
     DCGPushConst dcg_push_const{
-        .input_model_data =
-            BufferInfo(dcg_input_model_data_[frame_index_]->device_address, 0, 0),
+        .input_model_data = BufferInfo(
+            dcg_input_model_data_[frame_index_]->device_address, 0, 0),
         .input_models =
             BufferInfo(dcg_input_models_[frame_index_]->device_address, 0, 0),
         .output_command_data =
@@ -748,7 +754,7 @@ void ForwardRenderer::Render(RenderData render_data) {
           depth_range);
 
       eastl::array<VkClearValue, 2> clear_values{};
-      clear_values[0].color = {{0.0f, 0.0f, 1.0f, 1.0f}};
+      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
       clear_values[1].depthStencil = {1.0f, 0};
 
       VkRenderingAttachmentInfo color_attachment_info{
@@ -864,12 +870,45 @@ void ForwardRenderer::Render(RenderData render_data) {
           .pImageIndices = &image_index_,
       };
 
-      VK_CHECK_RESULT(
-          vkQueuePresentKHR(device_->queues.graphics, &present_info));
+      auto queue_present_result =
+          vkQueuePresentKHR(device_->queues.graphics, &present_info);
+
+      if ((queue_present_result == VK_ERROR_OUT_OF_DATE_KHR) ||
+          (queue_present_result == VK_SUBOPTIMAL_KHR)) {
+        OnResize();
+        return RendererState::ASPECT_RATIO_UPDATED;
+      }
     }
   }
 
   frame_index_ = (frame_index_ + 1) % swapchain_->GetImageCount();
+
+  return RendererState::OK;
+}
+
+void ForwardRenderer::OnResize() {
+  depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
+  delete depth_stencil_image_;
+
+  swapchain_->Create(false, false);
+  
+  depth_stencil_image_ = blu::core::Image::CreateImage(
+      device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT,
+      swapchain_->GetWidth(), swapchain_->GetHeight(), 1, VK_SAMPLE_COUNT_1_BIT,
+      VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  VkImageSubresourceRange depth_range{
+      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+      .baseMipLevel = 0,
+      .levelCount = VK_REMAINING_MIP_LEVELS,
+      .baseArrayLayer = 0,
+      .layerCount = VK_REMAINING_ARRAY_LAYERS,
+  };
+
+  blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                    depth_stencil_image_, DEPTH_FORMAT,
+                                    depth_range);
 }
 
 VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(

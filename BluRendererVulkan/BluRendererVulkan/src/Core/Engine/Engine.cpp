@@ -100,17 +100,9 @@ void Engine::Update() {
     camera_->GetTransform()->AddToPosition(glm::vec3(0.0f, -1.0f, 0.0f) *
                                            move_speed);
   }
-
-  //if (input_->IsActionPressed("LCTRL")) {
-  //  camera_->GetTransform()->AddToPosition(
-  //      glm::normalize(glm::cross(cam_front, glm::vec3(1.0f, 0.0f, 0.0f))) *
-  //      move_speed);
-  //}
-  //if (input_->IsActionPressed("SPACE")) {
-  //  camera_->GetTransform()->AddToPosition(
-  //      -glm::normalize(glm::cross(cam_front, glm::vec3(1.0f, 0.0f, 0.0f))) *
-  //      move_speed);
-  //}
+  if (input_->IsActionPressed("ESC")) {
+    // TODO: QUIT
+  }
 
   glm::vec2 mouse_pos = input_->GetMousePos();
   glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
@@ -120,6 +112,10 @@ void Engine::Update() {
     camera_->GetTransform()->AddToRotation(glm::vec3(
         mouse_pos_diff.y * mouse_sens_, -mouse_pos_diff.x * mouse_sens_, 0.0f));
   }
+}
+
+void Engine::SetCameraAspectRatio(float aspect_ratio) {
+  camera_->SetAspectRatio(aspect_ratio);
 }
 
 RenderData Engine::GetRenderData() {
@@ -147,5 +143,6 @@ void Engine::SetDefaultKeybinds() {
   input_->RegisterKeyBind("S", GLFW_KEY_S, GLFW_KEY_DOWN);
   input_->RegisterKeyBind("LCTRL", GLFW_KEY_LEFT_CONTROL);
   input_->RegisterKeyBind("SPACE", GLFW_KEY_SPACE);
+  input_->RegisterKeyBind("ESC", GLFW_KEY_ESCAPE);
 }
 }  // namespace blu::core

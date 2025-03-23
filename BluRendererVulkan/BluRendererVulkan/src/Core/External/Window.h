@@ -18,8 +18,7 @@ class Window {
   void ProcessEvents();
 
  private:
-  static void ErrorMsg(int error_code,
-                       const char* description);
+  static void ErrorMsg(int error_code, const char* description);
 
   GLFWwindow* window_;
 

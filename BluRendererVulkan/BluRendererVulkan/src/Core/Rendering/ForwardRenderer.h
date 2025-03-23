@@ -60,6 +60,11 @@ struct DCGPushConst {
   uint32_t draw_count;
 };
 
+enum RendererState {
+  OK = 0,
+  ASPECT_RATIO_UPDATED = 1 << 0,
+};
+
 class ForwardRenderer {
  public:
   ForwardRenderer(blu::core::Window* window);
@@ -69,11 +74,15 @@ class ForwardRenderer {
   int LoadModel(blu::core::components::Model);
 
   void Prepare();
-  void Render(RenderData render_data);
+  RendererState Render(RenderData render_data);
 
-  void OnResize();
+  float GetAspectRatio() {
+    return (float)swapchain_->GetWidth() / swapchain_->GetHeight();
+  };
 
  private:
+  void OnResize();
+
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
 

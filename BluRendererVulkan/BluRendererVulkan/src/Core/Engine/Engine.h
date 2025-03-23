@@ -38,6 +38,7 @@ class Engine {
 
   void Update();
 
+  void SetCameraAspectRatio(float aspect_ratio);
   RenderData GetRenderData();
 
  private:
