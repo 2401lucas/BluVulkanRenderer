@@ -1,22 +1,37 @@
 ﻿#include "BluRendererVulkan.h"
 
-#include <chrono>
-#include <thread>
-#include "Render/Renderer/ForwardRenderer.hpp"
+#include "Core/Engine/Engine.h"
+#include "Core/External/Window.h"
+#include "Core/Rendering/ForwardRenderer.h"
 
 const float MINFRAMETIME = 0.01666f;
 
 int main(int argc, char** argv) {
-  std::unique_ptr<BluRendererVulkan> blu =
-      std::make_unique<BluRendererVulkan>();
+  BluRendererVulkan* blu = new BluRendererVulkan();
   blu->run(argc, argv);
+
+  delete blu;
   return 0;
 }
 
-int BluRendererVulkan::run(int argc, char** argv) {
-  BaseRenderer* forwardRenderer = new ForwardRenderer();
-  forwardRenderer->start();
-  delete (forwardRenderer);	
+void BluRendererVulkan::run(int argc, char** argv) {
+  blu::core::Window* window =
+      new blu::core::Window(800, 600, "Blu: Rendering Prototype");
+  blu::core::Engine* engine = new blu::core::Engine(window);
+  ForwardRenderer* renderer = new ForwardRenderer(window);
 
-  return 0;
+  // Engine Loads Initial Scene
+  renderer->Prepare();
+  engine->LoadScene("TODO", renderer);
+
+  while (!window->ShouldClose()) {
+    window->ProcessEvents();
+    engine->Update();
+    renderer->Render(engine->GetRenderData());
+    // - Audio Updates?
+  }
+
+  delete renderer;
+  delete engine;
+  delete window;
 }

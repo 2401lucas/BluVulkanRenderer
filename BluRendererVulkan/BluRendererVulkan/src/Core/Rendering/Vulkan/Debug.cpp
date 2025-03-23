@@ -1,0 +1,56 @@
+#include "Debug.h"
+
+#include <iostream>
+#include <sstream>
+
+VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessageCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
+  // Select prefix depending on flags passed to the callback
+  std::string prefix;
+
+  if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+#if defined(_WIN32)
+    prefix = "\033[32m" + prefix + "\033[0m";
+#endif
+    prefix = "VERBOSE: ";
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+    prefix = "INFO: ";
+#if defined(_WIN32)
+    prefix = "\033[36m" + prefix + "\033[0m";
+#endif
+  } else if (messageSeverity &
+             VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+    prefix = "WARNING: ";
+#if defined(_WIN32)
+    prefix = "\033[33m" + prefix + "\033[0m";
+#endif
+  } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+    prefix = "ERROR: ";
+#if defined(_WIN32)
+    prefix = "\033[31m" + prefix + "\033[0m";
+#endif
+  }
+
+  // Display message to default output (console/logcat)
+  std::stringstream debugMessage;
+  debugMessage << prefix << "[" << pCallbackData->messageIdNumber << "]["
+               << pCallbackData->pMessageIdName
+               << "] : " << pCallbackData->pMessage;
+
+  if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+    std::cerr << debugMessage.str() << "\n\n";
+  } else {
+    std::cout << debugMessage.str() << "\n\n";
+  }
+  fflush(stdout);
+
+  // The return value of this callback controls whether the Vulkan call that
+  // caused the validation message will be aborted or not We return VK_FALSE
+  // as we DON'T want Vulkan calls that cause a validation message to abort If
+  // you instead want to have calls abort, pass in VK_TRUE and the function
+  // will return VK_ERROR_VALIDATION_FAILED_EXT
+  return VK_FALSE;
+}

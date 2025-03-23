@@ -1,0 +1,30 @@
+#ifndef WINDOW_H
+#define WINDOW_H
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+namespace blu::core {
+class Window {
+ public:
+  Window(int width, int height, const char* title);
+  ~Window();
+
+  GLFWwindow* Get() const { return window_; }
+  uint32_t GetWidth() const { return width_; }
+  uint32_t GetHeight() const { return height_; }
+  float GetAspectRatio() const { return (float)width_ / (float)height_; };
+  bool ShouldClose();
+  void ProcessEvents();
+
+ private:
+  static void ErrorMsg(int error_code,
+                       const char* description);
+
+  GLFWwindow* window_;
+
+  uint32_t width_;
+  uint32_t height_;
+};
+}  // namespace blu::core
+#endif
