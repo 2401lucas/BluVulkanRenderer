@@ -36,7 +36,7 @@ class Engine {
 
   void LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr);
 
-  void Update();
+  void Update(float frametime);
 
   void SetCameraAspectRatio(float aspect_ratio);
   RenderData GetRenderData();
@@ -54,7 +54,7 @@ class Engine {
   };
 
   eastl::vector<Model> models_;
-  float mouse_sens_ = 1;
+  float mouse_sens_ = 100;
   glm::vec2 prev_mouse_input_;
 };
 }  // namespace blu::core

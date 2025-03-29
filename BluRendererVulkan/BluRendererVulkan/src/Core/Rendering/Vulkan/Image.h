@@ -4,6 +4,8 @@
 #include <Vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
+#include "Buffer.h"
+
 namespace blu::core {
 class Image {
  public:
@@ -22,15 +24,27 @@ class Image {
 
   static blu::core::Image* CreateImage(
       const VkDevice& device, const VmaAllocator& allocator, VkFormat format,
-      uint32_t width, uint32_t height, uint32_t mipLevels,
+      uint32_t width, uint32_t height, uint32_t mip_levels,
       VkSampleCountFlagBits samples, VkImageTiling tiling,
       VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
       VmaAllocationCreateFlags flags = 0);
+  static blu::core::Image* CreateImage(
+      const VkDevice& device, const VmaAllocator& allocator, VkCommandBuffer,
+      uint32_t src_queue, uint32_t dst_queue, VkFormat format, uint32_t width,
+      uint32_t height, uint32_t mip_levels, VkSampleCountFlagBits samples,
+      VkImageTiling tiling, VkImageUsageFlags usage,
+      VkMemoryPropertyFlags required_flags, unsigned char* data,
+      blu::core::Buffer*& stg_buffer, VmaAllocationCreateFlags flags = 0);
 
   static void CreateImageView(
       const VkDevice& device, blu::core::Image* image, VkFormat format,
       const VkImageSubresourceRange& subresource_range,
       VkImageViewType image_view_type = VK_IMAGE_VIEW_TYPE_2D);
+
+  static void CreateImageSampler(
+      const VkDevice& device,
+      const VkPhysicalDeviceProperties& physical_device_properties,
+      blu::core::Image* image);
 
   static void ImageLayoutTransition(
       VkCommandBuffer, VkImage image, VkPipelineStageFlags src_stage_mask,

@@ -26,7 +26,11 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Swapchain.h"
 
 constexpr uint32_t MAX_MODELS = 10;
+constexpr uint32_t MAX_VERTICES = 1000;
+constexpr uint32_t MAX_INDICES = 1000;
+constexpr uint32_t MAX_TEXTURES = 10;
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
+constexpr VkFormat COLOR_FORMAT = VK_FORMAT_R8G8B8A8_SRGB;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;
 constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
     sizeof(VkDrawIndexedIndirectCommand);
@@ -44,13 +48,15 @@ struct Vertex {
 
 // Contains all draw related data
 struct ModelIndices {
-  // uint32_t pipeline_index; // UberShader ?
-  // uint32_t vert_count;
-  int vert_offset;
+  // Model Data
+  uint32_t vert_offset;
   uint32_t ind_count;
   uint32_t ind_offset;
-
-  // int texture_id;
+  // Texture Data
+  uint32_t material_type;
+  int main_tex_id;
+  int secondary_tex_id;
+  int tertiary_tex_id;
 };
 
 struct DCGPushConst {
@@ -65,6 +71,11 @@ enum RendererState {
   ASPECT_RATIO_UPDATED = 1 << 0,
 };
 
+enum MaterialType {
+  SINGLE_TEXTURE = 0,
+  METALLIC_ROUGHNESS = 1 << 0,
+};
+
 class ForwardRenderer {
  public:
   ForwardRenderer(blu::core::Window* window);
@@ -72,6 +83,8 @@ class ForwardRenderer {
 
   int LoadModel(eastl::string filepath);
   int LoadModel(blu::core::components::Model);
+
+  int LoadImage(eastl::string filepath);
 
   void Prepare();
   RendererState Render(RenderData render_data);
@@ -84,7 +97,7 @@ class ForwardRenderer {
   void OnResize();
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
-                                             VkShaderStageFlagBits);
+                                                VkShaderStageFlagBits);
 
   blu::core::Window* window_;
 
@@ -98,7 +111,7 @@ class ForwardRenderer {
   uint32_t image_index_ = 0;
   eastl::vector<BufferInfo> buffer_infos_;
 
-  eastl::queue<eastl::string> model_loading_queue_;
+  eastl::hash_map<eastl::string, uint32_t> loaded_texture_indices_;
   eastl::hash_map<eastl::string, uint32_t> loaded_model_indices_;
   // Raw Data information
   eastl::vector<blu::core::components::Model> loaded_models_;
@@ -125,9 +138,15 @@ class ForwardRenderer {
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;
 
   blu::core::Buffer* matrices_buffer_;
-  eastl::vector<blu::core::Buffer*> vertex_buffers_;
-  eastl::vector<blu::core::Buffer*> normal_buffers_;
-  eastl::vector<blu::core::Buffer*> index_buffers_;
+
+  eastl::vector<blu::core::Image*> textures;
+
+  blu::core::Buffer* vertex_buffer_;
+  uint32_t vertex_buffer_offset_ = 0;
+  blu::core::Buffer* normal_buffer_;
+  uint32_t normal_buffer_offset_ = 0;
+  blu::core::Buffer* index_buffer_;
+  uint32_t index_buffer_offset_ = 0;
 
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;

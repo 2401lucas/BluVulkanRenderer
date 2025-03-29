@@ -21,10 +21,13 @@ struct VkDrawIndexedIndirectCommand
 
 struct ModelInfo
 {
-	int vert_offset;
+	uint vert_offset;
 	uint ind_count;
 	uint ind_offset;
-	uint pad;
+	uint material_type;
+	int main_tex_id;
+	int secondary_tex_id;
+	int tertiary_tex_id;
 };
 
 layout(buffer_reference, std430, buffer_reference_align = 16) buffer ModelData {
@@ -39,7 +42,7 @@ layout(buffer_reference, std430, buffer_reference_align = 64) buffer OutputBuffe
 	VkDrawIndexedIndirectCommand draw_cmd[];
 };
 
-layout( push_constant ) uniform constants
+layout(push_constant) uniform constants
 {
 	BufferInfo model_input_model_data;
 	BufferInfo model_input_models;

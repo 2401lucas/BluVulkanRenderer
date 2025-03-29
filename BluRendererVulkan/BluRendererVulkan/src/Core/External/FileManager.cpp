@@ -8,7 +8,7 @@ VkShaderModule blu::core::file::LoadShader(const char* fileName,
                                            const VkDevice& device) {
   std::ifstream is(fileName, std::ios::binary | std::ios::in | std::ios::ate);
 
-  if (is.is_open()) {
+  if (is.is_open() && is.good()) {
     size_t size = is.tellg();
     is.seekg(0, std::ios::beg);
     char* shaderCode = new char[size];
@@ -34,4 +34,9 @@ VkShaderModule blu::core::file::LoadShader(const char* fileName,
               << "\n";
     return VK_NULL_HANDLE;
   }
+}
+
+bool blu::core::file::DoesFileExist(eastl::string fileName) {
+  std::ifstream file(fileName.c_str());
+  return file.good();
 }

@@ -27,21 +27,21 @@ void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
                                 glm::vec3(1, 1, 1)),
       window_->GetAspectRatio(), 45, 1, 500);
 
-  auto model_index = rndr->LoadModel("assets/Cube/cube.glTF");
+  auto model_index = rndr->LoadModel("assets/Cube/cube");
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
-              components::Transform(glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
-                                    glm::vec3(1, 1, 1))));
+              components::Transform(glm::vec3(0, 0, 0), glm::vec3(45, 45, 0),
+                                    glm::vec3(0.5, 0.5, 0.5))));
   }
-  model_index = rndr->LoadModel("assets/Cube/cube.glTF");
+  model_index = rndr->LoadModel("assets/Cube/cube");
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
-              components::Transform(glm::vec3(1, 1.5, 0), glm::vec3(0, 0, 0),
+              components::Transform(glm::vec3(-1, 1.5, 0), glm::vec3(0, 0, 0),
                                     glm::vec3(1, 1, 1))));
   }
-  model_index = rndr->LoadModel("assets/Cube/cube.glTF");
+  model_index = rndr->LoadModel("assets/Cube/cube");
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
@@ -50,30 +50,13 @@ void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
   }
 }
 
-// Model Creation
-// Read from file
-// ...
-// Upload to GPU
-// ...
-// For rendering, I think an index is needed?
-//
-// So essentially I need the data on the GPU which requires use of the renderer.
-// I would prefer keeping the modules seperated but I am unsure that is
-// required. Hypthetically if they aren't seperated, we can add operations to a
-// queue to be processed at the start of the next frame. Example for model
-// loading would be:
-// LoadModel(MeshData /*Allows for proc gen*/)) & LoadModel("FilePath")
-// Engine model holds filepath and leaves file loading
-// operations for Renderer, which could work async to main thread.
-// LoadModel would return an index for the respective model data, either based
-// on existing data existing with said filepath or, assuming a new model, would
-// assign a new index. This index would point to all respective model data
-// including texture indices, mesh indices & used in generating draw commands
-void Engine::Update() {
+void Engine::Update(float frametime) {
   camera_->Update();
   auto cam_front = camera_->GetTransform()->Front();
 
-  float move_speed = 0.02;
+  float move_speed = 10 * frametime;
+
+  models_[0].transform.AddToRotation(glm::vec3(36, 0, 0) * frametime);
 
   if (input_->IsActionPressed("W")) {
     camera_->GetTransform()->AddToPosition(cam_front * move_speed);
@@ -108,9 +91,11 @@ void Engine::Update() {
   glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
   prev_mouse_input_ = mouse_pos;
 
+  auto mouse_sens = mouse_sens_ * frametime;
+
   if (input_->IsActionPressed("Mouse 1")) {
     camera_->GetTransform()->AddToRotation(glm::vec3(
-        mouse_pos_diff.y * mouse_sens_, -mouse_pos_diff.x * mouse_sens_, 0.0f));
+        mouse_pos_diff.y * mouse_sens, -mouse_pos_diff.x * mouse_sens, 0.0f));
   }
 }
 

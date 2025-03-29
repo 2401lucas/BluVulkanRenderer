@@ -2,6 +2,8 @@
 
 #include <cassert>
 
+#include "Tools.h"
+
 void blu::core::Image::Destroy(const VkDevice& device,
                                const VmaAllocator& allocator) {
   if (sampler) {
@@ -39,6 +41,7 @@ blu::core::Image* blu::core::Image::CreateImage(
       .tiling = tiling,
       .usage = usage,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
   };
 
   VmaAllocationCreateInfo vma_create_info{
@@ -49,6 +52,63 @@ blu::core::Image* blu::core::Image::CreateImage(
   VmaAllocationInfo alloc_info;
   vmaCreateImage(allocator, &image_create_info, &vma_create_info,
                  &new_image->image, &new_image->alloc, &alloc_info);
+  new_image->size = alloc_info.size;
+
+  return new_image;
+}
+
+blu::core::Image* blu::core::Image::CreateImage(
+    const VkDevice& device, const VmaAllocator& allocator,
+    VkCommandBuffer cmd_buf, uint32_t src_queue, uint32_t dst_queue,
+    VkFormat format, uint32_t width, uint32_t height, uint32_t mip_levels,
+    VkSampleCountFlagBits samples, VkImageTiling tiling,
+    VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
+    unsigned char* data, blu::core::Buffer*& stg_buffer,
+    VmaAllocationCreateFlags flags) {
+  blu::core::Image* new_image =
+      CreateImage(device, allocator, format, width, height, mip_levels, samples,
+                  tiling, usage, required_flags, flags);
+
+  VkImageSubresourceRange img_range{
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = VK_REMAINING_MIP_LEVELS,
+      .baseArrayLayer = 0,
+      .layerCount = VK_REMAINING_ARRAY_LAYERS,
+  };
+
+  blu::core::Image::ImageLayoutTransition(
+      cmd_buf, new_image->image, VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, img_range, src_queue, dst_queue);
+
+  stg_buffer = blu::core::Buffer::CreateBuffer(
+      device, allocator, new_image->size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+  memcpy(stg_buffer->mapped_data, data, new_image->size);
+
+  // TODO: SETUP MIP MAP COMPATABILITY LOOP
+  VkBufferImageCopy region{
+      .bufferOffset = 0,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                           .mipLevel = 0,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1},
+      .imageOffset = {0, 0, 0},
+      .imageExtent = {width, height, 1},
+  };
+
+  vkCmdCopyBufferToImage(cmd_buf, stg_buffer->buffer, new_image->image,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+  blu::core::Image::ImageLayoutTransition(
+      cmd_buf, new_image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, img_range, src_queue,
+      dst_queue);
 
   return new_image;
 }
@@ -67,6 +127,33 @@ void blu::core::Image::CreateImageView(
   };
 
   vkCreateImageView(device, &image_view_info, nullptr, &image->view);
+}
+
+void blu::core::Image::CreateImageSampler(
+    const VkDevice& device,
+    const VkPhysicalDeviceProperties& physical_device_properties,
+    blu::core::Image* image) {
+  VkSamplerCreateInfo sampler_create_info{
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .flags = 0,
+      .magFilter = VK_FILTER_LINEAR,
+      .minFilter = VK_FILTER_LINEAR,
+      .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .mipLodBias = 0.0f,
+      .anisotropyEnable = VK_TRUE,
+      .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
+      .compareEnable = VK_FALSE,
+      .compareOp = VK_COMPARE_OP_ALWAYS,
+      .minLod = 0.0f,
+      .maxLod = 0.0f,
+      .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+      .unnormalizedCoordinates = VK_FALSE,
+  };
+
+  vkCreateSampler(device, &sampler_create_info, nullptr, &image->sampler);
 }
 
 void blu::core::Image::ImageLayoutTransition(

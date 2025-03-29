@@ -4,8 +4,10 @@
 
 namespace blu::core {
 Device::Device(const blu::core::Instance* instance,
+               VkPhysicalDeviceFeatures physical_device_requested_features_,
                const eastl::vector<const char*>& requested_features,
                void* p_next) {
+  physical_device_enabled_features_ = physical_device_requested_features_;
   uint32_t gpu_count;
 
   VK_CHECK_RESULT(
@@ -35,10 +37,10 @@ Device::Device(const blu::core::Instance* instance,
 
   if (!physical_device_) {
     physical_device_ = physical_devices[0];
-    vkGetPhysicalDeviceProperties(physical_device_,
-                                  &physical_device_properties_);
-    vkGetPhysicalDeviceFeatures(physical_device_, &physical_device_features_);
   }
+
+  vkGetPhysicalDeviceProperties(physical_device_, &physical_device_properties_);
+  vkGetPhysicalDeviceFeatures(physical_device_, &physical_device_features_);
 
   vkGetPhysicalDeviceMemoryProperties(physical_device_,
                                       &physical_device_memory_properties_);
@@ -74,7 +76,7 @@ Device::Device(const blu::core::Instance* instance,
 
   eastl::vector<VkDeviceQueueCreateInfo> queue_create_infos;
 
-  const float defaultQueuePriority(0.0f);
+  const float default_queue_priority(0.0f);
 
   queue_family_indicies_.graphics = GetQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT);
   {
@@ -82,7 +84,7 @@ Device::Device(const blu::core::Instance* instance,
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = queue_family_indicies_.graphics,
         .queueCount = 1,
-        .pQueuePriorities = &defaultQueuePriority,
+        .pQueuePriorities = &default_queue_priority,
     };
     queue_create_infos.push_back(queue_info);
   }
@@ -95,7 +97,7 @@ Device::Device(const blu::core::Instance* instance,
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = queue_family_indicies_.compute,
         .queueCount = 1,
-        .pQueuePriorities = &defaultQueuePriority,
+        .pQueuePriorities = &default_queue_priority,
     };
     queue_create_infos.push_back(queue_info);
   }
@@ -109,7 +111,7 @@ Device::Device(const blu::core::Instance* instance,
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .queueFamilyIndex = queue_family_indicies_.transfer,
         .queueCount = 1,
-        .pQueuePriorities = &defaultQueuePriority,
+        .pQueuePriorities = &default_queue_priority,
     };
     queue_create_infos.push_back(queueInfo);
   }
@@ -124,15 +126,15 @@ Device::Device(const blu::core::Instance* instance,
       .pEnabledFeatures = &physical_device_enabled_features_,
   };
 
-  VkPhysicalDeviceFeatures2 physicalDeviceFeatures2;
+  VkPhysicalDeviceFeatures2 physical_device_features2;
   if (p_next) {
-    physicalDeviceFeatures2 = {
+    physical_device_features2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = p_next,
-        .features = physical_device_features_,
+        .features = physical_device_enabled_features_,
     };
     device_ci.pEnabledFeatures = nullptr;
-    device_ci.pNext = &physicalDeviceFeatures2;
+    device_ci.pNext = &physical_device_features2;
   }
 
   if (!device_extensions.empty()) {

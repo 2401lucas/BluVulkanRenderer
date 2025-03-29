@@ -13,11 +13,15 @@ namespace blu::core {
 class Device {
  public:
   Device(const blu::core::Instance* instance,
+         VkPhysicalDeviceFeatures physical_device_requested_features_,
          const eastl::vector<const char*>& requested_features, void* p_next);
   ~Device();
 
   VkPhysicalDevice GetPhysicalDevice() const { return physical_device_; }
   VkDevice GetLogicalDevice() const { return device_; }
+  VkPhysicalDeviceProperties GetDeviceProperties() const {
+    return physical_device_properties_;
+  }
 
   struct {
     VkQueue graphics{VK_NULL_HANDLE};

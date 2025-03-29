@@ -5,6 +5,9 @@
 #include "../External/FileManager.h"
 #include "Vulkan/Tools.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "../External/stb_image.h"
+
 ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
   window_ = window;
   // VkInstance Creation
@@ -18,6 +21,13 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
   }
   // VkDevice Creation
   {
+    VkPhysicalDeviceFeatures physical_device_requested_features_{
+        .multiDrawIndirect = VK_TRUE,
+        .wideLines = VK_TRUE,
+        .samplerAnisotropy = VK_TRUE,
+        .shaderInt64 = VK_TRUE,
+    };
+
     eastl::vector<const char*> device_extensions = {
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
@@ -30,7 +40,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
         .dynamicRendering = VK_TRUE,
     };
-    void* pNextChain = &dynamic_rendering;
+    void* p_next_chain = &dynamic_rendering;
 
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing{
         .sType =
@@ -53,7 +63,9 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
     };
     buffer_device_address.pNext = &device_sync;
 
-    device_ = new blu::core::Device(instance_, device_extensions, pNextChain);
+    device_ =
+        new blu::core::Device(instance_, physical_device_requested_features_,
+                              device_extensions, p_next_chain);
   }
   // VkSwapchain Creation
   {
@@ -109,17 +121,16 @@ ForwardRenderer::~ForwardRenderer() {
   matrices_buffer_->Destroy(allocator_);
   delete matrices_buffer_;
 
-  for (auto& buf : vertex_buffers_) {
-    buf->Destroy(allocator_);
-    delete buf;
-  }
-  for (auto& buf : index_buffers_) {
-    buf->Destroy(allocator_);
-    delete buf;
-  }
-  for (auto& buf : normal_buffers_) {
-    buf->Destroy(allocator_);
-    delete buf;
+  vertex_buffer_->Destroy(allocator_);
+  delete vertex_buffer_;
+  normal_buffer_->Destroy(allocator_);
+  delete normal_buffer_;
+  index_buffer_->Destroy(allocator_);
+  delete index_buffer_;
+
+  for (auto& tex : textures) {
+    tex->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete tex;
   }
   for (auto& buf : dcg_input_model_data_) {
     buf->Destroy(allocator_);
@@ -157,48 +168,130 @@ ForwardRenderer::~ForwardRenderer() {
   delete instance_;
 }
 
-// For now each model will get it's own buffer, eventually this will be replaced
-// to use large, shared buffers
 // For now- NOT ASYNC
 int ForwardRenderer::LoadModel(eastl::string filepath) {
   if (loaded_model_indices_.find(filepath) != loaded_model_indices_.end()) {
     return loaded_model_indices_[filepath];
   }
   uint32_t model_index = loaded_models_.size();
-  auto new_model = blu::core::components::Model(filepath);
+  ModelIndices model_index_data{};
+  // Texturing Data
+  {
+    // PBR MATERIAL
+    if (blu::core::file::DoesFileExist(filepath + "_BaseColor.png") &&
+        blu::core::file::DoesFileExist(filepath + "_MetallicRoughness.png")) {
+      model_index_data.material_type = METALLIC_ROUGHNESS;
+      model_index_data.main_tex_id = LoadImage(filepath + "_BaseColor.png");
+      model_index_data.secondary_tex_id =
+          LoadImage(filepath + "_MetallicRoughness.png");
+      model_index_data.tertiary_tex_id = -1;
+    }
+  }
 
-  if (new_model.GetVertexData() == nullptr) {
+  // Model Data
+  {
+    auto new_model = blu::core::components::Model(filepath + ".glTF");
+
+    if (new_model.GetVertexData() == nullptr) {
+      return -1;
+    }
+
+    loaded_models_.push_back(new_model);
+    auto& model = loaded_models_[model_index];
+    loaded_model_indices_[filepath] = model_index;
+
+    VkCommandBufferAllocateInfo alloc_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = transfer_command_pools[frame_index_],
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer copy_cmd_buf;
+    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
+                             &copy_cmd_buf);
+
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
+
+    model.GetVertexCount();
+
+    blu::core::Buffer* vert_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, vertex_buffer_,
+        vertex_buffer_offset_, copy_cmd_buf, model.GetVertexData(),
+        model.GetVertexDataSize(), 0, vert_staging_buffer);
+    blu::core::Buffer* normal_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, normal_buffer_,
+        normal_buffer_offset_, copy_cmd_buf, model.GetNormalData(),
+        model.GetNormalDataSize(), 0, normal_staging_buffer);
+    blu::core::Buffer* index_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, index_buffer_,
+        index_buffer_offset_, copy_cmd_buf, model.GetIndexData(),
+        model.GetIndexDataSize(), 0, index_staging_buffer);
+
+    vkEndCommandBuffer(copy_cmd_buf);
+
+    VkSubmitInfo submitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &copy_cmd_buf,
+    };
+
+    vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
+
+    model_index_data.vert_offset = vertex_buffer_offset_;
+    model_index_data.ind_count = loaded_models_[model_index].GetIndexCount();
+    model_index_data.ind_offset = index_buffer_offset_;
+
+    vertex_buffer_offset_ +=
+        sizeof(float) * 3 * loaded_models_[model_index].GetVertexCount();
+    index_buffer_offset_ +=
+        sizeof(uint32_t) * loaded_models_[model_index].GetIndexCount();
+
+    // TODO: REMOVE
+    vkDeviceWaitIdle(device_->GetLogicalDevice());
+
+    vkFreeCommandBuffers(device_->GetLogicalDevice(),
+                         transfer_command_pools[frame_index_], 1,
+                         &copy_cmd_buf);
+
+    vert_staging_buffer->Destroy(allocator_);
+    delete vert_staging_buffer;
+    normal_staging_buffer->Destroy(allocator_);
+    delete normal_staging_buffer;
+    index_staging_buffer->Destroy(allocator_);
+    delete index_staging_buffer;
+  }
+
+  model_indices_.push_back(model_index_data);
+
+  return model_index;
+}
+
+// TODO: Support More Image Compositions / Filetypes (At LoadImage Call, maybe
+// make it file ending agnostic?)
+int ForwardRenderer::LoadImage(eastl::string filepath) {
+  if (loaded_texture_indices_.find(filepath) != loaded_texture_indices_.end()) {
+    return loaded_texture_indices_[filepath];
+  }
+
+  int width, height, channels;
+  unsigned char* image_data =
+      stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+  if (!image_data) {
+    std::cerr << "Failed to load image!" << std::endl;
     return -1;
   }
 
-  loaded_models_.push_back(new_model);
-  auto& model = loaded_models_[model_index];
-  loaded_model_indices_[filepath] = model_index;
-
-  blu::core::Buffer* vertex_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, model.GetVertexDataSize(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  blu::core::Buffer* index_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, model.GetIndexDataSize(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  blu::core::Buffer* normal_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, model.GetNormalDataSize(),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
   VkCommandBufferAllocateInfo alloc_info{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .commandPool = transfer_command_pools[frame_index_],
+      .commandPool = graphics_command_pools_[frame_index_],
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
       .commandBufferCount = 1,
   };
@@ -213,34 +306,22 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
   };
   vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
 
-  blu::core::Buffer* vert_staging_buffer;
-  blu::core::Buffer::UploadToBuffer(
-      device_->GetLogicalDevice(), allocator_, vertex_buffer_, 0, copy_cmd_buf,
-      model.GetVertexData(), model.GetVertexDataSize(), 0, vert_staging_buffer);
-  blu::core::Buffer* normal_staging_buffer;
-  blu::core::Buffer::UploadToBuffer(
-      device_->GetLogicalDevice(), allocator_, normal_buffer_, 0, copy_cmd_buf,
-      model.GetNormalData(), model.GetNormalDataSize(), 0,
-      normal_staging_buffer);
-  blu::core::Buffer* index_staging_buffer;
-  blu::core::Buffer::UploadToBuffer(
-      device_->GetLogicalDevice(), allocator_, index_buffer_, 0, copy_cmd_buf,
-      model.GetIndexData(), model.GetIndexDataSize(), 0, index_staging_buffer);
+  blu::core::Buffer* img_staging_buffer;
+  auto new_image = blu::core::Image::CreateImage(
+      device_->GetLogicalDevice(), allocator_, copy_cmd_buf,
+      device_->queue_family_indicies_.graphics,
+      device_->queue_family_indicies_.graphics, COLOR_FORMAT, width, height, 1,
+      VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image_data, img_staging_buffer);
 
-  model_indices_.push_back({
-      //.pipeline_index = 0,
-      //.vert_count = model.GetVertexCount(),
-      .vert_offset = 0,
-      .ind_count = model.GetIndexCount(),
-      .ind_offset = 0,
-      //.mesh_vert_buf_index = static_cast<uint32_t>(vertex_buffers_.size()),
-      //.mesh_norm_buf_index = static_cast<uint32_t>(normal_buffers_.size()),
-      //.mesh_ind_buf_index = static_cast<uint32_t>(index_buffers_.size()),
-  });
-
-  vertex_buffers_.push_back(vertex_buffer_);
-  normal_buffers_.push_back(normal_buffer_);
-  index_buffers_.push_back(index_buffer_);
+  VkImageSubresourceRange img_range{
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = VK_REMAINING_MIP_LEVELS,
+      .baseArrayLayer = 0,
+      .layerCount = VK_REMAINING_ARRAY_LAYERS,
+  };
 
   vkEndCommandBuffer(copy_cmd_buf);
 
@@ -250,18 +331,29 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
       .pCommandBuffers = &copy_cmd_buf,
   };
 
-  vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
+  VK_CHECK_RESULT(
+      vkQueueSubmit(device_->queues.graphics, 1, &submitInfo, VK_NULL_HANDLE));
 
   // TODO: REMOVE
   vkDeviceWaitIdle(device_->GetLogicalDevice());
-  vert_staging_buffer->Destroy(allocator_);
-  delete vert_staging_buffer;
-  normal_staging_buffer->Destroy(allocator_);
-  delete normal_staging_buffer;
-  index_staging_buffer->Destroy(allocator_);
-  delete index_staging_buffer;
 
-  return model_index;
+  blu::core::Image::CreateImageView(device_->GetLogicalDevice(), new_image,
+                                    COLOR_FORMAT, img_range);
+  blu::core::Image::CreateImageSampler(
+      device_->GetLogicalDevice(), device_->GetDeviceProperties(), new_image);
+
+  vkFreeCommandBuffers(device_->GetLogicalDevice(),
+                       graphics_command_pools_[frame_index_], 1, &copy_cmd_buf);
+  img_staging_buffer->Destroy(allocator_);
+  delete img_staging_buffer;
+
+  free(image_data);
+
+  auto index = textures.size();
+
+  loaded_texture_indices_[filepath] = index;
+  textures.push_back(new_image);
+  return index;
 }
 
 void ForwardRenderer::Prepare() {
@@ -441,6 +533,27 @@ void ForwardRenderer::Prepare() {
     memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
            buffer_infos_.size() * sizeof(BufferInfo));
   }
+
+  vertex_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, sizeof(Vertex) * MAX_VERTICES,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  normal_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, sizeof(Vertex) * MAX_VERTICES,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  index_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_INDICES,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   // DCG Buffer Creation
   {
@@ -641,6 +754,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   // DCG_COMMAND_GEN
   {
     // Update Model Buffers
+    // Does not need to happen every frame, only on update
     memcpy(dcg_input_model_data_[frame_index_]->mapped_data,
            model_indices_.data(), model_indices_.size() * sizeof(ModelIndices));
 
@@ -670,7 +784,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
             BufferInfo(dcg_input_models_[frame_index_]->device_address, 0, 0),
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
-        .draw_count = static_cast<uint32_t>(render_data.matrices.size() - 3),
+        .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
     };
 
     vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
@@ -681,8 +795,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
     //  Heavy parallel work is better on smaller worksizes
     //  Memory heavy accesses can work better on larger workgroup sizes
 
-    uint32_t workgroupSizeX = 16;
-    uint32_t workgroupSizeY = 16;
+    uint32_t workgroupSizeX = 32;
+    uint32_t workgroupSizeY = 32;
     uint32_t workgroupSizeZ = 1;
 
     vkCmdDispatch(dcg_command, workgroupSizeX, workgroupSizeY, workgroupSizeZ);
@@ -701,12 +815,6 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
         vkQueueSubmit(device_->queues.compute, 1, &draw_info, nullptr));
   }
 
-  // Update Data
-  {
-    memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
-           render_data.matrices.size() * sizeof(glm::mat4));
-  }
-
   // Render
   {
     auto swapchain_buf = swapchain_->GetSwapchainBuffer(image_index_);
@@ -714,6 +822,9 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
     auto height = swapchain_->GetHeight();
     // Graphics Queue
     {
+      memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
+             render_data.matrices.size() * sizeof(glm::mat4));
+
       VkCommandBuffer draw_cmd_buffer = draw_command_buffers[frame_index_];
       vkResetCommandBuffer(draw_cmd_buffer, 0);
 
@@ -816,9 +927,9 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
                               *cube_pipeline_->GetPipelineLayout(), 0, 1,
                               &buffer_infos_descriptor_set_->set, 0, nullptr);
 
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffers_[0]->buffer,
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
                              offsets);
-      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffers_[0]->buffer, 0,
+      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
                            VK_INDEX_TYPE_UINT32);
 
       vkCmdDrawIndexedIndirect(
@@ -891,7 +1002,7 @@ void ForwardRenderer::OnResize() {
   delete depth_stencil_image_;
 
   swapchain_->Create(false, false);
-  
+
   depth_stencil_image_ = blu::core::Image::CreateImage(
       device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT,
       swapchain_->GetWidth(), swapchain_->GetHeight(), 1, VK_SAMPLE_COUNT_1_BIT,
