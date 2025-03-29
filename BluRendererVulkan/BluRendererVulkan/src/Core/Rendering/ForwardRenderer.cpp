@@ -521,7 +521,7 @@ void ForwardRenderer::Prepare() {
                            nullptr);
   }
 
-  // Matrix Buffer Creation
+  // Buffer Creation
   {
     matrices_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
@@ -539,38 +539,38 @@ void ForwardRenderer::Prepare() {
 
     memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
            buffer_infos_.size() * sizeof(BufferInfo));
+
+    vertex_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(Vertex::pos) * MAX_VERTICES,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    normal_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(Vertex::norm) * MAX_VERTICES,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    index_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_INDICES,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    uv_buffer_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(Vertex::uv) * MAX_VERTICES,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
   }
-
-  vertex_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(Vertex::pos) * MAX_VERTICES,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  normal_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(Vertex::norm) * MAX_VERTICES,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  index_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_INDICES,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  uv_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(Vertex::uv) * MAX_VERTICES,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   // DCG Buffer Creation
   {
@@ -677,7 +677,7 @@ void ForwardRenderer::Prepare() {
         .input_assembly_primitive_restart_enable = VK_FALSE,
         .rasteriazation_flags = 0,
         .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
-        .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
+        .rasteriazation_state_cull_mode = VK_CULL_MODE_BACK_BIT,
         .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .color_blend_attachment_states = {{
             .blendEnable = VK_FALSE,
