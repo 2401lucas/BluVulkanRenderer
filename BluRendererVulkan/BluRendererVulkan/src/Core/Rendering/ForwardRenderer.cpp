@@ -697,13 +697,15 @@ void ForwardRenderer::Prepare() {
                                   VK_DYNAMIC_STATE_SCISSOR},
         .vertex_input_bindings =
             {
-                {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
-                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+                {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // POS
+                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // NORM
+                {2, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // UV
             },
         .vertex_input_attributes =
             {
-                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
+                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
+                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
+                {2, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
             },
         .color_attachment_formats = {swapchain_->GetColorFormat()},
         .depth_format = DEPTH_FORMAT,
@@ -946,8 +948,11 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
       vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
                              offsets);
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &uv_buffer_->buffer,
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &normal_buffer_->buffer,
                              offsets);
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 2, 1, &uv_buffer_->buffer,
+                             offsets);
+
       vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
                            VK_INDEX_TYPE_UINT32);
 
