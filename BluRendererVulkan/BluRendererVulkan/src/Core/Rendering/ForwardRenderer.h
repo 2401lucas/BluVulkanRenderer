@@ -43,7 +43,8 @@ struct BufferInfo {
 
 struct Vertex {
   glm::vec3 pos;
-  // eastl::array<float, 2> uv;
+  glm::vec3 norm;
+  glm::vec3 uv;
 };
 
 // Contains all draw related data
@@ -147,6 +148,8 @@ class ForwardRenderer {
   uint32_t normal_buffer_offset_ = 0;
   blu::core::Buffer* index_buffer_;
   uint32_t index_buffer_offset_ = 0;
+  blu::core::Buffer* uv_buffer_;
+  uint32_t uv_buffer_offset_ = 0;
 
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;

@@ -6,6 +6,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 
 layout (location = 0) in vec3 inPos;
+layout (location = 1) in vec3 inUV;
 
 struct BufferInfo {
   uint64_t address;
@@ -26,9 +27,12 @@ layout (set = 0, binding = 0) buffer BufferAddresses{
 } bufferAddresses;
 
 layout (location = 0) out vec3 outPos;
+layout (location = 1) out vec3 outUV;
 
 void main() {
   MatrixBuffer matBuf = MatrixBuffer(bufferAddresses.bufferPointers[0].address);
+
+  outUV = inUV;
 
   vec4 locPos = matBuf.matrices[3 + gl_InstanceIndex] * vec4(inPos, 1.0f);
   outPos = locPos.xyz / locPos.w;

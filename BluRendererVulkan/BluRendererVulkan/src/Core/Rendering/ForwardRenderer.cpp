@@ -217,8 +217,6 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
     };
     vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
 
-    model.GetVertexCount();
-
     blu::core::Buffer* vert_staging_buffer;
     blu::core::Buffer::UploadToBuffer(
         device_->GetLogicalDevice(), allocator_, vertex_buffer_,
@@ -234,6 +232,11 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
         device_->GetLogicalDevice(), allocator_, index_buffer_,
         index_buffer_offset_, copy_cmd_buf, model.GetIndexData(),
         model.GetIndexDataSize(), 0, index_staging_buffer);
+    blu::core::Buffer* uv_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, uv_buffer_, uv_buffer_offset_,
+        copy_cmd_buf, model.GetUVData(), model.GetUVDataSize(), 0,
+        uv_staging_buffer);
 
     vkEndCommandBuffer(copy_cmd_buf);
 
@@ -246,13 +249,13 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
     vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
 
     model_index_data.vert_offset = vertex_buffer_offset_;
-    model_index_data.ind_count = loaded_models_[model_index].GetIndexCount();
+    model_index_data.ind_count = model.GetIndexCount();
     model_index_data.ind_offset = index_buffer_offset_;
 
-    vertex_buffer_offset_ +=
-        sizeof(float) * 3 * loaded_models_[model_index].GetVertexCount();
-    index_buffer_offset_ +=
-        sizeof(uint32_t) * loaded_models_[model_index].GetIndexCount();
+    vertex_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
+    normal_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
+    index_buffer_offset_ += sizeof(uint32_t) * model.GetIndexCount();
+    uv_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
 
     // TODO: REMOVE
     vkDeviceWaitIdle(device_->GetLogicalDevice());
@@ -535,14 +538,16 @@ void ForwardRenderer::Prepare() {
   }
 
   vertex_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, sizeof(Vertex) * MAX_VERTICES,
+      device_->GetLogicalDevice(), allocator_,
+      sizeof(Vertex::pos) * MAX_VERTICES,
       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   normal_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_, sizeof(Vertex) * MAX_VERTICES,
+      device_->GetLogicalDevice(), allocator_,
+      sizeof(Vertex::norm) * MAX_VERTICES,
       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
@@ -553,6 +558,14 @@ void ForwardRenderer::Prepare() {
       VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
           VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
           VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  uv_buffer_ = blu::core::Buffer::CreateBuffer(
+      device_->GetLogicalDevice(), allocator_,
+      sizeof(Vertex::uv) * MAX_VERTICES,
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
   // DCG Buffer Creation
@@ -681,12 +694,12 @@ void ForwardRenderer::Prepare() {
         .vertex_input_bindings =
             {
                 {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
-                //{1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
+                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},
             },
         .vertex_input_attributes =
             {
                 {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-                //{1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
+                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},
             },
         .color_attachment_formats = {swapchain_->GetColorFormat()},
         .depth_format = DEPTH_FORMAT,
@@ -928,6 +941,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
                               &buffer_infos_descriptor_set_->set, 0, nullptr);
 
       vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
+                             offsets);
+      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &uv_buffer_->buffer,
                              offsets);
       vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
                            VK_INDEX_TYPE_UINT32);

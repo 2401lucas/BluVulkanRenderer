@@ -20,6 +20,8 @@ class Model {
   uint32_t GetIndexDataSize() { return index_data_size_; }
   void* GetNormalData() { return normal_data_; }
   uint32_t GetNormalDataSize() { return normal_data_size_; }
+  void* GetUVData() { return uv_data_; }
+  uint32_t GetUVDataSize() { return uv_data_size_; }
 
   uint32_t GetVertexCount() { return vertex_count_; }
   uint32_t GetIndexCount() { return index_count_; }
@@ -36,9 +38,8 @@ class Model {
   uint32_t index_data_size_ = 0;
   char* normal_data_ = nullptr;
   uint32_t normal_data_size_ = 0;
-  // One Model can have several Mesh
-  // Each mesh only has 1 material
-  // Draws will take 2 calls but
+  char* uv_data_ = nullptr;
+  uint32_t uv_data_size_ = 0;
 };
 }  // namespace blu::core::components
 

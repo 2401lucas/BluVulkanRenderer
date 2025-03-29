@@ -48,6 +48,12 @@ blu::core::components::Model::Model(eastl::string filepath) {
       normal_data_ = new char[normal_data_size_];
       memcpy(normal_data_, mesh->mNormals, normal_data_size_);
     }
+    //TODO: SUPPORT MUTLIPLE UV COORDS
+    if (mesh->HasTextureCoords(0)) {
+      uv_data_size_ = sizeof(float) * 3 * mesh->mNumVertices;
+      uv_data_ = new char[uv_data_size_];
+      memcpy(uv_data_, mesh->mTextureCoords[0], uv_data_size_);
+    }
   }
 
   return;
@@ -57,4 +63,5 @@ void blu::core::components::Model::Delete() {
   delete vertex_data_;
   delete index_data_;
   delete normal_data_;
+  delete uv_data_;
 }
