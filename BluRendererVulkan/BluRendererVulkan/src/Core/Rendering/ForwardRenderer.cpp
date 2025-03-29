@@ -127,6 +127,8 @@ ForwardRenderer::~ForwardRenderer() {
   delete normal_buffer_;
   index_buffer_->Destroy(allocator_);
   delete index_buffer_;
+  uv_buffer_->Destroy(allocator_);
+  delete uv_buffer_;
 
   for (auto& tex : textures) {
     tex->Destroy(device_->GetLogicalDevice(), allocator_);
@@ -270,6 +272,8 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
     delete normal_staging_buffer;
     index_staging_buffer->Destroy(allocator_);
     delete index_staging_buffer;
+    uv_staging_buffer->Destroy(allocator_);
+    delete uv_staging_buffer;
   }
 
   model_indices_.push_back(model_index_data);
