@@ -884,7 +884,6 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
     // NVIDIA warp size is 32, AMD is 64
     //  Heavy parallel work is better on smaller worksizes
     //  Memory heavy accesses can work better on larger workgroup sizes
-
     uint32_t workgroupSizeX = 32;
     uint32_t workgroupSizeY = 32;
     uint32_t workgroupSizeZ = 1;
@@ -943,12 +942,10 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
           .layerCount = 1,
       };
 
-      // Clears & prepares Image memory
       blu::core::Image::ImageLayoutTransition(
           draw_cmd_buffer, swapchain_buf.image, VK_IMAGE_LAYOUT_UNDEFINED,
           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
-      // Clears & prepares Image memory
       blu::core::Image::ImageLayoutTransition(
           draw_cmd_buffer, depth_stencil_image_->image,
           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
