@@ -21,7 +21,7 @@ struct VkDrawIndexedIndirectCommand
 
 struct ModelInfo
 {
-	uint vert_offset;
+	int vert_offset;
 	uint ind_count;
 	uint ind_offset;
 	uint material_type;

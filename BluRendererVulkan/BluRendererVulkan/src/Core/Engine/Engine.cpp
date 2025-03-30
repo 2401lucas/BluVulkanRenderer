@@ -23,7 +23,7 @@ Engine::~Engine() {
 
 void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
   camera_ = new components::Camera(
-      new components::Transform(glm::vec3(0, 0, -5), glm::vec3(0, 0, 0),
+      new components::Transform(true, glm::vec3(0, 0, -5), glm::vec3(0, 0, 0),
                                 glm::vec3(1, 1, 1)),
       window_->GetAspectRatio(), 45, 1, 500);
 
@@ -31,22 +31,31 @@ void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
-              components::Transform(glm::vec3(0, 0, 0), glm::vec3(45, 45, 0),
+              components::Transform(false, glm::vec3(0, 0, 0), glm::vec3(45, 45, 0),
                                     glm::vec3(0.5, 0.5, 0.5))));
   }
   model_index = rndr->LoadModel("assets/Cube/cube");
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
-              components::Transform(glm::vec3(-1, 1.5, 0), glm::vec3(0, 0, 0),
+              components::Transform(false, glm::vec3(-1, 1.5, 0),
+                                    glm::vec3(0, 0, 0),
                                     glm::vec3(1, 1, 1))));
   }
   model_index = rndr->LoadModel("assets/Cube/cube");
   if (model_index >= 0) {
     models_.push_back(
         Model(model_index,
-              components::Transform(glm::vec3(0, 3, 1), glm::vec3(0, 0, 0),
+              components::Transform(false, glm::vec3(0, 3, 1),
+                                    glm::vec3(0, 0, 0),
                                     glm::vec3(1, 1, 1))));
+  }
+  model_index = rndr->LoadModel("assets/Avocado/avocado");
+  if (model_index >= 0) {
+    models_.push_back(
+        Model(model_index,
+        components::Transform(false, glm::vec3(5, 0, 0), glm::vec3(0, 180, 0),
+                                    glm::vec3(100, 100, 100))));
   }
 }
 

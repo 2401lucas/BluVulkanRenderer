@@ -2,13 +2,14 @@
 #define TRANSFORM_H
 
 #include <glm/matrix.hpp>
-#include <glm/vec3.hpp>
 #include <glm/trigonometric.hpp>
+#include <glm/vec3.hpp>
 
 namespace blu::core::components {
 class Transform {
  public:
-  Transform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale);
+  Transform(bool isCamera, glm::vec3 position, glm::vec3 rotation,
+            glm::vec3 scale);
 
   glm::vec3 GetPosition() const { return position_; }
   void SetPosition(glm::vec3 new_value) {
@@ -58,6 +59,7 @@ class Transform {
  private:
   void CalculateTransformMat();
 
+  bool isCamera_ = false;
   bool transform_mat_updated_ = false;
   glm::mat4 transform_mat_;
 

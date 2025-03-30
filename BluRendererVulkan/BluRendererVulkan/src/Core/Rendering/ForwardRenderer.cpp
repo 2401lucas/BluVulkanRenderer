@@ -225,23 +225,26 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
     blu::core::Buffer* vert_staging_buffer;
     blu::core::Buffer::UploadToBuffer(
         device_->GetLogicalDevice(), allocator_, vertex_buffer_,
-        vertex_buffer_offset_, copy_cmd_buf, model.GetVertexData(),
-        model.GetVertexDataSize(), 0, vert_staging_buffer);
+        sizeof(float) * 3 * vertex_buffer_offset_, copy_cmd_buf,
+        model.GetVertexData(), model.GetVertexDataSize(), 0,
+        vert_staging_buffer);
     blu::core::Buffer* normal_staging_buffer;
     blu::core::Buffer::UploadToBuffer(
         device_->GetLogicalDevice(), allocator_, normal_buffer_,
-        normal_buffer_offset_, copy_cmd_buf, model.GetNormalData(),
-        model.GetNormalDataSize(), 0, normal_staging_buffer);
+        sizeof(float) * 3 * normal_buffer_offset_, copy_cmd_buf,
+        model.GetNormalData(), model.GetNormalDataSize(), 0,
+        normal_staging_buffer);
     blu::core::Buffer* index_staging_buffer;
     blu::core::Buffer::UploadToBuffer(
         device_->GetLogicalDevice(), allocator_, index_buffer_,
-        index_buffer_offset_, copy_cmd_buf, model.GetIndexData(),
-        model.GetIndexDataSize(), 0, index_staging_buffer);
+        sizeof(uint32_t) * index_buffer_offset_, copy_cmd_buf,
+        model.GetIndexData(), model.GetIndexDataSize(), 0,
+        index_staging_buffer);
     blu::core::Buffer* uv_staging_buffer;
     blu::core::Buffer::UploadToBuffer(
-        device_->GetLogicalDevice(), allocator_, uv_buffer_, uv_buffer_offset_,
-        copy_cmd_buf, model.GetUVData(), model.GetUVDataSize(), 0,
-        uv_staging_buffer);
+        device_->GetLogicalDevice(), allocator_, uv_buffer_,
+        sizeof(float) * 3 * uv_buffer_offset_, copy_cmd_buf, model.GetUVData(),
+        model.GetUVDataSize(), 0, uv_staging_buffer);
 
     vkEndCommandBuffer(copy_cmd_buf);
 
@@ -257,10 +260,10 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
     model_index_data.ind_count = model.GetIndexCount();
     model_index_data.ind_offset = index_buffer_offset_;
 
-    vertex_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
-    normal_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
-    index_buffer_offset_ += sizeof(uint32_t) * model.GetIndexCount();
-    uv_buffer_offset_ += sizeof(float) * 3 * model.GetVertexCount();
+    vertex_buffer_offset_ += model.GetVertexCount();
+    normal_buffer_offset_ += model.GetVertexCount();
+    index_buffer_offset_ += model.GetIndexCount();
+    uv_buffer_offset_ += model.GetVertexCount();
 
     // TODO: REMOVE
     vkDeviceWaitIdle(device_->GetLogicalDevice());
