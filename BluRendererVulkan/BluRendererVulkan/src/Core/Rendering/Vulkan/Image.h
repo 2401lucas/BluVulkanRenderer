@@ -14,7 +14,7 @@ class Image {
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
   VmaAllocation alloc = VK_NULL_HANDLE;
-  VkDeviceSize size;
+  VkDeviceSize size = 0;
   VkDeviceSize offset = 0;
   // Optional
   VkMemoryRequirements memReqs;

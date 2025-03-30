@@ -45,6 +45,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
     VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
+        .descriptorBindingPartiallyBound = VK_TRUE,
         .runtimeDescriptorArray = VK_TRUE,
     };
     dynamic_rendering.pNext = &descriptor_indexing;
@@ -110,7 +111,7 @@ ForwardRenderer::~ForwardRenderer() {
     vkDestroyFence(device_->GetLogicalDevice(), in_flight_fences_[i], nullptr);
   }
 
-  vkDestroyDescriptorPool(device_->GetLogicalDevice(), descriptor_pool_,
+  vkDestroyDescriptorPool(device_->GetLogicalDevice(), render_descriptor_pool_,
                           nullptr);
   depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
   delete depth_stencil_image_;
@@ -118,6 +119,8 @@ ForwardRenderer::~ForwardRenderer() {
   delete buffer_infos_buffer_;
   buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
   delete buffer_infos_descriptor_set_;
+  textures_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete textures_descriptor_set_;
   matrices_buffer_->Destroy(allocator_);
   delete matrices_buffer_;
 
@@ -356,8 +359,26 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
 
   free(image_data);
 
-  auto index = textures.size();
+  VkDescriptorImageInfo image_info = {
+      .sampler = new_image->sampler,
+      .imageView = new_image->view,
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
 
+  VkWriteDescriptorSet write_descriptor_set = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = textures_descriptor_set_->set,
+      .dstBinding = 0,
+      .dstArrayElement = static_cast<uint32_t>(textures.size()),
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .pImageInfo = &image_info,
+  };
+
+  vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write_descriptor_set,
+                         0, nullptr);
+
+  auto index = textures.size();
   loaded_texture_indices_[filepath] = index;
   textures.push_back(new_image);
   return index;
@@ -422,19 +443,20 @@ void ForwardRenderer::Prepare() {
     // Device Pointers
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_TEXTURES},
     };
 
     VkDescriptorPoolCreateInfo descriptor_pool_create{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = 0,
-        .maxSets = 1,
+        .maxSets = 2,
         .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
 
     VK_CHECK_RESULT(vkCreateDescriptorPool(device_->GetLogicalDevice(),
                                            &descriptor_pool_create, nullptr,
-                                           &descriptor_pool_));
+                                           &render_descriptor_pool_));
   }
 
   // Depth Stencil Creation
@@ -492,7 +514,7 @@ void ForwardRenderer::Prepare() {
 
     VkDescriptorSetAllocateInfo descriptor_alloc_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool_,
+        .descriptorPool = render_descriptor_pool_,
         .descriptorSetCount = 1,
         .pSetLayouts = &buffer_infos_descriptor_set_->layout,
     };
@@ -519,6 +541,48 @@ void ForwardRenderer::Prepare() {
 
     vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &descriptor_write, 0,
                            nullptr);
+  }
+
+  // Model Textures
+  {
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = MAX_TEXTURES,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    eastl::array<VkDescriptorBindingFlags, 1> flags{
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT};
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo layout_info_flags{
+        .sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+        .bindingCount = static_cast<uint32_t>(flags.size()),
+        .pBindingFlags = flags.data(),
+    };
+
+    // Create descriptor set layout
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = &layout_info_flags,
+        .bindingCount = 1,
+        .pBindings = &binding,
+    };
+    textures_descriptor_set_ = new blu::core::DescriptorSet();
+    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
+                                nullptr, &textures_descriptor_set_->layout);
+
+    VkDescriptorSetAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = render_descriptor_pool_,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &textures_descriptor_set_->layout,
+    };
+
+    vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
+                             &textures_descriptor_set_->set);
   }
 
   // Buffer Creation
@@ -671,7 +735,11 @@ void ForwardRenderer::Prepare() {
         device_, triangle_pipeline_create_info);
 
     blu::core::rendering::GraphicsPipelineCreateInfo cube_pipeline_create_info{
-        .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
+        .descriptor_set_layouts =
+            {
+                buffer_infos_descriptor_set_->layout,
+                textures_descriptor_set_->layout,
+            },
         .input_assembly_flags = 0,
         .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .input_assembly_primitive_restart_enable = VK_FALSE,
@@ -705,7 +773,7 @@ void ForwardRenderer::Prepare() {
             {
                 {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
                 {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
-                {2, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
+                {2, 2, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
             },
         .color_attachment_formats = {swapchain_->GetColorFormat()},
         .depth_format = DEPTH_FORMAT,
@@ -941,10 +1009,15 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
       vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         *cube_pipeline_->GetPipeline());
+      eastl::array<VkDescriptorSet, 2> descriptor_sets{
+          buffer_infos_descriptor_set_->set,
+          textures_descriptor_set_->set,
+      };
 
       vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              *cube_pipeline_->GetPipelineLayout(), 0, 1,
-                              &buffer_infos_descriptor_set_->set, 0, nullptr);
+                              *cube_pipeline_->GetPipelineLayout(), 0,
+                              descriptor_sets.size(), descriptor_sets.data(), 0,
+                              nullptr);
 
       vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
                              offsets);
@@ -958,7 +1031,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
       vkCmdDrawIndexedIndirect(
           draw_cmd_buffer, dcg_output_buffers_[frame_index_]->buffer, 0,
-          render_data.matrices.size() - 3, DRAW_COMMAND_BUFFER_SIZE);
+          render_data.model_ids.size(), DRAW_COMMAND_BUFFER_SIZE);
 
       vkCmdEndRendering(draw_cmd_buffer);
 

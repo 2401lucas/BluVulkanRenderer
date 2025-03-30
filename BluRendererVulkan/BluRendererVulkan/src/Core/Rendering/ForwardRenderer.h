@@ -98,7 +98,7 @@ class ForwardRenderer {
   void OnResize();
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
-                                                VkShaderStageFlagBits);
+                                             VkShaderStageFlagBits);
 
   blu::core::Window* window_;
 
@@ -112,35 +112,19 @@ class ForwardRenderer {
   uint32_t image_index_ = 0;
   eastl::vector<BufferInfo> buffer_infos_;
 
+  // MODEL INFO:
   eastl::hash_map<eastl::string, uint32_t> loaded_texture_indices_;
   eastl::hash_map<eastl::string, uint32_t> loaded_model_indices_;
   // Raw Data information
   eastl::vector<blu::core::components::Model> loaded_models_;
-
   eastl::vector<ModelIndices> model_indices_;
 
-  // Vulkan Render Data Resources
-  VkDescriptorPool descriptor_pool_;
+  // Vulkan Render Data
+  // Descriptor Resources
+  VkDescriptorPool render_descriptor_pool_;
 
-  eastl::vector<VkCommandPool> transfer_command_pools;
-  eastl::vector<VkCommandPool> graphics_command_pools_;
-  eastl::vector<VkCommandPool> compute_command_pools_;
-
-  eastl::vector<VkCommandBuffer> draw_command_buffers;
-  eastl::vector<VkCommandBuffer> dcg_buffers;
-
-  blu::core::Image* depth_stencil_image_;
-
-  eastl::vector<blu::core::Buffer*> dcg_input_model_data_;
-  eastl::vector<blu::core::Buffer*> dcg_input_models_;
-  eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
-
-  blu::core::Buffer* buffer_infos_buffer_;
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;
-
-  blu::core::Buffer* matrices_buffer_;
-
-  eastl::vector<blu::core::Image*> textures;
+  blu::core::Buffer* buffer_infos_buffer_;
 
   blu::core::Buffer* vertex_buffer_;
   uint32_t vertex_buffer_offset_ = 0;
@@ -151,8 +135,26 @@ class ForwardRenderer {
   blu::core::Buffer* uv_buffer_;
   uint32_t uv_buffer_offset_ = 0;
 
+  eastl::vector<blu::core::Buffer*> dcg_input_model_data_;
+  eastl::vector<blu::core::Buffer*> dcg_input_models_;
+  eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
+
+  blu::core::Buffer* matrices_buffer_;
+
+  blu::core::DescriptorSet* textures_descriptor_set_;
+  eastl::vector<blu::core::Image*> textures;
+
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;
+
+  eastl::vector<VkCommandPool> transfer_command_pools;
+  eastl::vector<VkCommandPool> graphics_command_pools_;
+  eastl::vector<VkCommandPool> compute_command_pools_;
+
+  eastl::vector<VkCommandBuffer> draw_command_buffers;
+  eastl::vector<VkCommandBuffer> dcg_buffers;
+
+  blu::core::Image* depth_stencil_image_;
 
   blu::core::rendering::Pipeline* dcg_pipeline_;
   blu::core::rendering::Pipeline* triangle_pipeline_;
