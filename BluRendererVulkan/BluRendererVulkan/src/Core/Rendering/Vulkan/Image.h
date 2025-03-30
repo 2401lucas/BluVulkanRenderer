@@ -16,6 +16,7 @@ class Image {
   VmaAllocation alloc = VK_NULL_HANDLE;
   VkDeviceSize size = 0;
   VkDeviceSize offset = 0;
+  uint32_t mip_levels;
   // Optional
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
@@ -31,10 +32,10 @@ class Image {
   static blu::core::Image* CreateImage(
       const VkDevice& device, const VmaAllocator& allocator, VkCommandBuffer,
       uint32_t src_queue, uint32_t dst_queue, VkFormat format, uint32_t width,
-      uint32_t height, uint32_t mip_levels, VkSampleCountFlagBits samples,
-      VkImageTiling tiling, VkImageUsageFlags usage,
-      VkMemoryPropertyFlags required_flags, unsigned char* data,
-      blu::core::Buffer*& stg_buffer, VmaAllocationCreateFlags flags = 0);
+      uint32_t height, VkSampleCountFlagBits samples, VkImageTiling tiling,
+      VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
+      unsigned char* data, uint32_t data_size, blu::core::Buffer*& stg_buffer,
+      VmaAllocationCreateFlags flags = 0);
 
   static void CreateImageView(
       const VkDevice& device, blu::core::Image* image, VkFormat format,

@@ -1,5 +1,7 @@
 #include "Image.h"
 
+#include <EASTL/memory.h>
+
 #include <cassert>
 
 #include "Tools.h"
@@ -50,9 +52,11 @@ blu::core::Image* blu::core::Image::CreateImage(
   };
 
   VmaAllocationInfo alloc_info;
-  vmaCreateImage(allocator, &image_create_info, &vma_create_info,
-                 &new_image->image, &new_image->alloc, &alloc_info);
+  VK_CHECK_RESULT(vmaCreateImage(allocator, &image_create_info,
+                                 &vma_create_info, &new_image->image,
+                                 &new_image->alloc, &alloc_info));
   new_image->size = alloc_info.size;
+  new_image->mip_levels = mip_levels;
 
   return new_image;
 }
@@ -60,19 +64,20 @@ blu::core::Image* blu::core::Image::CreateImage(
 blu::core::Image* blu::core::Image::CreateImage(
     const VkDevice& device, const VmaAllocator& allocator,
     VkCommandBuffer cmd_buf, uint32_t src_queue, uint32_t dst_queue,
-    VkFormat format, uint32_t width, uint32_t height, uint32_t mip_levels,
+    VkFormat format, uint32_t width, uint32_t height,
     VkSampleCountFlagBits samples, VkImageTiling tiling,
     VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
-    unsigned char* data, blu::core::Buffer*& stg_buffer,
+    unsigned char* data, uint32_t data_size, blu::core::Buffer*& stg_buffer,
     VmaAllocationCreateFlags flags) {
-  blu::core::Image* new_image =
-      CreateImage(device, allocator, format, width, height, mip_levels, samples,
-                  tiling, usage, required_flags, flags);
+  blu::core::Image* new_image = CreateImage(
+      device, allocator, format, width, height,
+      static_cast<uint32_t>(floor(log2(std::max(width, height))) + 1), samples,
+      tiling, usage, required_flags, flags);
 
   VkImageSubresourceRange img_range{
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
-      .levelCount = VK_REMAINING_MIP_LEVELS,
+      .levelCount = 1,
       .baseArrayLayer = 0,
       .layerCount = VK_REMAINING_ARRAY_LAYERS,
   };
@@ -87,9 +92,8 @@ blu::core::Image* blu::core::Image::CreateImage(
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
       VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-  memcpy(stg_buffer->mapped_data, data, new_image->size);
+  memcpy(stg_buffer->mapped_data, data, data_size);
 
-  // TODO: SETUP MIP MAP COMPATABILITY LOOP
   VkBufferImageCopy region{
       .bufferOffset = 0,
       .bufferRowLength = 0,
@@ -107,6 +111,43 @@ blu::core::Image* blu::core::Image::CreateImage(
 
   blu::core::Image::ImageLayoutTransition(
       cmd_buf, new_image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+      VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img_range, src_queue, dst_queue);
+
+  for (size_t i = 1; i < new_image->mip_levels; i++) {
+    VkImageBlit blit{
+        .srcSubresource{
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = static_cast<uint32_t>(i - 1),
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .srcOffsets{{0, 0, 0},
+                    {int32_t(width >> (i - 1)), int32_t(height >> (i - 1)), 1}},
+        .dstSubresource{
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .mipLevel = static_cast<uint32_t>(i),
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+        .dstOffsets{{0, 0, 0}, {int32_t(width >> i), int32_t(height >> i), 1}},
+    };
+    img_range.baseMipLevel = i;
+
+    blu::core::Image::ImageLayoutTransition(
+        cmd_buf, new_image->image, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, img_range, src_queue, dst_queue);
+
+    vkCmdBlitImage(cmd_buf, new_image->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, new_image->image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                   VK_FILTER_LINEAR);
+
+    blu::core::Image::ImageLayoutTransition(
+        cmd_buf, new_image->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img_range, src_queue, dst_queue);
+  }
+  blu::core::Image::ImageLayoutTransition(
+      cmd_buf, new_image->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, img_range, src_queue,
       dst_queue);
 

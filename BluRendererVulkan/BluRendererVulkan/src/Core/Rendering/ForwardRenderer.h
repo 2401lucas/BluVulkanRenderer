@@ -29,6 +29,7 @@ constexpr uint32_t MAX_MODELS = 10;
 constexpr uint32_t MAX_VERTICES = 1000;
 constexpr uint32_t MAX_INDICES = 1000;
 constexpr uint32_t MAX_TEXTURES = 10;
+constexpr uint32_t MAP_LEVELS = 1; // For target 1024
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 constexpr VkFormat COLOR_FORMAT = VK_FORMAT_R8G8B8A8_SRGB;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;

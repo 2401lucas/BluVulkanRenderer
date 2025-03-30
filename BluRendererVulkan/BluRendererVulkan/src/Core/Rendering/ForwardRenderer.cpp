@@ -320,15 +320,18 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
   auto new_image = blu::core::Image::CreateImage(
       device_->GetLogicalDevice(), allocator_, copy_cmd_buf,
       device_->queue_family_indicies_.graphics,
-      device_->queue_family_indicies_.graphics, COLOR_FORMAT, width, height, 1,
+      device_->queue_family_indicies_.graphics, COLOR_FORMAT, width, height,
       VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
-      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image_data, img_staging_buffer);
+      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+          VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image_data,
+      static_cast<uint32_t>(width * height * sizeof(float)),
+      img_staging_buffer);
 
   VkImageSubresourceRange img_range{
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
-      .levelCount = VK_REMAINING_MIP_LEVELS,
+      .levelCount = new_image->mip_levels,
       .baseArrayLayer = 0,
       .layerCount = VK_REMAINING_ARRAY_LAYERS,
   };
