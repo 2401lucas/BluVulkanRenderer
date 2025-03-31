@@ -1,4 +1,5 @@
 # TODO: Features
+### In Progress
 - [ ] Less Memcpy() on seldomely updated buffers
 - [ ] Model Indices in graphics Shaders
 - [ ] ImGUI Implementation
@@ -6,12 +7,14 @@
 - [ ] Auto Filetype checking (.jpg, .png ...)
 - [ ] Better Model Data Management
 - [ ] Engine Refactor(Inherited Engine Class ?) + Better Transform matrix calculation when using a camera
+### Priority Backlog
 - [ ] Culling
 - [ ] Metallic/Specular PBR Shading
 - [ ] FXAA Pass
 - [ ] Tonemapping Pass
 - [ ] Shadow Maps
 - [ ] Compute workload dispatchable from Engine
+### Backlog
 - [ ] Scripting
 - [ ] Scene Editor
 
