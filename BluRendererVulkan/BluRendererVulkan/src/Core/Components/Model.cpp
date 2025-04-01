@@ -9,7 +9,7 @@ blu::core::components::Model::Model(eastl::string filepath) {
   const aiScene* scene =
       importer.ReadFile(filepath.c_str(), aiProcess_Triangulate |
                                               aiProcess_JoinIdenticalVertices |
-                                              aiProcess_SortByPType);
+                                              aiProcess_FlipUVs);
   if (scene == nullptr) {
     std::cerr << importer.GetErrorString() << std::endl;
     return;

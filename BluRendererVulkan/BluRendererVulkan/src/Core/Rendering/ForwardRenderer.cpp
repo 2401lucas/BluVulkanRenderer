@@ -137,14 +137,11 @@ ForwardRenderer::~ForwardRenderer() {
     tex->Destroy(device_->GetLogicalDevice(), allocator_);
     delete tex;
   }
-  for (auto& buf : dcg_input_model_data_) {
-    buf->Destroy(allocator_);
-    delete buf;
-  }
-  for (auto& buf : dcg_input_models_) {
-    buf->Destroy(allocator_);
-    delete buf;
-  }
+  dcg_input_model_data_->Destroy(allocator_);
+  delete dcg_input_model_data_;
+  dcg_input_models_->Destroy(allocator_);
+  delete dcg_input_models_;
+
   for (auto& buf : dcg_output_buffers_) {
     buf->Destroy(allocator_);
     delete buf;
@@ -174,14 +171,23 @@ ForwardRenderer::~ForwardRenderer() {
 }
 
 // For now- NOT ASYNC
-int ForwardRenderer::LoadModel(eastl::string filepath) {
-  if (loaded_model_indices_.find(filepath) != loaded_model_indices_.end()) {
-    return loaded_model_indices_[filepath];
+int ForwardRenderer::LoadModel(eastl::string file) {
+  if (loaded_model_indices_.find(file) != loaded_model_indices_.end()) {
+    return loaded_model_indices_[file];
   }
   uint32_t model_index = loaded_models_.size();
   ModelIndices model_index_data{};
+
+  eastl::string filepath = "assets/" + file;
+
   // Texturing Data
   {
+#ifdef DEBUG_UV
+    model_index_data.material_type = METALLIC_ROUGHNESS;
+    model_index_data.main_tex_id = LoadImage("assets/uv-test.png");
+    model_index_data.secondary_tex_id = -1;
+    model_index_data.tertiary_tex_id = -1;
+#else
     // PBR MATERIAL
     if (blu::core::file::DoesFileExist(filepath + "_BaseColor.png") &&
         blu::core::file::DoesFileExist(filepath + "_MetallicRoughness.png")) {
@@ -191,6 +197,7 @@ int ForwardRenderer::LoadModel(eastl::string filepath) {
           LoadImage(filepath + "_MetallicRoughness.png");
       model_index_data.tertiary_tex_id = -1;
     }
+#endif
   }
 
   // Model Data
@@ -644,31 +651,27 @@ void ForwardRenderer::Prepare() {
 
   // DCG Buffer Creation
   {
-    dcg_input_model_data_.resize(frame_count);
-    dcg_input_models_.resize(frame_count);
+    dcg_input_model_data_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(ModelIndices) * MAX_MODELS,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+    dcg_input_models_ = blu::core::Buffer::CreateBuffer(
+        device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_MODELS,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+            VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+        VMA_ALLOCATION_CREATE_MAPPED_BIT);
     dcg_output_buffers_.resize(frame_count);
 
     for (size_t i = 0; i < frame_count; i++) {
-      dcg_input_model_data_[i] = blu::core::Buffer::CreateBuffer(
-          device_->GetLogicalDevice(), allocator_,
-          sizeof(ModelIndices) * MAX_MODELS,
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-              VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-          VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
-      dcg_input_models_[i] = blu::core::Buffer::CreateBuffer(
-          device_->GetLogicalDevice(), allocator_,
-          sizeof(uint32_t) * MAX_MODELS,
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-              VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-          VMA_ALLOCATION_CREATE_MAPPED_BIT);
-
       dcg_output_buffers_[i] = blu::core::Buffer::CreateBuffer(
           device_->GetLogicalDevice(), allocator_,
           DRAW_COMMAND_BUFFER_SIZE * MAX_MODELS,
@@ -677,6 +680,15 @@ void ForwardRenderer::Prepare() {
               VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
+
+    buffer_infos_.push_back(BufferInfo(dcg_input_model_data_->device_address,
+                                       dcg_input_model_data_->offset,
+                                       dcg_input_model_data_->size));
+    buffer_infos_.push_back(BufferInfo(dcg_input_models_->device_address,
+                                       dcg_input_models_->offset,
+                                       dcg_input_models_->size));
+    memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
+           buffer_infos_.size() * sizeof(BufferInfo));
   }
 
   // Pipeline Creation
@@ -830,7 +842,6 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
 
   auto swapchain = swapchain_->GetSwapchain();
-  // Handle Window Resize
   auto acquire_image_result = vkAcquireNextImageKHR(
       device_->GetLogicalDevice(), swapchain, UINT64_MAX,
       image_available_semaphores_[frame_index_], nullptr, &image_index_);
@@ -848,11 +859,10 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   {
     // Update Model Buffers
     // Does not need to happen every frame, only on update
-    memcpy(dcg_input_model_data_[frame_index_]->mapped_data,
-           model_indices_.data(), model_indices_.size() * sizeof(ModelIndices));
+    memcpy(dcg_input_model_data_->mapped_data, model_indices_.data(),
+           model_indices_.size() * sizeof(ModelIndices));
 
-    memcpy(dcg_input_models_[frame_index_]->mapped_data,
-           render_data.model_ids.data(),
+    memcpy(dcg_input_models_->mapped_data, render_data.model_ids.data(),
            render_data.model_ids.size() * sizeof(uint32_t));
 
     VkCommandBuffer dcg_command = dcg_buffers[frame_index_];
@@ -871,10 +881,9 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
                       *dcg_pipeline_->GetPipeline());
 
     DCGPushConst dcg_push_const{
-        .input_model_data = BufferInfo(
-            dcg_input_model_data_[frame_index_]->device_address, 0, 0),
-        .input_models =
-            BufferInfo(dcg_input_models_[frame_index_]->device_address, 0, 0),
+        .input_model_data =
+            BufferInfo(dcg_input_model_data_->device_address, 0, 0),
+        .input_models = BufferInfo(dcg_input_models_->device_address, 0, 0),
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
         .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
@@ -932,9 +941,9 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       VkImageSubresourceRange range{
           .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
           .baseMipLevel = 0,
-          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .levelCount = 1,
           .baseArrayLayer = 0,
-          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+          .layerCount = 1,
       };
 
       VkImageSubresourceRange depth_range{

@@ -30,9 +30,11 @@ layout (set = 0, binding = 0) buffer BufferAddresses{
 layout (location = 0) out vec3 outPos;
 layout (location = 1) out vec3 outNormal;
 layout (location = 2) out vec3 outUV;
+layout (location = 3) out int outInstanceIndex;
 
 void main() {
   MatrixBuffer matBuf = MatrixBuffer(bufferAddresses.bufferPointers[0].address);
+  outInstanceIndex = gl_InstanceIndex;
 
   outUV = inUV;
   outNormal = normalize(transpose(inverse(mat3(matBuf.matrices[3 + gl_InstanceIndex]))) * inNormal);
