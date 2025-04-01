@@ -1,10 +1,9 @@
 # TODO: Features
 ### In Progress
 - [ ] Less Memcpy() on seldomely updated buffers
-- [ ] Model Indices in graphics Shaders
+- [x] Model Indices in graphics Shaders
 - [ ] ImGUI Implementation
-- [ ] Cleanup Model Loading
-- [ ] Auto Filetype checking (.jpg, .png ...)
+- [ ] Robust Scene/Model Loading
 - [ ] Better Model Data Management
 - [ ] Engine Refactor(Inherited Engine Class ?) + Better Transform matrix calculation when using a camera
 ### Priority Backlog
