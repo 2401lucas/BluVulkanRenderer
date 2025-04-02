@@ -41,6 +41,9 @@ void Engine::LoadScene(const eastl::string& scene_name) {
 
 blu::game::components::Model* Engine::CreateModel(
     const eastl::string& filepath, blu::game::components::Transform transform) {
+  if (models_.size() >= MAX_MODELS) {
+    return nullptr;
+  }
   auto model_index = renderer_->LoadModel(filepath);
 
   if (model_index >= 0) {
