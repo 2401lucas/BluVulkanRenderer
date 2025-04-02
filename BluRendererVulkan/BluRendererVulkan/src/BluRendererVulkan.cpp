@@ -20,15 +20,14 @@ int main(int argc, char** argv) {
 void BluRendererVulkan::run(int argc, char** argv) {
   blu::core::Window* window =
       new blu::core::Window(800, 600, "Blu: Rendering Prototype");
-  blu::core::Engine* engine = new blu::core::Engine(window);
   ForwardRenderer* renderer = new ForwardRenderer(window);
+  renderer->Prepare();
+
+  blu::core::Engine* engine = new blu::core::Engine(window, renderer);
+  engine->LoadScene("TODO");
 
   auto start_time = std::chrono::high_resolution_clock::now();
   auto current_time = std::chrono::high_resolution_clock::now();
-
-  // Engine Loads Initial Scene
-  renderer->Prepare();
-  engine->LoadScene("TODO", renderer);
 
   while (!window->ShouldClose()) {
     current_time = std::chrono::high_resolution_clock::now();

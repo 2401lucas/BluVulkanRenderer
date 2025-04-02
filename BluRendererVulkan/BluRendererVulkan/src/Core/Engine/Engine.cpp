@@ -3,109 +3,59 @@
 #include <glm/glm.hpp>
 #include <iostream>
 
-#define MODEL_DEBUG 1
-
 namespace blu::core {
-Engine::Engine(blu::core::Window* window) {
+Engine::Engine(blu::core::Window* window, ForwardRenderer* renderer) {
   window_ = window;
+  renderer_ = renderer;
   input_ = new KeybindManager(window);
   if (!input_->LoadKeybinds()) {
     SetDefaultKeybinds();
   }
-  // prev_mouse_input_ = input_->GetMousePos();
+
   prev_mouse_input_ = {0, 0};
 }
 
 Engine::~Engine() {
-  delete input_;
+  for (auto& model : models_) {
+    delete model;
+  }
   delete camera_;
+  delete input_;
 }
 
-void Engine::LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr) {
-  camera_ = new components::Camera(
-      new components::Transform(true, glm::vec3(0, 0, -5), glm::vec3(0, 0, 0),
-                                glm::vec3(1, 1, 1)),
+void Engine::LoadScene(const eastl::string& scene_name) {
+  camera_ = new blu::game::components::Camera(
+      new blu::game::components::Transform(
+          true, glm::vec3(0, 0, -5), glm::vec3(0, 0, 0), glm::vec3(1, 1, 1)),
       window_->GetAspectRatio(), 45, 1, 500);
 
-  auto model_index = rndr->LoadModel("Cube/cube");
+  game_manager_ = blu::game::TestGameManager::TestGameManager(
+      [this](const eastl::string& filepath,
+             blu::game::components::Transform transform) {
+        return this->CreateModel(filepath, transform);
+      },
+      input_, camera_);
+
+  game_manager_.Start();
+}
+
+blu::game::components::Model* Engine::CreateModel(
+    const eastl::string& filepath, blu::game::components::Transform transform) {
+  auto model_index = renderer_->LoadModel(filepath);
+
   if (model_index >= 0) {
-    models_.push_back(
-        Model(model_index,
-              components::Transform(false, glm::vec3(0, 0, 0), glm::vec3(45, 45, 0),
-                                    glm::vec3(0.5, 0.5, 0.5))));
+    blu::game::components::Model* new_model =
+        new blu::game::components::Model(model_index, transform);
+    models_.push_back(new_model);
+    return new_model;
   }
-  model_index = rndr->LoadModel("Cube/cube");
-  if (model_index >= 0) {
-    models_.push_back(
-        Model(model_index,
-              components::Transform(false, glm::vec3(-1, 1.5, 0),
-                                    glm::vec3(0, 0, 0),
-                                    glm::vec3(1, 1, 1))));
-  }
-  model_index = rndr->LoadModel("Cube/cube");
-  if (model_index >= 0) {
-    models_.push_back(
-        Model(model_index,
-              components::Transform(false, glm::vec3(0, 3, 1),
-                                    glm::vec3(0, 0, 0),
-                                    glm::vec3(1, 1, 1))));
-  }
-  model_index = rndr->LoadModel("Avocado/avocado");
-  if (model_index >= 0) {
-    models_.push_back(
-        Model(model_index,
-        components::Transform(false, glm::vec3(5, 0, 0), glm::vec3(0, 180, 0),
-                                    glm::vec3(100, 100, 100))));
-  }
+
+  assert(false);
 }
 
 void Engine::Update(float frametime) {
   camera_->Update();
-  auto cam_front = camera_->GetTransform()->Front();
-
-  float move_speed = 10 * frametime;
-
-  models_[0].transform.AddToRotation(glm::vec3(36, 0, 0) * frametime);
-
-  if (input_->IsActionPressed("W")) {
-    camera_->GetTransform()->AddToPosition(cam_front * move_speed);
-  }
-  if (input_->IsActionPressed("A")) {
-    camera_->GetTransform()->AddToPosition(
-        -glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
-        move_speed);
-  }
-  if (input_->IsActionPressed("D")) {
-    camera_->GetTransform()->AddToPosition(
-        glm::normalize(glm::cross(cam_front, glm::vec3(0.0f, 1.0f, 0.0f))) *
-        move_speed);
-  }
-  if (input_->IsActionPressed("S")) {
-    camera_->GetTransform()->AddToPosition(-cam_front * move_speed);
-  }
-
-  if (input_->IsActionPressed("LCTRL")) {
-    camera_->GetTransform()->AddToPosition(glm::vec3(0.0f, 1.0f, 0.0f) *
-                                           move_speed);
-  }
-  if (input_->IsActionPressed("SPACE")) {
-    camera_->GetTransform()->AddToPosition(glm::vec3(0.0f, -1.0f, 0.0f) *
-                                           move_speed);
-  }
-  if (input_->IsActionPressed("ESC")) {
-    // TODO: QUIT
-  }
-
-  glm::vec2 mouse_pos = input_->GetMousePos();
-  glm::vec2 mouse_pos_diff = prev_mouse_input_ - mouse_pos;
-  prev_mouse_input_ = mouse_pos;
-
-  auto mouse_sens = mouse_sens_ * frametime;
-
-  if (input_->IsActionPressed("Mouse 1")) {
-    camera_->GetTransform()->AddToRotation(glm::vec3(
-        mouse_pos_diff.y * mouse_sens, -mouse_pos_diff.x * mouse_sens, 0.0f));
-  }
+  game_manager_.Update(frametime);
 }
 
 void Engine::SetCameraAspectRatio(float aspect_ratio) {
@@ -121,8 +71,8 @@ RenderData Engine::GetRenderData() {
   matrices[0] = matrices[2] * matrices[1];
 
   for (auto& m : models_) {
-    matrices.push_back(m.transform.GetTransformMat());
-    model_ids.push_back(m.model_index);
+    matrices.push_back(m->transform.GetTransformMat());
+    model_ids.push_back(m->model_index);
   }
 
   return RenderData(matrices, model_ids);

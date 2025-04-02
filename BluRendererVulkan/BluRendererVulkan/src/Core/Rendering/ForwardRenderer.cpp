@@ -147,7 +147,7 @@ ForwardRenderer::~ForwardRenderer() {
     delete buf;
   }
 
-  for (eastl::vector<blu::core::components::Model>::iterator
+  for (eastl::vector<blu::core::rendering::ModelData>::iterator
            it = loaded_models_.begin(),
            it_end = loaded_models_.end();
        it != it_end; ++it) {
@@ -178,7 +178,7 @@ int ForwardRenderer::LoadModel(eastl::string file) {
 
   eastl::string filepath = "assets/" + file;
 
-  auto new_model = blu::core::components::Model(filepath + ".glTF");
+  auto new_model = blu::core::rendering::ModelData(filepath);
   auto& materials = new_model.GetMaterials();
   auto& meshes = new_model.GetMeshes();
   // Texturing Data
@@ -400,7 +400,7 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
 }
 
 void ForwardRenderer::LoadTexture(
-    blu::core::components::Material::TextureInfo& info,
+    blu::core::rendering::Material::TextureInfo& info,
     eastl::string folderpath) {
   if (!info.filepath.empty()) {
 #ifdef DEBUG_UV
@@ -908,6 +908,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
         .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
+        .workgroup_size = 32,
     };
 
     vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),

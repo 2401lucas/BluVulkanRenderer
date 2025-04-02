@@ -3,7 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-namespace blu::core::components {
+namespace blu::game::components {
 Camera::Camera(Transform* transform, float aspect_ratio, float fov,
                float z_near, float z_far) {
   transform_ = transform;

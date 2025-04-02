@@ -35,6 +35,8 @@ target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
   target_link_libraries(BluRendererVulkan PRIVATE assimp::assimp)
 
   target_compile_definitions(BluRendererVulkan PUBLIC GLM_FORCE_DEPTH_ZERO_TO_ONE)
+  # target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_UV)
+  target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_MODEL)
   
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET BluRendererVulkan PROPERTY CXX_STANDARD 20)

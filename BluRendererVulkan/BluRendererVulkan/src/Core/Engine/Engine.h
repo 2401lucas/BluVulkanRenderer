@@ -3,16 +3,17 @@
 
 #include <glm/vec3.hpp>
 
-#include "../Components/Camera.h"
-#include "../Components/Model.h"
-#include "../Components/Transform.h"
 #include "../External/Input.h"
 #include "../External/Window.h"
 #include "../Rendering/ForwardRenderer.h"
 #include "../Rendering/RenderData.h"
+#include "Components/Camera.h"
+#include "Components/Model.h"
+#include "Components/Transform.h"
+#include "GameManager.h"
+#include "TestGameManager.h"
 
 namespace blu::core {
-
 class Script { /*
   public:
    virtual void OnEnable();
@@ -31,10 +32,14 @@ class Script { /*
 // new array, we can just send it the pointer to the matrix array
 class Engine {
  public:
-  Engine(blu::core::Window*);
+  Engine(blu::core::Window*, ForwardRenderer*);
   ~Engine();
 
-  void LoadScene(const eastl::string& scene_name, ForwardRenderer* rndr);
+  void LoadScene(const eastl::string& scene_name);
+
+  blu::game::components::Model* CreateModel(
+      const eastl::string& filepath,
+      blu::game::components::Transform);
 
   void Update(float frametime);
 
@@ -44,17 +49,14 @@ class Engine {
  private:
   void SetDefaultKeybinds();
 
-  components::Camera* camera_ = nullptr;
   Window* window_ = nullptr;
+  ForwardRenderer* renderer_;
   KeybindManager* input_;
 
-  struct Model {
-    uint32_t model_index;
-    blu::core::components::Transform transform;
-  };
+  blu::game::components::Camera* camera_ = nullptr;
+  blu::game::TestGameManager game_manager_{};
 
-  eastl::vector<Model> models_;
-  float mouse_sens_ = 100;
+  eastl::vector<blu::game::components::Model*> models_;
   glm::vec2 prev_mouse_input_;
 };
 }  // namespace blu::core

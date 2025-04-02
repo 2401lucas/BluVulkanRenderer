@@ -34,6 +34,7 @@ class KeybindManager {
                        int alt_key = GLFW_KEY_UNKNOWN, bool allow_mods = false,
                        int req_mods = 0);
   glm::vec2 GetMousePos();
+  glm::vec2 GetMousePosDiff();
   bool IsActionPressed(const eastl::string& action, int mods = 0);
   void RemapAction(const eastl::string& action, int key, bool is_primary_key);
   void SaveKeybinds();
@@ -52,7 +53,8 @@ class KeybindManager {
 
   blu::core::Window* window_;
 
-  glm::vec2 prev_mouse_pos_;
+  glm::vec2 prev_mouse_pos_ = glm::vec2(0);
+  glm::vec2 mouse_sense_ = glm::vec2(100);
   eastl::vector_map<eastl::string, Keybind_> keybinds_;
   eastl::vector_map<int, eastl::string> key_to_action_;
 };

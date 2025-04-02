@@ -1,5 +1,5 @@
-#ifndef MODEL_H
-#define MODEL_H
+#ifndef MODEL_DATA_H
+#define MODEL_DATA_H
 
 #include <EASTL/string.h>
 #include <EASTL/vector.h>
@@ -11,10 +11,10 @@
 #include "Material.h"
 #include "Mesh.h"
 
-namespace blu::core::components {
-class Model {
+namespace blu::core::rendering {
+class ModelData {
  public:
-  Model(eastl::string filepath);
+  ModelData(eastl::string filepath);
   void Delete();
 
   eastl::vector<Mesh*>& GetMeshes() { return meshes_; };

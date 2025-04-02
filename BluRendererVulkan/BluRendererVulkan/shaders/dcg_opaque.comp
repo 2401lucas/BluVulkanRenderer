@@ -51,10 +51,11 @@ layout(push_constant) uniform constants
 	BufferInfo model_input_models;
 	BufferInfo model_output_buffer;
 	uint draw_count;
+	uint workgroup_size;
 } push_const;
 
 void main() {
-	uint index = gl_GlobalInvocationID.x;
+	uint index = gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * push_const.workgroup_size) ;
 
 	if(index >= push_const.draw_count) { return; }
 

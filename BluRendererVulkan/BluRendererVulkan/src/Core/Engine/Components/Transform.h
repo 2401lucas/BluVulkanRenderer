@@ -5,11 +5,16 @@
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 
-namespace blu::core::components {
+namespace blu::game::components {
 class Transform {
  public:
   Transform(bool isCamera, glm::vec3 position, glm::vec3 rotation,
             glm::vec3 scale);
+
+  static Transform Default() {
+    return Transform(false, glm::vec3(0, 0, 0), glm::vec3(0, 0, 0),
+                     glm::vec3(1, 1, 1));
+  }
 
   glm::vec3 GetPosition() const { return position_; }
   void SetPosition(glm::vec3 new_value) {

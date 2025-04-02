@@ -1,9 +1,9 @@
-#include "Model.h"
+#include "ModelData.h"
 
 #include <iostream>
 
 // Needs to distiguish vertex information based on provided info
-blu::core::components::Model::Model(eastl::string filepath) {
+blu:: core::rendering::ModelData::ModelData(eastl::string filepath) {
   Assimp::Importer importer;
 
   const aiScene* scene =
@@ -16,7 +16,7 @@ blu::core::components::Model::Model(eastl::string filepath) {
   }
 
 #ifdef DEBUG_MODEL
-  std::cout << "Filepath Name: " << filepath << std::endl;
+  std::cout << "Filepath Name: " << filepath.c_str() << std::endl;
   std::cout << "Model Name: " << scene->mName.C_Str() << std::endl;
   std::cout << "Mesh Count: " << scene->mNumMeshes << std::endl;
   std::cout << "Texture Count: " << scene->mNumTextures << std::endl;
@@ -99,7 +99,7 @@ blu::core::components::Model::Model(eastl::string filepath) {
   }
 }
 
-void blu::core::components::Model::Delete() {
+void blu::core::rendering::ModelData::Delete() {
   for (auto& mesh : meshes_) {
     delete mesh;
   }

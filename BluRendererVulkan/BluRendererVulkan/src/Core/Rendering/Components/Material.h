@@ -3,7 +3,7 @@
 
 #include <eastl/string.h>
 
-namespace blu::core::components {
+namespace blu::core::rendering {
 class Material {
  public:
   struct TextureInfo {
@@ -29,6 +29,6 @@ class Material {
   TextureInfo diffuse_roughness_;
   TextureInfo ambient_occlusion_;
 };
-}  // namespace blu::core::components
+}  // namespace blu::core::rendering
 
 #endif

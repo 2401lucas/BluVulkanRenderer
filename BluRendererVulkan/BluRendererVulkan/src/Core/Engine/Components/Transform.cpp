@@ -3,7 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-namespace blu::core::components {
+namespace blu::game::components {
 Transform::Transform(bool isCamera, glm::vec3 position, glm::vec3 rotation,
                      glm::vec3 scale) {
   isCamera_ = isCamera;
@@ -32,4 +32,4 @@ void Transform::CalculateTransformMat() {
   }
   transform_mat_updated_ = false;
 }
-}  // namespace blu::core::components
+}  // namespace blu::game::components

@@ -21,11 +21,20 @@ glm::vec2 KeybindManager::GetMousePos() {
   return glm::vec2(xpos, ypos);
 }
 
+glm::vec2 KeybindManager::GetMousePosDiff() {
+  auto mouse_pos = GetMousePos();
+  auto mouse_pos_diff = prev_mouse_pos_ - mouse_pos;
+  prev_mouse_pos_ = mouse_pos;
+  return mouse_pos_diff * mouse_sense_;
+}
+
 bool KeybindManager::IsActionPressed(const eastl::string& action, int mods) {
   auto it = keybinds_.find(action);
 
-  if (it == keybinds_.end()) return false;
-
+  if (it == keybinds_.end()) {
+    std::cout << "Action not bound: " << action.c_str() << std::endl;
+    return false;
+  }
   const auto& bind = it->second;
 
   if (bind.allows_modifiers &&
@@ -35,17 +44,14 @@ bool KeybindManager::IsActionPressed(const eastl::string& action, int mods) {
 
   // Less than 8 specifies mouse input
   if (bind.primary_key < 8) {
-    return glfwGetMouseButton(window_->Get(), bind.primary_key) ==
-               GLFW_PRESS ||
+    return glfwGetMouseButton(window_->Get(), bind.primary_key) == GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
             glfwGetMouseButton(window_->Get(), bind.alternate_key) ==
                 GLFW_PRESS);
   } else {
-    return glfwGetKey(window_->Get(), bind.primary_key) ==
-               GLFW_PRESS ||
+    return glfwGetKey(window_->Get(), bind.primary_key) == GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
-            glfwGetKey(window_->Get(), bind.alternate_key) ==
-                GLFW_PRESS);
+            glfwGetKey(window_->Get(), bind.alternate_key) == GLFW_PRESS);
   }
 }
 

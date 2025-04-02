@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace blu::core::components {
+namespace blu::core::rendering {
 class Mesh {
  public:
   struct MeshData {
@@ -29,5 +29,5 @@ class Mesh {
 
   uint32_t material_index_;
 };
-}  // namespace blu::core::components
+}  // namespace blu::core::rendering
 #endif

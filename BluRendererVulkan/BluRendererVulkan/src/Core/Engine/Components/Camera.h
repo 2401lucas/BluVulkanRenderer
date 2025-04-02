@@ -4,7 +4,7 @@
 
 #include "Transform.h"
 
-namespace blu::core::components {
+namespace blu::game::components {
 class Camera {
  public:
   Camera(Transform* transform, float aspect_ratio, float fov, float z_near,
@@ -52,5 +52,5 @@ class Camera {
   float z_near_;
   float z_far_;
 };
-}  // namespace blu::core::components
+}  // namespace blu::game::components
 #endif

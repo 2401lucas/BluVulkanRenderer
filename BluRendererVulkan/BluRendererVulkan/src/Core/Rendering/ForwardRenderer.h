@@ -1,9 +1,6 @@
 #ifndef FORWARDRENDERER_H
 #define FORWARDRENDERER_H
 
-// #define DEBUG_UV
-#define DEBUG_MODEL
-
 #ifdef _DEBUG
 constexpr bool USE_VALIDATION = true;
 #else   // _RELEASE
@@ -17,8 +14,8 @@ constexpr bool USE_VALIDATION = false;
 
 #include <glm/mat4x4.hpp>
 
-#include "../Components/Model.h"
 #include "../External/Window.h"
+#include "Components/ModelData.h"
 #include "RenderData.h"
 #include "Vulkan/Buffer.h"
 #include "Vulkan/DescriptorSet.h"
@@ -28,7 +25,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr uint32_t MAX_MODELS = 10;
+constexpr uint32_t MAX_MODELS = 1000;
 constexpr uint32_t MAX_VERTICES = 10000;
 constexpr uint32_t MAX_INDICES = 10000;
 constexpr uint32_t MAX_TEXTURES = 10;
@@ -73,6 +70,7 @@ struct DCGPushConst {
   BufferInfo input_models;
   BufferInfo output_command_data;
   uint32_t draw_count;
+  uint32_t workgroup_size;
 };
 
 enum RendererState {
@@ -91,10 +89,10 @@ class ForwardRenderer {
   ~ForwardRenderer();
 
   int LoadModel(eastl::string filepath);
-  int LoadModel(blu::core::components::Model);
+  int LoadModel(blu::core::rendering::ModelData);
 
   int LoadImage(eastl::string filepath);
-  void LoadTexture(blu::core::components::Material::TextureInfo&,
+  void LoadTexture(blu::core::rendering::Material::TextureInfo&,
                    eastl::string folderpath);
 
   void Prepare();
@@ -126,7 +124,7 @@ class ForwardRenderer {
   eastl::hash_map<eastl::string, uint32_t> loaded_texture_indices_;
   eastl::hash_map<eastl::string, uint32_t> loaded_model_indices_;
   // Raw Data information
-  eastl::vector<blu::core::components::Model> loaded_models_;
+  eastl::vector<blu::core::rendering::ModelData> loaded_models_;
   eastl::vector<ModelIndices> model_indices_;
 
   // Vulkan Render Data
