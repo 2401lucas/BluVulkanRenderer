@@ -3,9 +3,9 @@
 - [x] Less Memcpy() on seldomely updated buffers
 - [x] Model Indices in graphics Shaders
 - [ ] ImGUI Implementation
-- [ ] Robust Scene/Model Loading
+- [x] Robust Scene/Model Loading
 - [ ] Better Model Data Management
-- [ ] Engine Refactor(Inherited Engine Class ?) + Better Transform matrix calculation when using a camera
+- [ ] Engine Refactor(Inherited Engine Class ?) + Better Transform matrix calculation when using a camera + Support Scene loading with returning more data in LoadModel
 ### Priority Backlog
 - [ ] Culling
 - [ ] Metallic/Specular PBR Shading

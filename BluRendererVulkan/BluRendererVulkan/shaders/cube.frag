@@ -16,10 +16,13 @@ struct ModelInfo
 	int vert_offset;
 	uint ind_count;
 	uint ind_offset;
-	uint material_type;
-	int main_tex_id;
-	int secondary_tex_id;
-	int tertiary_tex_id;
+	uint material_type;  
+	int base_tex_id;
+	int normal_tex_id;
+	int emission_tex_id;
+	int metalness_tex_id;
+	int diffuse_roughness_id;
+	int ambient_occlusion_id;
 };
 
 layout(buffer_reference, std430) buffer ModelInfoBuffer {
@@ -47,5 +50,5 @@ void main() {
   ModelIndex indexInfo = ModelIndex(bufferAddresses.bufferPointers[2].address);
 
   outColor = vec4(texture(
-		texArray[modelInfo.info[indexInfo.index[inInstanceIndex]].main_tex_id], inUV.xy));
+		texArray[modelInfo.info[indexInfo.index[inInstanceIndex]].base_tex_id], inUV.xy));
 }

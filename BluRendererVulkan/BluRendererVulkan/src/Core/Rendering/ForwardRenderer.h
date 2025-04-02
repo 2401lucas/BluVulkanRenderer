@@ -1,7 +1,8 @@
 #ifndef FORWARDRENDERER_H
 #define FORWARDRENDERER_H
 
-//#define DEBUG_UV
+// #define DEBUG_UV
+#define DEBUG_MODEL
 
 #ifdef _DEBUG
 constexpr bool USE_VALIDATION = true;
@@ -57,10 +58,15 @@ struct ModelIndices {
   uint32_t ind_offset;
   // Texture Data
   uint32_t material_type;
-  int main_tex_id;
-  int secondary_tex_id;
-  int tertiary_tex_id;
+  int base_tex_id;
+  int normal_tex_id;
+  int emission_tex_id;
+  int metalness_tex_id;
+  int diffuse_roughness_id;
+  int ambient_occlusion_id;
 };
+
+struct ModelInfo {};
 
 struct DCGPushConst {
   BufferInfo input_model_data;
@@ -88,6 +94,8 @@ class ForwardRenderer {
   int LoadModel(blu::core::components::Model);
 
   int LoadImage(eastl::string filepath);
+  void LoadTexture(blu::core::components::Material::TextureInfo&,
+                   eastl::string folderpath);
 
   void Prepare();
   RendererState Render(RenderData render_data);

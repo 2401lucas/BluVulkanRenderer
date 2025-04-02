@@ -175,123 +175,127 @@ int ForwardRenderer::LoadModel(eastl::string file) {
   if (loaded_model_indices_.find(file) != loaded_model_indices_.end()) {
     return loaded_model_indices_[file];
   }
-  uint32_t model_index = loaded_models_.size();
-  ModelIndices model_index_data{};
 
   eastl::string filepath = "assets/" + file;
 
+  auto new_model = blu::core::components::Model(filepath + ".glTF");
+  auto& materials = new_model.GetMaterials();
+  auto& meshes = new_model.GetMeshes();
   // Texturing Data
   {
-#ifdef DEBUG_UV
-    model_index_data.material_type = METALLIC_ROUGHNESS;
-    model_index_data.main_tex_id = LoadImage("assets/uv-test.png");
-    model_index_data.secondary_tex_id = -1;
-    model_index_data.tertiary_tex_id = -1;
-#else
-    // PBR MATERIAL
-    if (blu::core::file::DoesFileExist(filepath + "_BaseColor.png") &&
-        blu::core::file::DoesFileExist(filepath + "_MetallicRoughness.png")) {
-      model_index_data.material_type = METALLIC_ROUGHNESS;
-      model_index_data.main_tex_id = LoadImage(filepath + "_BaseColor.png");
-      model_index_data.secondary_tex_id =
-          LoadImage(filepath + "_MetallicRoughness.png");
-      model_index_data.tertiary_tex_id = -1;
+    size_t pos = filepath.rfind('/');
+    eastl::string folderpath;
+    if (pos != std::string::npos) {
+      folderpath = filepath.substr(0, pos + 1);
     }
-#endif
+    for (auto& mat : materials) {
+      LoadTexture(mat.GetBaseColorTextureInfo(), folderpath);
+      LoadTexture(mat.GetNormalTextureInfo(), folderpath);
+      LoadTexture(mat.GetEmissionTextureInfo(), folderpath);
+      LoadTexture(mat.GetMetalnessTextureInfo(), folderpath);
+      LoadTexture(mat.GetDiffuseRoughnessTextureInfo(), folderpath);
+      LoadTexture(mat.GetAmbientOcclusionTextureInfo(), folderpath);
+    }
   }
 
+  auto init_model_indices_size = model_indices_.size();
   // Model Data
   {
-    auto new_model = blu::core::components::Model(filepath + ".glTF");
+    for (auto& mesh : meshes) {
+      VkCommandBufferAllocateInfo alloc_info{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+          .commandPool = transfer_command_pools[frame_index_],
+          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          .commandBufferCount = 1,
+      };
 
-    if (new_model.GetVertexData() == nullptr) {
-      return -1;
+      VkCommandBuffer copy_cmd_buf;
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
+                               &copy_cmd_buf);
+
+      VkCommandBufferBeginInfo begin_info{
+          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      };
+      vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
+
+      blu::core::Buffer* vert_staging_buffer;
+      blu::core::Buffer::UploadToBuffer(
+          device_->GetLogicalDevice(), allocator_, vertex_buffer_,
+          sizeof(float) * 3 * vertex_buffer_offset_, copy_cmd_buf,
+          mesh->GetVertexData().data, mesh->GetVertexData().data_size, 0,
+          vert_staging_buffer);
+      blu::core::Buffer* normal_staging_buffer;
+      blu::core::Buffer::UploadToBuffer(
+          device_->GetLogicalDevice(), allocator_, normal_buffer_,
+          sizeof(float) * 3 * normal_buffer_offset_, copy_cmd_buf,
+          mesh->GetNormalData().data, mesh->GetNormalData().data_size, 0,
+          normal_staging_buffer);
+      blu::core::Buffer* index_staging_buffer;
+      blu::core::Buffer::UploadToBuffer(
+          device_->GetLogicalDevice(), allocator_, index_buffer_,
+          sizeof(uint32_t) * index_buffer_offset_, copy_cmd_buf,
+          mesh->GetIndexData().data, mesh->GetIndexData().data_size, 0,
+          index_staging_buffer);
+      blu::core::Buffer* uv_staging_buffer;
+      blu::core::Buffer::UploadToBuffer(
+          device_->GetLogicalDevice(), allocator_, uv_buffer_,
+          sizeof(float) * 3 * uv_buffer_offset_, copy_cmd_buf,
+          mesh->GetUVData().data, mesh->GetUVData().data_size, 0,
+          uv_staging_buffer);
+
+      auto& material = materials[mesh->GetMaterialIndex()];
+
+      ModelIndices model_index_data{
+          .vert_offset = static_cast<int>(vertex_buffer_offset_),
+          .ind_count = mesh->GetIndexData().count,
+          .ind_offset = index_buffer_offset_,
+          .base_tex_id = material.GetBaseColorTextureInfo().index,
+          .normal_tex_id = material.GetNormalTextureInfo().index,
+          .emission_tex_id = material.GetEmissionTextureInfo().index,
+          .metalness_tex_id = material.GetMetalnessTextureInfo().index,
+          .diffuse_roughness_id =
+              material.GetDiffuseRoughnessTextureInfo().index,
+          .ambient_occlusion_id =
+              material.GetAmbientOcclusionTextureInfo().index,
+      };
+
+      model_indices_.push_back(model_index_data);
+      models_data_buffer_updated = true;
+
+      vertex_buffer_offset_ += mesh->GetVertexData().count;
+      normal_buffer_offset_ += mesh->GetNormalData().count;
+      index_buffer_offset_ += mesh->GetIndexData().count;
+      uv_buffer_offset_ += mesh->GetUVData().count;
+
+      vkEndCommandBuffer(copy_cmd_buf);
+
+      VkSubmitInfo submitInfo{
+          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &copy_cmd_buf,
+      };
+
+      vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
+      // TODO: REMOVE
+      vkDeviceWaitIdle(device_->GetLogicalDevice());
+
+      vkFreeCommandBuffers(device_->GetLogicalDevice(),
+                           transfer_command_pools[frame_index_], 1,
+                           &copy_cmd_buf);
+
+      vert_staging_buffer->Destroy(allocator_);
+      delete vert_staging_buffer;
+      normal_staging_buffer->Destroy(allocator_);
+      delete normal_staging_buffer;
+      index_staging_buffer->Destroy(allocator_);
+      delete index_staging_buffer;
+      uv_staging_buffer->Destroy(allocator_);
+      delete uv_staging_buffer;
     }
-
-    loaded_models_.push_back(new_model);
-    auto& model = loaded_models_[model_index];
-    loaded_model_indices_[filepath] = model_index;
-
-    VkCommandBufferAllocateInfo alloc_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = transfer_command_pools[frame_index_],
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-
-    VkCommandBuffer copy_cmd_buf;
-    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
-                             &copy_cmd_buf);
-
-    VkCommandBufferBeginInfo begin_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
-
-    blu::core::Buffer* vert_staging_buffer;
-    blu::core::Buffer::UploadToBuffer(
-        device_->GetLogicalDevice(), allocator_, vertex_buffer_,
-        sizeof(float) * 3 * vertex_buffer_offset_, copy_cmd_buf,
-        model.GetVertexData(), model.GetVertexDataSize(), 0,
-        vert_staging_buffer);
-    blu::core::Buffer* normal_staging_buffer;
-    blu::core::Buffer::UploadToBuffer(
-        device_->GetLogicalDevice(), allocator_, normal_buffer_,
-        sizeof(float) * 3 * normal_buffer_offset_, copy_cmd_buf,
-        model.GetNormalData(), model.GetNormalDataSize(), 0,
-        normal_staging_buffer);
-    blu::core::Buffer* index_staging_buffer;
-    blu::core::Buffer::UploadToBuffer(
-        device_->GetLogicalDevice(), allocator_, index_buffer_,
-        sizeof(uint32_t) * index_buffer_offset_, copy_cmd_buf,
-        model.GetIndexData(), model.GetIndexDataSize(), 0,
-        index_staging_buffer);
-    blu::core::Buffer* uv_staging_buffer;
-    blu::core::Buffer::UploadToBuffer(
-        device_->GetLogicalDevice(), allocator_, uv_buffer_,
-        sizeof(float) * 3 * uv_buffer_offset_, copy_cmd_buf, model.GetUVData(),
-        model.GetUVDataSize(), 0, uv_staging_buffer);
-
-    vkEndCommandBuffer(copy_cmd_buf);
-
-    VkSubmitInfo submitInfo{
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &copy_cmd_buf,
-    };
-
-    vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
-
-    model_index_data.vert_offset = vertex_buffer_offset_;
-    model_index_data.ind_count = model.GetIndexCount();
-    model_index_data.ind_offset = index_buffer_offset_;
-
-    vertex_buffer_offset_ += model.GetVertexCount();
-    normal_buffer_offset_ += model.GetVertexCount();
-    index_buffer_offset_ += model.GetIndexCount();
-    uv_buffer_offset_ += model.GetVertexCount();
-
-    // TODO: REMOVE
-    vkDeviceWaitIdle(device_->GetLogicalDevice());
-
-    vkFreeCommandBuffers(device_->GetLogicalDevice(),
-                         transfer_command_pools[frame_index_], 1,
-                         &copy_cmd_buf);
-
-    vert_staging_buffer->Destroy(allocator_);
-    delete vert_staging_buffer;
-    normal_staging_buffer->Destroy(allocator_);
-    delete normal_staging_buffer;
-    index_staging_buffer->Destroy(allocator_);
-    delete index_staging_buffer;
-    uv_staging_buffer->Destroy(allocator_);
-    delete uv_staging_buffer;
   }
-
-  model_indices_.push_back(model_index_data);
-  models_data_buffer_updated = true;
-  return model_index;
+  loaded_model_indices_[file] = init_model_indices_size;
+  return init_model_indices_size;
 }
 
 int ForwardRenderer::LoadImage(eastl::string filepath) {
@@ -303,8 +307,8 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
   unsigned char* image_data =
       stbi_load(filepath.c_str(), &width, &height, &channels, STBI_rgb_alpha);
   if (!image_data) {
-    std::cerr << "Failed to load image!" << std::endl;
-    return -1;
+    std::cerr << "Failed to load image at " << filepath.c_str() << std::endl;
+    return 0;
   }
 
   VkCommandBufferAllocateInfo alloc_info{
@@ -393,6 +397,18 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
   loaded_texture_indices_[filepath] = index;
   textures.push_back(new_image);
   return index;
+}
+
+void ForwardRenderer::LoadTexture(
+    blu::core::components::Material::TextureInfo& info,
+    eastl::string folderpath) {
+  if (!info.filepath.empty()) {
+#ifdef DEBUG_UV
+    info.index = 0;
+#else
+    info.index = LoadImage(folderpath + info.filepath);
+#endif
+  }
 }
 
 void ForwardRenderer::Prepare() {
@@ -608,6 +624,8 @@ void ForwardRenderer::Prepare() {
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
+    // This is horrific and should be illigal to do...
+    // but it works. I WILL fix this at somepoint soon
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
                                        matrices_buffer_->offset,
                                        matrices_buffer_->size));
@@ -829,6 +847,8 @@ void ForwardRenderer::Prepare() {
                     &in_flight_fences_[i]);
     }
   }
+
+  LoadImage("assets/uv-test.png");  // Default Tex
 }
 
 // Update Render Data

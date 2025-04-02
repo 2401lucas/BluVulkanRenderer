@@ -3,10 +3,13 @@
 
 #include <EASTL/string.h>
 #include <EASTL/vector.h>
-#include <assimp/postprocess.h>  // Post processing flags
-#include <assimp/scene.h>        // Output data structure
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
 
-#include <assimp/Importer.hpp>  // C++ importer interface
+#include <assimp/Importer.hpp>
+
+#include "Material.h"
+#include "Mesh.h"
 
 namespace blu::core::components {
 class Model {
@@ -14,32 +17,14 @@ class Model {
   Model(eastl::string filepath);
   void Delete();
 
-  void* GetVertexData() { return vertex_data_; }
-  uint32_t GetVertexDataSize() { return vertex_data_size_; }
-  void* GetIndexData() { return index_data_; }
-  uint32_t GetIndexDataSize() { return index_data_size_; }
-  void* GetNormalData() { return normal_data_; }
-  uint32_t GetNormalDataSize() { return normal_data_size_; }
-  void* GetUVData() { return uv_data_; }
-  uint32_t GetUVDataSize() { return uv_data_size_; }
-
-  uint32_t GetVertexCount() { return vertex_count_; }
-  uint32_t GetIndexCount() { return index_count_; }
+  eastl::vector<Mesh*>& GetMeshes() { return meshes_; };
+  eastl::vector<Material>& GetMaterials() { return materials_; };
 
  private:
   eastl::string filepath_;
 
-  uint32_t vertex_count_;
-  uint32_t index_count_;
-
-  char* vertex_data_ = nullptr;
-  uint32_t vertex_data_size_ = 0;
-  char* index_data_ = nullptr;
-  uint32_t index_data_size_ = 0;
-  char* normal_data_ = nullptr;
-  uint32_t normal_data_size_ = 0;
-  char* uv_data_ = nullptr;
-  uint32_t uv_data_size_ = 0;
+  eastl::vector<Mesh*> meshes_;
+  eastl::vector<Material> materials_;
 };
 }  // namespace blu::core::components
 
