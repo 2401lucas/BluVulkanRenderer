@@ -137,10 +137,10 @@ ForwardRenderer::~ForwardRenderer() {
     tex->Destroy(device_->GetLogicalDevice(), allocator_);
     delete tex;
   }
-  dcg_input_model_data_->Destroy(allocator_);
-  delete dcg_input_model_data_;
-  dcg_input_models_->Destroy(allocator_);
-  delete dcg_input_models_;
+  models_data_buffer_->Destroy(allocator_);
+  delete models_data_buffer_;
+  models_buffer_->Destroy(allocator_);
+  delete models_buffer_;
 
   for (auto& buf : dcg_output_buffers_) {
     buf->Destroy(allocator_);
@@ -290,12 +290,10 @@ int ForwardRenderer::LoadModel(eastl::string file) {
   }
 
   model_indices_.push_back(model_index_data);
-
+  models_data_buffer_updated = true;
   return model_index;
 }
 
-// TODO: Support More Image Compositions / Filetypes (At LoadImage Call, maybe
-// make it file ending agnostic?)
 int ForwardRenderer::LoadImage(eastl::string filepath) {
   if (loaded_texture_indices_.find(filepath) != loaded_texture_indices_.end()) {
     return loaded_texture_indices_[filepath];
@@ -651,7 +649,7 @@ void ForwardRenderer::Prepare() {
 
   // DCG Buffer Creation
   {
-    dcg_input_model_data_ = blu::core::Buffer::CreateBuffer(
+    models_data_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(ModelIndices) * MAX_MODELS,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -661,7 +659,7 @@ void ForwardRenderer::Prepare() {
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-    dcg_input_models_ = blu::core::Buffer::CreateBuffer(
+    models_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_MODELS,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -681,12 +679,12 @@ void ForwardRenderer::Prepare() {
           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 
-    buffer_infos_.push_back(BufferInfo(dcg_input_model_data_->device_address,
-                                       dcg_input_model_data_->offset,
-                                       dcg_input_model_data_->size));
-    buffer_infos_.push_back(BufferInfo(dcg_input_models_->device_address,
-                                       dcg_input_models_->offset,
-                                       dcg_input_models_->size));
+    buffer_infos_.push_back(BufferInfo(models_data_buffer_->device_address,
+                                       models_data_buffer_->offset,
+                                       models_data_buffer_->size));
+    buffer_infos_.push_back(BufferInfo(models_buffer_->device_address,
+                                       models_buffer_->offset,
+                                       models_buffer_->size));
     memcpy(buffer_infos_buffer_->mapped_data, buffer_infos_.data(),
            buffer_infos_.size() * sizeof(BufferInfo));
   }
@@ -855,16 +853,19 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   vkResetFences(device_->GetLogicalDevice(), 1,
                 &in_flight_fences_[frame_index_]);
 
+  // Update Model Buffers
+  // Does not need to happen every frame, only on update
+  if (models_data_buffer_updated) {
+    memcpy(models_data_buffer_->mapped_data, model_indices_.data(),
+           model_indices_.size() * sizeof(ModelIndices));
+    models_data_buffer_updated = false;
+  }
+  memcpy(models_buffer_->mapped_data, render_data.model_ids.data(),
+         render_data.model_ids.size() * sizeof(uint32_t));
+  models_buffer_updated = false;
+
   // DCG_COMMAND_GEN
   {
-    // Update Model Buffers
-    // Does not need to happen every frame, only on update
-    memcpy(dcg_input_model_data_->mapped_data, model_indices_.data(),
-           model_indices_.size() * sizeof(ModelIndices));
-
-    memcpy(dcg_input_models_->mapped_data, render_data.model_ids.data(),
-           render_data.model_ids.size() * sizeof(uint32_t));
-
     VkCommandBuffer dcg_command = dcg_buffers[frame_index_];
     vkResetCommandBuffer(dcg_command, 0);
 
@@ -882,8 +883,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
     DCGPushConst dcg_push_const{
         .input_model_data =
-            BufferInfo(dcg_input_model_data_->device_address, 0, 0),
-        .input_models = BufferInfo(dcg_input_models_->device_address, 0, 0),
+            BufferInfo(models_data_buffer_->device_address, 0, 0),
+        .input_models = BufferInfo(models_buffer_->device_address, 0, 0),
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
         .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),

@@ -137,8 +137,11 @@ class ForwardRenderer {
   blu::core::Buffer* uv_buffer_;
   uint32_t uv_buffer_offset_ = 0;
 
-  blu::core::Buffer* dcg_input_model_data_;
-  blu::core::Buffer* dcg_input_models_;
+  bool models_data_buffer_updated = false;
+  blu::core::Buffer* models_data_buffer_;
+  bool models_buffer_updated = false;
+  blu::core::Buffer* models_buffer_;
+
   eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
 
   blu::core::Buffer* matrices_buffer_;
