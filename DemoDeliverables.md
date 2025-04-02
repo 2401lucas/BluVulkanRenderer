@@ -5,7 +5,10 @@
 - [ ] ImGUI Implementation
 - [x] Robust Scene/Model Loading
 - [ ] Better Model Data Management
-- [ ] Engine Refactor(Inherited Engine Class ?) + Better Transform matrix calculation when using a camera + Support Scene loading with returning more data in LoadModel
+- [x] Engine Refactor(Inherited Engine Class ?)
+- [ ] Better Transform matrix calculation when using a camera 
+- [ ] Support Scene loading with returning more data in LoadModel
+- [ ] Robust Model Buffers
 ### Priority Backlog
 - [ ] Culling
 - [ ] Metallic/Specular PBR Shading
@@ -17,7 +20,6 @@
 - [ ] Scripting
 - [ ] Scene Editor
 - [ ] Model Buffer Based on Pipeline
-- [ ] Robust Model Buffers
 
 # ROUGH IDEAS
 * Compute Generating Vertex/Normal/UV/Indices culled buffers?
