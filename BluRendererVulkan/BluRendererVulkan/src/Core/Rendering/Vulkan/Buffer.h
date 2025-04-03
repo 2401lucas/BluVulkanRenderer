@@ -11,7 +11,7 @@ class Buffer {
   VmaAllocation alloc;
   VkDeviceSize size;
   VkDeviceSize offset = 0;
-  void* mapped_data = nullptr;
+  char* mapped_data = nullptr;
   VkDeviceAddress device_address;
 
   void Destroy(const VmaAllocator& allocator);

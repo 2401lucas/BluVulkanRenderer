@@ -25,7 +25,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr uint32_t MAX_MODELS = 100;
+constexpr uint32_t MAX_MODELS = 1000;
 constexpr uint32_t MAX_VERTICES = 1000000;
 constexpr uint32_t MAX_INDICES = 1000000;
 constexpr uint32_t MAX_TEXTURES = 100;
@@ -135,13 +135,13 @@ class ForwardRenderer {
   blu::core::Buffer* buffer_infos_buffer_;
 
   blu::core::Buffer* vertex_buffer_;
-  uint32_t vertex_buffer_offset_ = 0;
+  uint32_t vertex_buffer_data_count_ = 0;
   blu::core::Buffer* normal_buffer_;
-  uint32_t normal_buffer_offset_ = 0;
+  uint32_t normal_buffer_data_count_ = 0;
   blu::core::Buffer* index_buffer_;
-  uint32_t index_buffer_offset_ = 0;
+  uint32_t index_buffer_data_count_ = 0;
   blu::core::Buffer* uv_buffer_;
-  uint32_t uv_buffer_offset_ = 0;
+  uint32_t uv_buffer_data_count_ = 0;
 
   bool models_data_buffer_updated = false;
   blu::core::Buffer* models_data_buffer_;

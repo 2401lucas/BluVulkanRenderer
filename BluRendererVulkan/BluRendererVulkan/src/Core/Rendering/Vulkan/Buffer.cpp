@@ -27,7 +27,7 @@ blu::core::Buffer* blu::core::Buffer::CreateBuffer(
                   &new_buffer->alloc, &alloc_info);
 
   new_buffer->size = buf_ci.size;
-  new_buffer->mapped_data = alloc_info.pMappedData;
+  new_buffer->mapped_data = (char*)alloc_info.pMappedData;
 
   if (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
     VkBufferDeviceAddressInfo info{

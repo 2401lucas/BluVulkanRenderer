@@ -183,7 +183,7 @@ eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
   auto new_model = blu::core::rendering::ModelData(filepath);
   auto& materials = new_model.GetMaterials();
   auto& meshes = new_model.GetMeshes();
-  // Texturing Data
+  // Material Data
   {
     size_t pos = filepath.rfind('/');
     eastl::string folderpath;
@@ -199,57 +199,65 @@ eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
       LoadTexture(mat.GetAmbientOcclusionTextureInfo(), folderpath);
     }
   }
-  // Model Data
+  // Mesh Data
   {
+    VkCommandBufferAllocateInfo alloc_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = transfer_command_pools[frame_index_],
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer copy_cmd_buf;
+    vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
+                             &copy_cmd_buf);
+
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
+
+    uint32_t vertex_data_count = 0;
+    uint32_t normal_data_count = 0;
+    uint32_t index_data_count = 0;
+    uint32_t uv_data_count = 0;
+
+    uint32_t vertex_data_offset = 0;
+    uint32_t normal_data_offset = 0;
+    uint32_t index_data_offset = 0;
+    uint32_t uv_data_offset = 0;
+
+    uint32_t vertex_data_total_count = 0;
+    uint32_t normal_data_total_count = 0;
+    uint32_t index_data_total_count = 0;
+    uint32_t uv_data_total_count = 0;
+
     for (auto& mesh : meshes) {
-      VkCommandBufferAllocateInfo alloc_info{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-          .commandPool = transfer_command_pools[frame_index_],
-          .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-          .commandBufferCount = 1,
-      };
+      vertex_data_total_count += mesh->GetVertexData().count;
+      normal_data_total_count += mesh->GetNormalData().count;
+      index_data_total_count += mesh->GetIndexData().count;
+      uv_data_total_count += mesh->GetUVData().count;
+    }
 
-      VkCommandBuffer copy_cmd_buf;
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(), &alloc_info,
-                               &copy_cmd_buf);
+    char* vertex_data = new char[sizeof(float) * 3 * vertex_data_total_count];
+    char* normal_data = new char[sizeof(float) * 3 * normal_data_total_count];
+    char* index_data = new char[sizeof(uint32_t) * index_data_total_count];
+    char* uv_data = new char[sizeof(float) * 3 * uv_data_total_count];
 
-      VkCommandBufferBeginInfo begin_info{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-      };
-      vkBeginCommandBuffer(copy_cmd_buf, &begin_info);
-
-      blu::core::Buffer* vert_staging_buffer;
-      blu::core::Buffer::UploadToBuffer(
-          device_->GetLogicalDevice(), allocator_, vertex_buffer_,
-          sizeof(float) * 3 * vertex_buffer_offset_, copy_cmd_buf,
-          mesh->GetVertexData().data, mesh->GetVertexData().data_size, 0,
-          vert_staging_buffer);
-      blu::core::Buffer* normal_staging_buffer;
-      blu::core::Buffer::UploadToBuffer(
-          device_->GetLogicalDevice(), allocator_, normal_buffer_,
-          sizeof(float) * 3 * normal_buffer_offset_, copy_cmd_buf,
-          mesh->GetNormalData().data, mesh->GetNormalData().data_size, 0,
-          normal_staging_buffer);
-      blu::core::Buffer* index_staging_buffer;
-      blu::core::Buffer::UploadToBuffer(
-          device_->GetLogicalDevice(), allocator_, index_buffer_,
-          sizeof(uint32_t) * index_buffer_offset_, copy_cmd_buf,
-          mesh->GetIndexData().data, mesh->GetIndexData().data_size, 0,
-          index_staging_buffer);
-      blu::core::Buffer* uv_staging_buffer;
-      blu::core::Buffer::UploadToBuffer(
-          device_->GetLogicalDevice(), allocator_, uv_buffer_,
-          sizeof(float) * 3 * uv_buffer_offset_, copy_cmd_buf,
-          mesh->GetUVData().data, mesh->GetUVData().data_size, 0,
-          uv_staging_buffer);
-
+    for (auto& mesh : meshes) {
       auto& material = materials[mesh->GetMaterialIndex()];
 
+      auto& mesh_vertex_data = mesh->GetVertexData();
+      auto& mesh_normal_data = mesh->GetNormalData();
+      auto& mesh_index_data = mesh->GetIndexData();
+      auto& mesh_uv_data = mesh->GetUVData();
+
       ModelIndices model_index_data{
-          .vert_offset = static_cast<int>(vertex_buffer_offset_),
-          .ind_count = mesh->GetIndexData().count,
-          .ind_offset = index_buffer_offset_,
+          .vert_offset =
+              static_cast<int>(vertex_buffer_data_count_ + vertex_data_count),
+          .ind_count = mesh_index_data.count,
+          .ind_offset = index_buffer_data_count_ + index_data_count,
           .base_tex_id = material.GetBaseColorTextureInfo().index,
           .normal_tex_id = material.GetNormalTextureInfo().index,
           .emission_tex_id = material.GetEmissionTextureInfo().index,
@@ -259,42 +267,90 @@ eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
           .ambient_occlusion_id =
               material.GetAmbientOcclusionTextureInfo().index,
       };
-
       output.push_back(model_indices_.size());
       model_indices_.push_back(model_index_data);
-      models_data_buffer_updated = true;
 
-      vertex_buffer_offset_ += mesh->GetVertexData().count;
-      normal_buffer_offset_ += mesh->GetNormalData().count;
-      index_buffer_offset_ += mesh->GetIndexData().count;
-      uv_buffer_offset_ += mesh->GetUVData().count;
+      memcpy(vertex_data + vertex_data_offset, mesh_vertex_data.data,
+             mesh_vertex_data.data_size);
+      memcpy(normal_data + normal_data_offset, mesh_normal_data.data,
+             mesh_normal_data.data_size);
+      memcpy(index_data + index_data_offset, mesh_index_data.data,
+             mesh_index_data.data_size);
+      memcpy(uv_data + uv_data_offset, mesh_uv_data.data,
+             mesh_uv_data.data_size);
 
-      vkEndCommandBuffer(copy_cmd_buf);
-
-      VkSubmitInfo submitInfo{
-          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .commandBufferCount = 1,
-          .pCommandBuffers = &copy_cmd_buf,
-      };
-
-      vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
-      // TODO: REMOVE
-      vkDeviceWaitIdle(device_->GetLogicalDevice());
-
-      vkFreeCommandBuffers(device_->GetLogicalDevice(),
-                           transfer_command_pools[frame_index_], 1,
-                           &copy_cmd_buf);
-
-      vert_staging_buffer->Destroy(allocator_);
-      delete vert_staging_buffer;
-      normal_staging_buffer->Destroy(allocator_);
-      delete normal_staging_buffer;
-      index_staging_buffer->Destroy(allocator_);
-      delete index_staging_buffer;
-      uv_staging_buffer->Destroy(allocator_);
-      delete uv_staging_buffer;
+      vertex_data_offset += mesh_vertex_data.data_size;
+      vertex_data_count += mesh_vertex_data.count;
+      normal_data_offset += mesh_normal_data.data_size;
+      index_data_offset += mesh_index_data.data_size;
+      index_data_count += mesh_index_data.count;
+      uv_data_offset += mesh_uv_data.data_size;
     }
+
+    blu::core::Buffer* vertex_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, vertex_buffer_,
+        sizeof(float) * 3 * vertex_buffer_data_count_, copy_cmd_buf,
+        vertex_data, sizeof(float) * 3 * vertex_data_total_count, 0,
+        vertex_staging_buffer);
+    vertex_buffer_data_count_ += vertex_data_total_count;
+
+    blu::core::Buffer* normal_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, normal_buffer_,
+        sizeof(float) * 3 * normal_buffer_data_count_, copy_cmd_buf,
+        normal_data, sizeof(float) * 3 * normal_data_total_count, 0,
+        normal_staging_buffer);
+    normal_buffer_data_count_ += normal_data_total_count;
+
+    blu::core::Buffer* index_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, index_buffer_,
+        sizeof(uint32_t) * index_buffer_data_count_, copy_cmd_buf, index_data,
+        sizeof(uint32_t) * index_data_total_count, 0, index_staging_buffer);
+    index_buffer_data_count_ += index_data_total_count;
+
+    blu::core::Buffer* uv_staging_buffer;
+    blu::core::Buffer::UploadToBuffer(
+        device_->GetLogicalDevice(), allocator_, uv_buffer_,
+        sizeof(float) * 3 * uv_buffer_data_count_, copy_cmd_buf, uv_data,
+        sizeof(float) * 3 * uv_data_total_count, 0, uv_staging_buffer);
+    uv_buffer_data_count_ += uv_data_total_count;
+
+    vkEndCommandBuffer(copy_cmd_buf);
+
+    VkSubmitInfo submitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &copy_cmd_buf,
+    };
+
+    vkQueueSubmit(device_->queues.transfer, 1, &submitInfo, VK_NULL_HANDLE);
+    // TODO: REMOVE
+    vkDeviceWaitIdle(device_->GetLogicalDevice());
+
+    vkFreeCommandBuffers(device_->GetLogicalDevice(),
+                         transfer_command_pools[frame_index_], 1,
+                         &copy_cmd_buf);
+
+    vertex_staging_buffer->Destroy(allocator_);
+    delete vertex_staging_buffer;
+    delete[] vertex_data;
+
+    normal_staging_buffer->Destroy(allocator_);
+    delete normal_staging_buffer;
+    delete[] normal_data;
+
+    index_staging_buffer->Destroy(allocator_);
+    delete index_staging_buffer;
+    delete[] index_data;
+
+    uv_staging_buffer->Destroy(allocator_);
+    delete uv_staging_buffer;
+    delete[] uv_data;
   }
+
+  models_data_buffer_updated = true;
 
   return output;
 }
@@ -909,7 +965,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
         .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
-        .workgroup_size = 128,
+        .workgroup_size = 32,
     };
 
     vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
@@ -919,8 +975,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
     // NVIDIA warp size is 32, AMD is 64
     //  Heavy parallel work is better on smaller worksizes
     //  Memory heavy accesses can work better on larger workgroup sizes
-    uint32_t workgroupSizeX = 128;
-    uint32_t workgroupSizeY = 128;
+    uint32_t workgroupSizeX = 32;
+    uint32_t workgroupSizeY = 32;
     uint32_t workgroupSizeZ = 1;
 
     vkCmdDispatch(dcg_command, workgroupSizeX, workgroupSizeY, workgroupSizeZ);
