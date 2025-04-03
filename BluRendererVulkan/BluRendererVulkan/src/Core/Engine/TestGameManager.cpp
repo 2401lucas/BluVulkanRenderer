@@ -22,6 +22,10 @@ void blu::game::TestGameManager::Start() {
               blu::game::components::Transform(false, glm::vec3(5, 0, 0),
                                                glm::vec3(0, 180, 0),
                                                glm::vec3(100, 100, 100)));
+  //CreateModel("Sponza/Sponza.glTF",
+  //            blu::game::components::Transform(false, glm::vec3(-20, 0, 0),
+  //                                             glm::vec3(0, 0, 0),
+  //                                             glm::vec3(0.01, 0.01, 0.01)));
 }
 
 void blu::game::TestGameManager::Update(float delta_time) {

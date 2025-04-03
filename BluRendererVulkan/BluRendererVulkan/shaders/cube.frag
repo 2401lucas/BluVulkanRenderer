@@ -9,7 +9,7 @@ layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec3 inUV;
 layout (location = 3) flat in int inInstanceIndex;
 
-layout(set = 1, binding = 0) uniform sampler2D texArray[10];
+layout(set = 1, binding = 0) uniform sampler2D textures[10];
 
 struct ModelInfo
 {
@@ -50,5 +50,5 @@ void main() {
   ModelIndex indexInfo = ModelIndex(bufferAddresses.bufferPointers[2].address);
 
   outColor = vec4(texture(
-		texArray[modelInfo.info[indexInfo.index[inInstanceIndex]].base_tex_id], inUV.xy));
+		textures[modelInfo.info[indexInfo.index[inInstanceIndex]].base_tex_id], inUV.xy));
 }

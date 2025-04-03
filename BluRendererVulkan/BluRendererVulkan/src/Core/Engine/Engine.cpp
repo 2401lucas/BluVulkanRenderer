@@ -44,16 +44,20 @@ blu::game::components::Model* Engine::CreateModel(
   if (models_.size() >= MAX_MODELS) {
     return nullptr;
   }
-  auto model_index = renderer_->LoadModel(filepath);
+  auto models = renderer_->LoadModel(filepath);
 
-  if (model_index >= 0) {
-    blu::game::components::Model* new_model =
-        new blu::game::components::Model(model_index, transform);
-    models_.push_back(new_model);
-    return new_model;
+  for (auto& model : models) {
+    if (model >= 0) {
+      blu::game::components::Model* new_model =
+          new blu::game::components::Model(model, transform);
+      models_.push_back(new_model);
+    } else {
+      assert(false);
+    }
   }
 
-  assert(false);
+  return models_[models_.size() - models.size()];
+
 }
 
 void Engine::Update(float frametime) {

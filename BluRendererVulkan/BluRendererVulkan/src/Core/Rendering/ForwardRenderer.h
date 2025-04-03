@@ -25,10 +25,10 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
 
-constexpr uint32_t MAX_MODELS = 1000;
-constexpr uint32_t MAX_VERTICES = 10000;
-constexpr uint32_t MAX_INDICES = 10000;
-constexpr uint32_t MAX_TEXTURES = 10;
+constexpr uint32_t MAX_MODELS = 100;
+constexpr uint32_t MAX_VERTICES = 1000000;
+constexpr uint32_t MAX_INDICES = 1000000;
+constexpr uint32_t MAX_TEXTURES = 100;
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 constexpr VkFormat COLOR_FORMAT = VK_FORMAT_R8G8B8A8_SRGB;
 constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;
@@ -88,7 +88,7 @@ class ForwardRenderer {
   ForwardRenderer(blu::core::Window* window);
   ~ForwardRenderer();
 
-  int LoadModel(eastl::string filepath);
+  eastl::vector<int> LoadModel(eastl::string filepath);
   int LoadModel(blu::core::rendering::ModelData);
 
   int LoadImage(eastl::string filepath);

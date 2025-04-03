@@ -171,9 +171,11 @@ ForwardRenderer::~ForwardRenderer() {
 }
 
 // For now- NOT ASYNC
-int ForwardRenderer::LoadModel(eastl::string file) {
+eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
+  eastl::vector<int> output;
   if (loaded_model_indices_.find(file) != loaded_model_indices_.end()) {
-    return loaded_model_indices_[file];
+    output.push_back(loaded_model_indices_[file]);
+    return output;
   }
 
   eastl::string filepath = "assets/" + file;
@@ -197,8 +199,6 @@ int ForwardRenderer::LoadModel(eastl::string file) {
       LoadTexture(mat.GetAmbientOcclusionTextureInfo(), folderpath);
     }
   }
-
-  auto init_model_indices_size = model_indices_.size();
   // Model Data
   {
     for (auto& mesh : meshes) {
@@ -260,6 +260,7 @@ int ForwardRenderer::LoadModel(eastl::string file) {
               material.GetAmbientOcclusionTextureInfo().index,
       };
 
+      output.push_back(model_indices_.size());
       model_indices_.push_back(model_index_data);
       models_data_buffer_updated = true;
 
@@ -294,8 +295,8 @@ int ForwardRenderer::LoadModel(eastl::string file) {
       delete uv_staging_buffer;
     }
   }
-  loaded_model_indices_[file] = init_model_indices_size;
-  return init_model_indices_size;
+
+  return output;
 }
 
 int ForwardRenderer::LoadImage(eastl::string filepath) {
@@ -908,7 +909,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
         .output_command_data =
             BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
         .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
-        .workgroup_size = 32,
+        .workgroup_size = 128,
     };
 
     vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
@@ -918,8 +919,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
     // NVIDIA warp size is 32, AMD is 64
     //  Heavy parallel work is better on smaller worksizes
     //  Memory heavy accesses can work better on larger workgroup sizes
-    uint32_t workgroupSizeX = 32;
-    uint32_t workgroupSizeY = 32;
+    uint32_t workgroupSizeX = 128;
+    uint32_t workgroupSizeY = 128;
     uint32_t workgroupSizeZ = 1;
 
     vkCmdDispatch(dcg_command, workgroupSizeX, workgroupSizeY, workgroupSizeZ);

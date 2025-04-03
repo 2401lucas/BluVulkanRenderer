@@ -7,8 +7,7 @@
 - [ ] Better Model Data Management
 - [x] Engine Refactor(Inherited Engine Class ?)
 - [ ] Better Transform matrix calculation when using a camera 
-- [ ] Support Scene loading with returning more data in LoadModel
-- [ ] Robust Model Buffers
+- [x] Support Scene loading with returning more data in LoadModel
 ### Priority Backlog
 - [ ] Culling
 - [ ] Metallic/Specular PBR Shading
@@ -20,6 +19,7 @@
 - [ ] Scripting
 - [ ] Scene Editor
 - [ ] Model Buffer Based on Pipeline
+- [ ] Robust Model Buffers & uploads
 
 # ROUGH IDEAS
 * Compute Generating Vertex/Normal/UV/Indices culled buffers?
