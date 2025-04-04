@@ -1186,6 +1186,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 }
 
 void ForwardRenderer::OnResize() {
+  vkDeviceWaitIdle(device_->GetLogicalDevice());
   depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
   delete depth_stencil_image_;
 

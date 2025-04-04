@@ -176,6 +176,9 @@ void Swapchain::Create(bool vsync, bool fullscreen) {
     swapchain_ci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   }
 
+  vkCreateSwapchainKHR(vk_device_->GetLogicalDevice(), &swapchain_ci, nullptr,
+                       &swapchain_);
+
   // If an existing swap chain is re-created, destroy the old swap chain
   // This also cleans up all the presentable images
   if (old_swapchain != VK_NULL_HANDLE) {
@@ -186,8 +189,6 @@ void Swapchain::Create(bool vsync, bool fullscreen) {
     vkDestroySwapchainKHR(vk_device_->GetLogicalDevice(), old_swapchain,
                           nullptr);
   }
-
-  vkCreateSwapchainKHR(vk_device_->GetLogicalDevice(), &swapchain_ci, nullptr, &swapchain_);
 
   VK_CHECK_RESULT(vkGetSwapchainImagesKHR(vk_device_->GetLogicalDevice(),
                                           swapchain_, &image_count_, NULL));
