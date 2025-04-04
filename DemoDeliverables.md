@@ -2,24 +2,27 @@
 ### In Progress
 - [x] Less Memcpy() on seldomely updated buffers
 - [x] Model Indices in graphics Shaders
-- [ ] ImGUI Implementation
 - [x] Robust Scene/Model Loading
-- [ ] Better Model Data Management
 - [x] Engine Refactor(Inherited Engine Class ?)
-- [ ] Better Transform matrix calculation when using a camera 
 - [x] Support Scene loading with returning more data in LoadModel
-### Priority Backlog
+- [x] Robust Model Data Uploading
+- [ ] Robust Model Buffers
+- [ ] Better Model Data Management
+- [ ] Tonemapping Pass (Compute?)
+- [ ] Better Transform matrix calculation when using a camera 
+- [ ] FXAA Pass
+### V1.0
 - [ ] Culling
 - [ ] Metallic/Specular PBR Shading
-- [ ] FXAA Pass
-- [ ] Tonemapping Pass
-- [ ] Shadow Maps
-- [ ] Compute workload dispatchable from Engine
+- [ ] Shadow
+- [ ] ImGUI Implementation
+- [ ] Scene Hierarchy
 ### Backlog
 - [ ] Scripting
 - [ ] Scene Editor
 - [ ] Model Buffer Based on Pipeline
-- [ ] Robust Model Buffers & uploads
+- [ ] Compute workload dispatchable from Engine
+- [ ] Physics (Library)
 
 # ROUGH IDEAS
 * Compute Generating Vertex/Normal/UV/Indices culled buffers?
@@ -27,6 +30,7 @@
 * GPU Particle System
 * Procedural Generation
 * Audio
+* More Modern Rendering Features
 
 # MISC Thoughts
 * The Update Loop will remain controlled by a BVK file, however having the engine have access to the renderer to send information such as model data, loading models, requesting pipelines & maybe more just makes the most sense. Maybe this means some logic could be abstracted from the renderer, and pushing into the engine. I want to be VERY CAREFUL with this, because I have already experienced the complexity of a RenderGraph. My idea is that a healthy combination of hard coded & dynamic passes would work, kind of a sudo render graph implementation that would have a chance to avoid a lot of unnecessary complexities by having more assumptions being able to be made.
