@@ -4,6 +4,12 @@
 #include <Vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
+struct BufferInfo {
+  VkDeviceAddress address;
+  VkDeviceSize offset;
+  VkDeviceSize size;
+};
+
 namespace blu::core {
 class Buffer {
  public:

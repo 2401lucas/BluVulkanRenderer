@@ -21,7 +21,7 @@ void BluRendererVulkan::run(int argc, char** argv) {
   blu::core::Window* window =
       new blu::core::Window(800, 600, "Blu: Rendering Prototype");
   ForwardRenderer* renderer = new ForwardRenderer(window);
-  renderer->Prepare();
+  renderer->GenerateResources();
 
   blu::core::Engine* engine = new blu::core::Engine(window, renderer);
   engine->LoadScene("TODO");

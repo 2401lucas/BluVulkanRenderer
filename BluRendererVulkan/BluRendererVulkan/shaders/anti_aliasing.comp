@@ -1,0 +1,142 @@
+#version 450
+
+#extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_buffer_reference2 : enable
+
+#define FXAA_EDGE_THRESHOLD      (1.0/8.0)
+#define FXAA_EDGE_THRESHOLD_MIN  (1.0/24.0)
+#define FXAA_SEARCH_STEPS        32
+#define FXAA_SEARCH_THRESHOLD    (1.0/4.0)
+#define FXAA_SUBPIX_CAP          (3.0/4.0)
+#define FXAA_SUBPIX_TRIM         (1.0/4.0)
+
+#define FxaaToVec3(a) vec3((a), (a), (a))
+
+#define FXAA_SUBPIX_TRIM_SCALE (1.0/(1.0 - FXAA_SUBPIX_TRIM))
+
+float PixelLuminance(vec3 rgb) {
+    //return rgb.y * (0.587/0.299) + rgb.x;
+    //return 0.299*rgb.x + 0.587*rgb.y + 0.114*rgb.z;
+    return 0.2126*rgb.x + 0.7152*rgb.y + 0.0722*rgb.z;
+}
+
+layout (set = 0, binding = 0) uniform sampler2D target_image;
+layout (set = 0, binding = 1, rgba8) uniform writeonly image2D output_image;
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+void main() {
+  ivec2 target_pixel = ivec2(gl_GlobalInvocationID.xy);
+
+  vec3 rgbC = texture(target_image, target_pixel).rgb;
+  vec3 rgbN = textureOffset(target_image, target_pixel, ivec2(0,-1)).rgb;
+  vec3 rgbS = textureOffset(target_image, target_pixel, ivec2(0,1)).rgb;
+  vec3 rgbE = textureOffset(target_image, target_pixel, ivec2(1,0)).rgb;
+  vec3 rgbW = textureOffset(target_image, target_pixel, ivec2(-1,0)).rgb;
+
+  float lumaC = PixelLuminance(rgbC);
+  float lumaN = PixelLuminance(rgbN);
+  float lumaS = PixelLuminance(rgbS);
+  float lumaE = PixelLuminance(rgbE);
+  float lumaW = PixelLuminance(rgbW);
+
+  float rangeMin = min(lumaC, min(min(lumaN, lumaW), min(lumaS, lumaW)));
+  float rangeMax = max(lumaC, max(max(lumaN, lumaW), max(lumaS, lumaE)));
+
+  float range = rangeMax - rangeMin;
+
+  if(range < max(FXAA_EDGE_THRESHOLD_MIN, rangeMax * FXAA_EDGE_THRESHOLD)) {
+    imageStore(output_image, target_pixel, vec4(rgbC, 1));
+    }
+
+  vec3 rgbL = rgbN + rgbW + rgbC + rgbE + rgbS;
+
+  float lumaL = (lumaN + lumaW + lumaE + lumaS) * 0.25;
+  float rangeL = abs(lumaL - lumaC);
+  float blendL = max(0.0, (rangeL / range) - FXAA_SUBPIX_TRIM) * FXAA_SUBPIX_TRIM_SCALE; 
+  blendL = min(FXAA_SUBPIX_CAP, blendL);
+
+  vec3 rgbNW = textureOffset(target_image, target_pixel, ivec2(-1,-1)).rgb;
+  vec3 rgbNE = textureOffset(target_image, target_pixel, ivec2(1,-1)).rgb;
+  vec3 rgbSW = textureOffset(target_image, target_pixel, ivec2(-1,1)).rgb;
+  vec3 rgbSE = textureOffset(target_image, target_pixel, ivec2(1,1)).rgb;
+
+  rgbL += (rgbNW + rgbNE + rgbSW + rgbSE);
+  rgbL *= FxaaToVec3(1.0/9.0);
+
+  float lumaNW = PixelLuminance(rgbNW);
+  float lumaNE = PixelLuminance(rgbNE);
+  float lumaSE = PixelLuminance(rgbSE);
+  float lumaSW = PixelLuminance(rgbSW);
+
+  float edgeVert = 
+        abs((0.25 * lumaNW) + (-0.5 * lumaN) + (0.25 * lumaNE)) +
+        abs((0.50 * lumaW ) + (-1.0 * lumaC) + (0.50 * lumaE )) +
+        abs((0.25 * lumaSW) + (-0.5 * lumaS) + (0.25 * lumaSE));
+  float edgeHorz = 
+        abs((0.25 * lumaNW) + (-0.5 * lumaW) + (0.25 * lumaSW)) +
+        abs((0.50 * lumaN ) + (-1.0 * lumaC) + (0.50 * lumaS )) +
+        abs((0.25 * lumaNE) + (-0.5 * lumaE) + (0.25 * lumaSE));
+  bool horzSpan = edgeHorz >= edgeVert;
+  
+  vec2 texSize = textureSize(target_image, 0);
+  vec2 rcpFrame = vec2(1.0 / texSize.x, 1.0 / texSize.y);
+  float lengthSign = horzSpan ? -rcpFrame.y : -rcpFrame.x;
+  if(!horzSpan) lumaN = lumaW;
+  if(!horzSpan) lumaS = lumaE;
+  float gradientN = abs(lumaN - lumaC);
+  float gradientS = abs(lumaS - lumaC);
+  lumaN = (lumaN + lumaC) * 0.5;
+  lumaS = (lumaS + lumaC) * 0.5;
+
+  //Choose pixels with highest gradient
+  bool pairN = gradientN >= gradientS;
+
+  if(!pairN) lumaN = lumaS;
+  if(!pairN) gradientN = gradientS;
+  if(!pairN) lengthSign *= -1.0;
+  vec2 posN;
+  posN.x = target_pixel.x + (horzSpan ? 0.0 : lengthSign * 0.5);
+  posN.y = target_pixel.y + (horzSpan ? lengthSign * 0.5 : 0.0);
+
+  // CHOOSE SEARCH LIMITING VALUES
+  gradientN *= FXAA_SEARCH_THRESHOLD;
+
+  vec2 posP = posN;
+  vec2 offNP = horzSpan ? vec2(rcpFrame.x, 0.0) : vec2(0.0f, rcpFrame.y); 
+  float lumaEndN = lumaN;
+  float lumaEndP = lumaN;
+  bool doneN = false;
+  bool doneP = false;
+  posN += offNP * vec2(-1.0, -1.0);
+  posP += offNP * vec2( 1.0,  1.0);
+
+  for(int i = 0; i < FXAA_SEARCH_STEPS; i++) {
+      if(!doneN) lumaEndN = PixelLuminance(texture(target_image, posN.xy).rgb);
+      if(!doneP) lumaEndP = PixelLuminance(texture(target_image, posP.xy).rgb);
+      doneN = doneN || (abs(lumaEndN - lumaN) >= gradientN);
+      doneP = doneP || (abs(lumaEndP - lumaN) >= gradientN);
+      if(doneN && doneP) break;
+      if(!doneN) posN -= offNP;
+      if(!doneP) posP += offNP; 
+  }
+
+  float dstN = horzSpan ? target_pixel.x - posN.x : target_pixel.y - posN.y;
+  float dstP = horzSpan ? posP.x - target_pixel.x : posP.y - target_pixel.y;
+  bool directionN = dstN < dstP;
+  lumaEndN = directionN ? lumaEndN : lumaEndP;
+
+  // CHECK IF PIXEL IS IN SECTION OF SPAN WHICH GETS NO FILTERING
+  if(((lumaC - lumaN) < 0.0) == ((lumaEndN - lumaN) < 0.0)) {
+    lengthSign = 0.0; }
+
+  //COMPUTE SUB-PIXEL OFFSET AND FILTER SPAN
+  float spanLength = (dstP + dstN);
+  dstN = directionN ? dstN : dstP;
+  float subPixelOffset = (0.5 + (dstN * (-1.0/spanLength))) * lengthSign;
+
+  vec3 rgbF = texture(target_image, vec2(target_pixel.x + (horzSpan ? 0.0 : subPixelOffset),
+    target_pixel.y + (horzSpan ? subPixelOffset : 0.0))).rgb;
+
+  imageStore(output_image, target_pixel, vec4(mix(rgbL, rgbF, blendL), 1));
+}

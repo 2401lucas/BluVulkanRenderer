@@ -21,6 +21,10 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
   }
   // VkDevice Creation
   {
+    VkPhysicalDeviceFeatures2 physical_device_features2{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+    };
+
     VkPhysicalDeviceFeatures physical_device_requested_features_{
         .multiDrawIndirect = VK_TRUE,
         .wideLines = VK_TRUE,
@@ -28,6 +32,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
         .shaderInt64 = VK_TRUE,
     };
 
+    physical_device_features2.features = physical_device_requested_features_;
     eastl::vector<const char*> device_extensions = {
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
@@ -35,38 +40,33 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
     };
 
+    VkPhysicalDeviceVulkan12Features vulkan_12_features{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .drawIndirectCount = VK_TRUE,
+        .descriptorIndexing = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+        .timelineSemaphore = VK_TRUE,
+        .bufferDeviceAddress = VK_TRUE,
+    };
+
+    physical_device_features2.pNext = &vulkan_12_features;
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
         .dynamicRendering = VK_TRUE,
     };
-    void* p_next_chain = &dynamic_rendering;
-
-    VkPhysicalDeviceDescriptorIndexingFeaturesEXT descriptor_indexing{
-        .sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
-        .descriptorBindingPartiallyBound = VK_TRUE,
-        .runtimeDescriptorArray = VK_TRUE,
-    };
-    dynamic_rendering.pNext = &descriptor_indexing;
-
-    VkPhysicalDeviceBufferDeviceAddressFeaturesKHR buffer_device_address{
-        .sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR,
-        .bufferDeviceAddress = VK_TRUE,
-    };
-    descriptor_indexing.pNext = &buffer_device_address;
+    vulkan_12_features.pNext = &dynamic_rendering;
 
     VkPhysicalDeviceSynchronization2FeaturesKHR device_sync{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
         .synchronization2 = VK_TRUE,
     };
-    buffer_device_address.pNext = &device_sync;
+    dynamic_rendering.pNext = &device_sync;
 
-    device_ =
-        new blu::core::Device(instance_, physical_device_requested_features_,
-                              device_extensions, p_next_chain);
+    device_ = new blu::core::Device(instance_, physical_device_features2,
+                                    device_extensions);
   }
   // VkSwapchain Creation
   {
@@ -102,19 +102,17 @@ ForwardRenderer::~ForwardRenderer() {
                          nullptr);
     vkDestroyCommandPool(device_->GetLogicalDevice(), compute_command_pools_[i],
                          nullptr);
-    vkDestroySemaphore(device_->GetLogicalDevice(),
-                       image_available_semaphores_[i], nullptr);
-    vkDestroySemaphore(device_->GetLogicalDevice(),
-                       render_finished_semaphores_[i], nullptr);
-    vkDestroySemaphore(device_->GetLogicalDevice(), dcg_semaphores_[i],
+    vkDestroySemaphore(device_->GetLogicalDevice(), present_semaphores[i],
                        nullptr);
+    vkDestroySemaphore(device_->GetLogicalDevice(),
+                       image_available_semaphore[i], nullptr);
     vkDestroyFence(device_->GetLogicalDevice(), in_flight_fences_[i], nullptr);
   }
 
+  vkDestroySemaphore(device_->GetLogicalDevice(), frame_semaphore, nullptr);
   vkDestroyDescriptorPool(device_->GetLogicalDevice(), render_descriptor_pool_,
                           nullptr);
-  depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
-  delete depth_stencil_image_;
+
   buffer_infos_buffer_->Destroy(allocator_);
   delete buffer_infos_buffer_;
   buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
@@ -142,10 +140,10 @@ ForwardRenderer::~ForwardRenderer() {
   models_buffer_->Destroy(allocator_);
   delete models_buffer_;
 
-  for (auto& buf : dcg_output_buffers_) {
-    buf->Destroy(allocator_);
-    delete buf;
-  }
+  delete frustum_cull_stage_;
+  delete depth_only_stage_;
+  delete opaque_render_stage_;
+  delete image_copy_stage_;
 
   for (eastl::vector<blu::core::rendering::ModelData>::iterator
            it = loaded_models_.begin(),
@@ -159,10 +157,6 @@ ForwardRenderer::~ForwardRenderer() {
        it != it_end; ++it) {
     vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
   }
-
-  delete dcg_pipeline_;
-  delete triangle_pipeline_;
-  delete cube_pipeline_;
 
   vmaDestroyAllocator(allocator_);
   delete swapchain_;
@@ -468,8 +462,10 @@ void ForwardRenderer::LoadTexture(
   }
 }
 
-void ForwardRenderer::Prepare() {
+void ForwardRenderer::GenerateResources() {
   auto frame_count = swapchain_->GetImageCount();
+  auto width = swapchain_->GetWidth();
+  auto height = swapchain_->GetHeight();
   // Command Pool Creation
   {
     transfer_command_pools.resize(frame_count);
@@ -495,30 +491,6 @@ void ForwardRenderer::Prepare() {
       vkCreateCommandPool(device_->GetLogicalDevice(), &command_pool_create,
                           nullptr, &compute_command_pools_[i]);
     }
-
-    draw_command_buffers.resize(frame_count);
-    dcg_buffers.resize(frame_count);
-
-    VkCommandBufferAllocateInfo command_buffer_alloc_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = nullptr,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-
-    for (size_t i = 0; i < frame_count; i++) {
-      /*command_buffer_alloc_info.commandPool = *transfer_command_pools[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               draw_command_buffers[i]);*/
-      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               &draw_command_buffers[i]);
-      command_buffer_alloc_info.commandPool = compute_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info, &dcg_buffers[i]);
-    }
   }
 
   // Descriptor Pool Creation
@@ -541,28 +513,6 @@ void ForwardRenderer::Prepare() {
     VK_CHECK_RESULT(vkCreateDescriptorPool(device_->GetLogicalDevice(),
                                            &descriptor_pool_create, nullptr,
                                            &render_descriptor_pool_));
-  }
-
-  // Depth Stencil Creation
-  {
-    depth_stencil_image_ = blu::core::Image::CreateImage(
-        device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT,
-        swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
-        VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VkImageSubresourceRange depth_range{
-        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-        .baseMipLevel = 0,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .baseArrayLayer = 0,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS,
-    };
-
-    blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                      depth_stencil_image_, DEPTH_FORMAT,
-                                      depth_range);
   }
 
   // Buffer Infos Buffer & Descriptor Creation
@@ -742,17 +692,6 @@ void ForwardRenderer::Prepare() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
-    dcg_output_buffers_.resize(frame_count);
-
-    for (size_t i = 0; i < frame_count; i++) {
-      dcg_output_buffers_[i] = blu::core::Buffer::CreateBuffer(
-          device_->GetLogicalDevice(), allocator_,
-          DRAW_COMMAND_BUFFER_SIZE * MAX_MODELS,
-          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-              VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    }
 
     buffer_infos_.push_back(BufferInfo(models_data_buffer_->device_address,
                                        models_data_buffer_->offset,
@@ -764,130 +703,173 @@ void ForwardRenderer::Prepare() {
            buffer_infos_.size() * sizeof(BufferInfo));
   }
 
-  // Pipeline Creation
+  // Stage Creation
   {
-    blu::core::rendering::ComputePipelineCreateInfo dcg_compute_create_info{
-        //.descriptor_set_layouts = {dcg_descriptor_set_->layout},
-        .shader = LoadShader("shaders/dcg_opaque.comp.spv",
-                             VK_SHADER_STAGE_COMPUTE_BIT),
-        .push_const = {VkPushConstantRange(VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                                           sizeof(DCGPushConst))},
-    };
+    // frustum_cull_stage_
+    {
+      blu::core::rendering::ComputePipelineCreateInfo frustum_cull_create_info{
+          .shader = LoadShader("shaders/frustum_cull.comp.spv",
+                               VK_SHADER_STAGE_COMPUTE_BIT),
+          .push_const = {VkPushConstantRange(
+              VK_SHADER_STAGE_COMPUTE_BIT, 0,
+              sizeof(
+                  blu::core::rendering::FrustumCullStage::FrustumPushConst))},
+      };
 
-    dcg_pipeline_ =
-        new blu::core::rendering::Pipeline(device_, dcg_compute_create_info);
+      auto frustum_cull_pipeline =
+          new blu::core::rendering::Pipeline(device_, frustum_cull_create_info);
 
-    blu::core::rendering::GraphicsPipelineCreateInfo
-        triangle_pipeline_create_info{
-            .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
-            .input_assembly_flags = 0,
-            .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            .input_assembly_primitive_restart_enable = VK_FALSE,
-            .rasteriazation_flags = 0,
-            .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
-            .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
-            .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-            .color_blend_attachment_states = {{
-                .blendEnable = VK_FALSE,
-                .colorWriteMask = 0xf /*RGBA*/,
-            }},
-            .depth_stencil_depth_test = VK_FALSE,
-            .depth_stencil_depth_write = VK_FALSE,
-            .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
-            .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
-            .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
-            .viewport_count = 1,
-            .scissor_count = 1,
-            .multisample_flags = 0,
-            .multisample_count = VK_SAMPLE_COUNT_1_BIT,
-            .dynamic_state_flags = 0,
-            .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                      VK_DYNAMIC_STATE_SCISSOR},
-            //.vertex_input_bindings =
-            //    {
-            //        {0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX},
-            //    },
-            //.vertex_input_attributes =
-            //    {
-            //        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)},
-            //    },
-            .color_attachment_formats = {swapchain_->GetColorFormat()},
-            .depth_format = DEPTH_FORMAT,
+      frustum_cull_stage_ = new blu::core::rendering::FrustumCullStage(
+          device_, allocator_, frustum_cull_pipeline, compute_command_pools_);
+    }
 
-            .shaders{
-                LoadShader("shaders/postProcessing.vert.spv",
-                           VK_SHADER_STAGE_VERTEX_BIT),
-                LoadShader("shaders/postProcessing.frag.spv",
-                           VK_SHADER_STAGE_FRAGMENT_BIT),
-            },
-        };
+    // depth_only_stage_
+    {
+      blu::core::rendering::GraphicsPipelineCreateInfo
+          depth_only_stage_create_info{
+              .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
+              .input_assembly_flags = 0,
+              .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+              .input_assembly_primitive_restart_enable = VK_FALSE,
+              .rasteriazation_flags = 0,
+              .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+              .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
+              .rasteriazation_state_front_face =
+                  VK_FRONT_FACE_COUNTER_CLOCKWISE,
+              .color_blend_attachment_states = {},
+              .depth_stencil_depth_test = VK_TRUE,
+              .depth_stencil_depth_write = VK_TRUE,
+              .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
+              .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+              .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+              .viewport_count = 1,
+              .scissor_count = 1,
+              .multisample_flags = 0,
+              .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+              .dynamic_state_flags = 0,
+              .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                        VK_DYNAMIC_STATE_SCISSOR},
+              .vertex_input_bindings =
+                  {
+                      {0, 3 * sizeof(float),
+                       VK_VERTEX_INPUT_RATE_VERTEX},  // POS
+                  },
+              .vertex_input_attributes =
+                  {
+                      {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
+                  },
+              .color_attachment_formats = {},
+              .depth_format = DEPTH_FORMAT,
 
-    triangle_pipeline_ = new blu::core::rendering::Pipeline(
-        device_, triangle_pipeline_create_info);
+              .shaders{LoadShader("shaders/depth_only.vert.spv",
+                                  VK_SHADER_STAGE_VERTEX_BIT)},
+          };
 
-    blu::core::rendering::GraphicsPipelineCreateInfo cube_pipeline_create_info{
-        .descriptor_set_layouts =
-            {
-                buffer_infos_descriptor_set_->layout,
-                textures_descriptor_set_->layout,
-            },
-        .input_assembly_flags = 0,
-        .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .input_assembly_primitive_restart_enable = VK_FALSE,
-        .rasteriazation_flags = 0,
-        .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
-        .rasteriazation_state_cull_mode = VK_CULL_MODE_BACK_BIT,
-        .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .color_blend_attachment_states = {{
-            .blendEnable = VK_FALSE,
-            .colorWriteMask = 0xf /*RGBA*/,
-        }},
-        .depth_stencil_depth_test = VK_TRUE,
-        .depth_stencil_depth_write = VK_TRUE,
-        .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
-        .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
-        .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
-        .viewport_count = 1,
-        .scissor_count = 1,
-        .multisample_flags = 0,
-        .multisample_count = VK_SAMPLE_COUNT_1_BIT,
-        .dynamic_state_flags = 0,
-        .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                  VK_DYNAMIC_STATE_SCISSOR},
-        .vertex_input_bindings =
-            {
-                {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // POS
-                {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // NORM
-                {2, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // UV
-            },
-        .vertex_input_attributes =
-            {
-                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
-                {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
-                {2, 2, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
-            },
-        .color_attachment_formats = {swapchain_->GetColorFormat()},
-        .depth_format = DEPTH_FORMAT,
-        .shaders{
-            LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
-            LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT),
-        },
-    };
+      auto depth_only_stage_pipeline = new blu::core::rendering::Pipeline(
+          device_, depth_only_stage_create_info);
 
-    cube_pipeline_ =
-        new blu::core::rendering::Pipeline(device_, cube_pipeline_create_info);
+      depth_only_stage_ = new blu::core::rendering::DepthOnlyStage(
+          device_, allocator_, depth_only_stage_pipeline,
+          graphics_command_pools_, width, height);
+    }
+
+    // opaque_render_stage_
+    {
+      blu::core::rendering::GraphicsPipelineCreateInfo
+          opaque_render_stage_create_info{
+              .descriptor_set_layouts =
+                  {
+                      buffer_infos_descriptor_set_->layout,
+                      textures_descriptor_set_->layout,
+                  },
+              .input_assembly_flags = 0,
+              .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+              .input_assembly_primitive_restart_enable = VK_FALSE,
+              .rasteriazation_flags = 0,
+              .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+              .rasteriazation_state_cull_mode = VK_CULL_MODE_BACK_BIT,
+              .rasteriazation_state_front_face =
+                  VK_FRONT_FACE_COUNTER_CLOCKWISE,
+              .color_blend_attachment_states = {{
+                  .blendEnable = VK_FALSE,
+                  .colorWriteMask = 0xf /*RGBA*/,
+              }},
+              .depth_stencil_depth_test = VK_TRUE,
+              .depth_stencil_depth_write = VK_TRUE,
+              .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
+              .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+              .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+              .viewport_count = 1,
+              .scissor_count = 1,
+              .multisample_flags = 0,
+              .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+              .dynamic_state_flags = 0,
+              .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                        VK_DYNAMIC_STATE_SCISSOR},
+              .vertex_input_bindings =
+                  {
+                      {0, 3 * sizeof(float),
+                       VK_VERTEX_INPUT_RATE_VERTEX},  // POS
+                      {1, 3 * sizeof(float),
+                       VK_VERTEX_INPUT_RATE_VERTEX},  // NORM
+                      {2, 3 * sizeof(float),
+                       VK_VERTEX_INPUT_RATE_VERTEX},  // UV
+                  },
+              .vertex_input_attributes =
+                  {
+                      {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
+                      {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
+                      {2, 2, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
+                  },
+              .color_attachment_formats = {COLOR_FORMAT},
+              .depth_format = DEPTH_FORMAT,
+              .shaders{
+                  LoadShader("shaders/cube.vert.spv",
+                             VK_SHADER_STAGE_VERTEX_BIT),
+                  LoadShader("shaders/cube.frag.spv",
+                             VK_SHADER_STAGE_FRAGMENT_BIT),
+              },
+          };
+
+      auto opaque_render_stage_pipeline_ = new blu::core::rendering::Pipeline(
+          device_, opaque_render_stage_create_info);
+
+      opaque_render_stage_ = new blu::core::rendering::OpaqueRenderStage(
+          device_, allocator_, opaque_render_stage_pipeline_,
+          graphics_command_pools_, width, height);
+    }
+
+    // image_copy_stage_
+    {
+      image_copy_stage_ = new blu::core::rendering::ImageCopyStage(
+          device_, allocator_, graphics_command_pools_);
+    }
+
+    // anti_aliasing_stage_
+    {
+      blu::core::rendering::ComputePipelineCreateInfo anti_aliasing_create_info{
+          //.descriptor_set_layouts = // TODO
+          .shader = LoadShader("shaders/anti_aliasing.comp.spv",
+                               VK_SHADER_STAGE_COMPUTE_BIT),
+      };
+
+      auto anti_aliasing_pipeline = new blu::core::rendering::Pipeline(
+          device_, anti_aliasing_create_info);
+
+      anti_aliasing_stage_ = new blu::core::rendering::AntiAliasingStage(
+          device_, allocator_, anti_aliasing_pipeline, compute_command_pools_,
+          width, height);
+    }
   }
 
   // Create Fence & Semaphores
   {
-    image_available_semaphores_.resize(frame_count);
-    render_finished_semaphores_.resize(frame_count);
-    dcg_semaphores_.resize(frame_count);
+    present_semaphores.resize(frame_count);
+    image_available_semaphore.resize(frame_count);
     in_flight_fences_.resize(frame_count);
 
     VkSemaphoreCreateInfo semaphore_info{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-    };
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
 
     VkFenceCreateInfo fence_info{
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
@@ -895,43 +877,47 @@ void ForwardRenderer::Prepare() {
     };
     for (size_t i = 0; i < frame_count; i++) {
       vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
-                        &image_available_semaphores_[i]);
+                        &present_semaphores[i]);
       vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
-                        &render_finished_semaphores_[i]);
-      vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
-                        &dcg_semaphores_[i]);
+                        &image_available_semaphore[i]);
       vkCreateFence(device_->GetLogicalDevice(), &fence_info, nullptr,
                     &in_flight_fences_[i]);
     }
-  }
+    VkSemaphoreTypeCreateInfoKHR type_create_info{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO_KHR,
+        .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE_KHR,
+        .initialValue = 0,
+    };
+    semaphore_info.pNext = &type_create_info;
 
-  LoadImage("assets/uv-test.png");  // Default Tex
+    vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
+                      &frame_semaphore);
+
+    LoadImage("assets/uv-test.png");  // Default Tex
+  }
 }
 
-// Update Render Data
-// -Matrices
-// Render
-// Setup Fences & Semaphores
-RendererState ForwardRenderer::Render(RenderData render_data) {
+bool ForwardRenderer::PrepareFrame() {
   vkWaitForFences(device_->GetLogicalDevice(), 1,
                   &in_flight_fences_[frame_index_], VK_TRUE, UINT64_MAX);
 
-  auto swapchain = swapchain_->GetSwapchain();
   auto acquire_image_result = vkAcquireNextImageKHR(
-      device_->GetLogicalDevice(), swapchain, UINT64_MAX,
-      image_available_semaphores_[frame_index_], nullptr, &image_index_);
+      device_->GetLogicalDevice(), swapchain_->GetSwapchain(), UINT64_MAX,
+      image_available_semaphore[frame_index_], nullptr, &image_index_);
 
   if ((acquire_image_result == VK_ERROR_OUT_OF_DATE_KHR) ||
       (acquire_image_result == VK_SUBOPTIMAL_KHR)) {
-    OnResize();
-    return RendererState::ASPECT_RATIO_UPDATED;
+    return false;
   }
 
   vkResetFences(device_->GetLogicalDevice(), 1,
                 &in_flight_fences_[frame_index_]);
 
-  // Update Model Buffers
-  // Does not need to happen every frame, only on update
+  return true;
+}
+
+void ForwardRenderer::UpdateFrameData(RenderData& render_data) {
+  // FRAME DATA UPDATING
   if (models_data_buffer_updated) {
     memcpy(models_data_buffer_->mapped_data, model_indices_.data(),
            model_indices_.size() * sizeof(ModelIndices));
@@ -940,244 +926,111 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   memcpy(models_buffer_->mapped_data, render_data.model_ids.data(),
          render_data.model_ids.size() * sizeof(uint32_t));
   models_buffer_updated = false;
+  memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
+         render_data.matrices.size() * sizeof(glm::mat4));
+}
 
-  // DCG_COMMAND_GEN
-  {
-    VkCommandBuffer dcg_command = dcg_buffers[frame_index_];
-    vkResetCommandBuffer(dcg_command, 0);
-
-    VkCommandBufferBeginInfo dcg_cmd_buffer_begin{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = nullptr,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        .pInheritanceInfo = nullptr,
-    };
-
-    vkBeginCommandBuffer(dcg_command, &dcg_cmd_buffer_begin);
-
-    vkCmdBindPipeline(dcg_command, VK_PIPELINE_BIND_POINT_COMPUTE,
-                      *dcg_pipeline_->GetPipeline());
-
-    DCGPushConst dcg_push_const{
-        .input_model_data =
-            BufferInfo(models_data_buffer_->device_address, 0, 0),
-        .input_models = BufferInfo(models_buffer_->device_address, 0, 0),
-        .output_command_data =
-            BufferInfo(dcg_output_buffers_[frame_index_]->device_address, 0, 0),
-        .draw_count = static_cast<uint32_t>(render_data.model_ids.size()),
-        .workgroup_size = 32,
-    };
-
-    vkCmdPushConstants(dcg_command, *dcg_pipeline_->GetPipelineLayout(),
-                       VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(DCGPushConst),
-                       &dcg_push_const);
-
-    // NVIDIA warp size is 32, AMD is 64
-    //  Heavy parallel work is better on smaller worksizes
-    //  Memory heavy accesses can work better on larger workgroup sizes
-    uint32_t workgroupSizeX = 32;
-    uint32_t workgroupSizeY = 32;
-    uint32_t workgroupSizeZ = 1;
-
-    vkCmdDispatch(dcg_command, workgroupSizeX, workgroupSizeY, workgroupSizeZ);
-
-    vkEndCommandBuffer(dcg_command);
-
-    VkSubmitInfo draw_info{
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &dcg_command,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &dcg_semaphores_[frame_index_],
-    };
-
-    VK_CHECK_RESULT(
-        vkQueueSubmit(device_->queues.compute, 1, &draw_info, nullptr));
+void ForwardRenderer::BuildFrameData() {
+  switch (settings_.output) {
+    case Output::Early_Depth:
+      semaphore_values.frustum_cull_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      semaphore_values.depth_only_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      semaphore_values.image_copy_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      break;
+    case Output::OpaqueDraw:
+      semaphore_values.frustum_cull_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      semaphore_values.depth_only_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      semaphore_values.opaque_render_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      semaphore_values.image_copy_stage_ = next_semaphore_value;
+      next_semaphore_value += 1;
+      break;
+    case Output::AA:
+      break;
   }
+}
 
-  // Render
-  {
-    auto swapchain_buf = swapchain_->GetSwapchainBuffer(image_index_);
-    auto width = swapchain_->GetWidth();
-    auto height = swapchain_->GetHeight();
-    // Graphics Queue
-    {
-      memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
-             render_data.matrices.size() * sizeof(glm::mat4));
+bool ForwardRenderer::PresentFrame(blu::core::Image* target_image,
+                                   uint64_t wait_semaphore_value) {
+  auto swapchain = swapchain_->GetSwapchain();
+  auto swapchain_buf = swapchain_->GetSwapchainBuffer(frame_index_);
 
-      VkCommandBuffer draw_cmd_buffer = draw_command_buffers[frame_index_];
-      vkResetCommandBuffer(draw_cmd_buffer, 0);
+  image_copy_stage_->Run(
+      frame_index_, target_image->image, target_image->layout,
+      swapchain_buf.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      swapchain_->GetWidth(), swapchain_->GetHeight(), frame_semaphore,
+      wait_semaphore_value, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      present_semaphores[frame_index_], UINT64_MAX,
+      in_flight_fences_[frame_index_]);
 
-      VkCommandBufferBeginInfo draw_cmd_buffer_begin{
-          .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-          .pNext = nullptr,
-          .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-          .pInheritanceInfo = nullptr,
-      };
+  VkSemaphore present_wait_semaphore[] = {
+      present_semaphores[frame_index_],
+      image_available_semaphore[frame_index_]};
 
-      vkBeginCommandBuffer(draw_cmd_buffer, &draw_cmd_buffer_begin);
+  VkPresentInfoKHR present_info = {
+      .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .pNext = NULL,
+      .waitSemaphoreCount = 2,
+      .pWaitSemaphores = present_wait_semaphore,
+      .swapchainCount = 1,
+      .pSwapchains = &swapchain,
+      .pImageIndices = &image_index_,
+  };
 
-      VkImageSubresourceRange range{
-          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-          .baseMipLevel = 0,
-          .levelCount = 1,
-          .baseArrayLayer = 0,
-          .layerCount = 1,
-      };
+  auto queue_present_result =
+      vkQueuePresentKHR(device_->queues.graphics, &present_info);
+  if ((queue_present_result == VK_ERROR_OUT_OF_DATE_KHR) ||
+      (queue_present_result == VK_SUBOPTIMAL_KHR)) {
+    return false;
+  }
+  return true;
+}
 
-      VkImageSubresourceRange depth_range{
-          .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-          .baseMipLevel = 0,
-          .levelCount = 1,
-          .baseArrayLayer = 0,
-          .layerCount = 1,
-      };
+RendererState ForwardRenderer::Render(RenderData render_data) {
+  // Swapchain Acquire Next image
+  if (!PrepareFrame()) {
+    OnResize();
+    return RendererState::ASPECT_RATIO_UPDATED;
+  }
+  BuildFrameData();
 
-      blu::core::Image::ImageLayoutTransition(
-          draw_cmd_buffer, swapchain_buf.image, VK_IMAGE_LAYOUT_UNDEFINED,
-          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+  UpdateFrameData(render_data);
 
-      blu::core::Image::ImageLayoutTransition(
-          draw_cmd_buffer, depth_stencil_image_->image,
-          VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-          depth_range);
+  frustum_cull_stage_->Run(
+      frame_index_, BufferInfo(models_data_buffer_->device_address),
+      BufferInfo(models_buffer_->device_address), render_data.model_ids.size(),
+      nullptr, UINT64_MAX, VK_PIPELINE_STAGE_NONE, frame_semaphore,
+      semaphore_values.frustum_cull_stage_, nullptr);
 
-      eastl::array<VkClearValue, 2> clear_values{};
-      clear_values[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-      clear_values[1].depthStencil = {1.0f, 0};
+  depth_only_stage_->Run(
+      frame_index_, frustum_cull_stage_->frustum_output_buffers_[frame_index_],
+      {buffer_infos_descriptor_set_->set}, vertex_buffer_, index_buffer_,
+      frame_semaphore, semaphore_values.frustum_cull_stage_,
+      VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
+      semaphore_values.depth_only_stage_, nullptr);
 
-      VkRenderingAttachmentInfo color_attachment_info{
-          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-          .imageView = swapchain_buf.view,
-          .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-          .resolveMode = VK_RESOLVE_MODE_NONE,
-          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-          .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-          .clearValue = clear_values[0],
-      };
+  opaque_render_stage_->Run(
+      frame_index_, frustum_cull_stage_->frustum_output_buffers_[frame_index_],
+      {buffer_infos_descriptor_set_->set, textures_descriptor_set_->set},
+      vertex_buffer_, normal_buffer_, uv_buffer_, index_buffer_,
+      frame_semaphore, semaphore_values.depth_only_stage_,
+      VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
+      semaphore_values.opaque_render_stage_, nullptr);
 
-      VkRenderingAttachmentInfo depth_attachment_info{
-          .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-          .imageView = depth_stencil_image_->view,
-          .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-          .resolveMode = VK_RESOLVE_MODE_NONE,
-          .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-          .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-          .clearValue = clear_values[1],
-      };
-      VkRenderingInfo render_info{
-          .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-          .renderArea = {{.x = 0, .y = 0}, width, height},
-          .layerCount = 1,
-          .viewMask = 0,
-          .colorAttachmentCount = 1,
-          .pColorAttachments = &color_attachment_info,
-          .pDepthAttachment = &depth_attachment_info,
-          //.pStencilAttachment = &depth_attachment_info,
-      };
+  anti_aliasing_stage_->Run(
+      frame_index_, frame_semaphore, semaphore_values.opaque_render_stage_,
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, frame_semaphore,
+      semaphore_values.anti_aliasing_stage_, nullptr);
 
-      vkCmdBeginRendering(draw_cmd_buffer, &render_info);
-
-      VkViewport viewport{
-          .width = static_cast<float>(width),
-          .height = static_cast<float>(height),
-          .minDepth = 0.0f,
-          .maxDepth = 1.0f,
-      };
-
-      vkCmdSetViewport(draw_cmd_buffer, 0, 1, &viewport);
-
-      VkRect2D scissor{
-          .offset{.x = 0, .y = 0},
-          .extent{
-              .width = width,
-              .height = height,
-          },
-      };
-
-      vkCmdSetScissor(draw_cmd_buffer, 0, 1, &scissor);
-      VkDeviceSize offsets[1] = {0};
-
-      vkCmdBindPipeline(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        *cube_pipeline_->GetPipeline());
-      eastl::array<VkDescriptorSet, 2> descriptor_sets{
-          buffer_infos_descriptor_set_->set,
-          textures_descriptor_set_->set,
-      };
-
-      vkCmdBindDescriptorSets(draw_cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              *cube_pipeline_->GetPipelineLayout(), 0,
-                              descriptor_sets.size(), descriptor_sets.data(), 0,
-                              nullptr);
-
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 0, 1, &vertex_buffer_->buffer,
-                             offsets);
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 1, 1, &normal_buffer_->buffer,
-                             offsets);
-      vkCmdBindVertexBuffers(draw_cmd_buffer, 2, 1, &uv_buffer_->buffer,
-                             offsets);
-
-      vkCmdBindIndexBuffer(draw_cmd_buffer, index_buffer_->buffer, 0,
-                           VK_INDEX_TYPE_UINT32);
-
-      vkCmdDrawIndexedIndirect(
-          draw_cmd_buffer, dcg_output_buffers_[frame_index_]->buffer, 0,
-          render_data.model_ids.size(), DRAW_COMMAND_BUFFER_SIZE);
-
-      vkCmdEndRendering(draw_cmd_buffer);
-
-      blu::core::Image::ImageLayoutTransition(
-          draw_cmd_buffer, swapchain_buf.image,
-          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-          VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
-
-      vkEndCommandBuffer(draw_cmd_buffer);
-
-      VkSemaphore draw_wait_semaphores[] = {
-          image_available_semaphores_[frame_index_],
-          dcg_semaphores_[frame_index_]};
-
-      VkPipelineStageFlags draw_wait_stages[] = {
-          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-          VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-      };
-
-      VkSemaphore draw_signal_semaphores[] = {
-          render_finished_semaphores_[frame_index_]};
-
-      VkSubmitInfo draw_info{
-          .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-          .waitSemaphoreCount = 2,
-          .pWaitSemaphores = draw_wait_semaphores,
-          .pWaitDstStageMask = draw_wait_stages,
-          .commandBufferCount = 1,
-          .pCommandBuffers = &draw_cmd_buffer,
-          .signalSemaphoreCount = 1,
-          .pSignalSemaphores = draw_signal_semaphores,
-      };
-
-      VK_CHECK_RESULT(vkQueueSubmit(device_->queues.graphics, 1, &draw_info,
-                                    in_flight_fences_[frame_index_]));
-
-      VkPresentInfoKHR present_info = {
-          .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-          .pNext = NULL,
-          .waitSemaphoreCount = 1,
-          .pWaitSemaphores = draw_signal_semaphores,
-          .swapchainCount = 1,
-          .pSwapchains = &swapchain,
-          .pImageIndices = &image_index_,
-      };
-
-      auto queue_present_result =
-          vkQueuePresentKHR(device_->queues.graphics, &present_info);
-
-      if ((queue_present_result == VK_ERROR_OUT_OF_DATE_KHR) ||
-          (queue_present_result == VK_SUBOPTIMAL_KHR)) {
-        OnResize();
-        return RendererState::ASPECT_RATIO_UPDATED;
-      }
-    }
+  if (!PresentFrame(opaque_render_stage_->color_output_images[frame_index_],
+                    semaphore_values.opaque_render_stage_)) {
+    OnResize();
+    return RendererState::ASPECT_RATIO_UPDATED;
   }
 
   frame_index_ = (frame_index_ + 1) % swapchain_->GetImageCount();
@@ -1187,28 +1040,19 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
 void ForwardRenderer::OnResize() {
   vkDeviceWaitIdle(device_->GetLogicalDevice());
-  depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
-  delete depth_stencil_image_;
 
   swapchain_->Create(false, false);
 
-  depth_stencil_image_ = blu::core::Image::CreateImage(
-      device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT,
-      swapchain_->GetWidth(), swapchain_->GetHeight(), 1, VK_SAMPLE_COUNT_1_BIT,
-      VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  auto frame_count = swapchain_->GetImageCount();
+  auto width = swapchain_->GetWidth();
+  auto height = swapchain_->GetHeight();
 
-  VkImageSubresourceRange depth_range{
-      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-      .baseMipLevel = 0,
-      .levelCount = VK_REMAINING_MIP_LEVELS,
-      .baseArrayLayer = 0,
-      .layerCount = VK_REMAINING_ARRAY_LAYERS,
-  };
-
-  blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                    depth_stencil_image_, DEPTH_FORMAT,
-                                    depth_range);
+  if (depth_only_stage_ != nullptr) {
+    depth_only_stage_->Resize(frame_count, width, height);
+  }
+  if (opaque_render_stage_ != nullptr) {
+    opaque_render_stage_->Resize(frame_count, width, height);
+  }
 }
 
 VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(

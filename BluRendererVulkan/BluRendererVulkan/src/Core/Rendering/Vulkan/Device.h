@@ -13,8 +13,8 @@ namespace blu::core {
 class Device {
  public:
   Device(const blu::core::Instance* instance,
-         VkPhysicalDeviceFeatures physical_device_requested_features_,
-         const eastl::vector<const char*>& requested_features, void* p_next);
+         VkPhysicalDeviceFeatures2 physical_device_requested_features_,
+         const eastl::vector<const char*>& requested_features);
   ~Device();
 
   VkPhysicalDevice GetPhysicalDevice() const { return physical_device_; }
@@ -48,7 +48,7 @@ class Device {
   VkPhysicalDeviceProperties physical_device_properties_;
   VkPhysicalDeviceFeatures physical_device_features_;
   VkPhysicalDeviceMemoryProperties physical_device_memory_properties_;
-  VkPhysicalDeviceFeatures physical_device_enabled_features_;
+  VkPhysicalDeviceFeatures2 physical_device_enabled_features_;
   eastl::vector<VkQueueFamilyProperties> queue_family_properties_;
   // Managed Vulkan Resources
   eastl::vector<VkShaderModule> shader_modules_;

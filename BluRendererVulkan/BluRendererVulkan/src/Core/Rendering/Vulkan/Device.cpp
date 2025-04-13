@@ -4,9 +4,8 @@
 
 namespace blu::core {
 Device::Device(const blu::core::Instance* instance,
-               VkPhysicalDeviceFeatures physical_device_requested_features_,
-               const eastl::vector<const char*>& requested_features,
-               void* p_next) {
+               VkPhysicalDeviceFeatures2 physical_device_requested_features_,
+               const eastl::vector<const char*>& requested_features) {
   physical_device_enabled_features_ = physical_device_requested_features_;
   uint32_t gpu_count;
 
@@ -121,21 +120,11 @@ Device::Device(const blu::core::Instance* instance,
 
   VkDeviceCreateInfo device_ci{
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .pNext = &physical_device_enabled_features_,
       .queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size()),
       .pQueueCreateInfos = queue_create_infos.data(),
-      .pEnabledFeatures = &physical_device_enabled_features_,
+      .pEnabledFeatures = nullptr,
   };
-
-  VkPhysicalDeviceFeatures2 physical_device_features2;
-  if (p_next) {
-    physical_device_features2 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = p_next,
-        .features = physical_device_enabled_features_,
-    };
-    device_ci.pEnabledFeatures = nullptr;
-    device_ci.pNext = &physical_device_features2;
-  }
 
   if (!device_extensions.empty()) {
     eastl::hash_set<size_t>::iterator supported_extensions_it_end =
