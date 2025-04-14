@@ -16,7 +16,13 @@ constexpr bool USE_VALIDATION = false;
 
 #include "../External/Window.h"
 #include "Components/ModelData.h"
+#include "ForwardRendererConsts.h"
 #include "RenderData.h"
+#include "Stages/AntiAliasingStage.h"
+#include "Stages/DepthOnlyStage.h"
+#include "Stages/FrustumCullStage.h"
+#include "Stages/ImageCopyStage.h"
+#include "Stages/OpaqueRenderStage.h"
 #include "Vulkan/Buffer.h"
 #include "Vulkan/DescriptorSet.h"
 #include "Vulkan/Device.h"
@@ -24,27 +30,41 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
-
-constexpr uint32_t MAX_MODELS = 1000;
-constexpr uint32_t MAX_VERTICES = 1000000;
-constexpr uint32_t MAX_INDICES = 1000000;
-constexpr uint32_t MAX_TEXTURES = 100;
-constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
-constexpr VkFormat COLOR_FORMAT = VK_FORMAT_R8G8B8A8_SRGB;
-constexpr VkDeviceSize MAX_BUFFERS_STORAGE = 32;
-constexpr VkDeviceSize DRAW_COMMAND_BUFFER_SIZE =
-    sizeof(VkDrawIndexedIndirectCommand);
-
-struct BufferInfo {
-  VkDeviceAddress address;
-  VkDeviceSize offset;
-  VkDeviceSize size;
-};
+#include "Stages/BuildCommandBufferStage.h"
 
 struct Vertex {
   glm::vec3 pos;
   glm::vec3 norm;
   glm::vec3 uv;
+};
+
+enum CullingMode {
+  CULLING_MODE_NONE,
+  CULLING_MODE_FRUSTUM_CULL,
+  CULLING_MODE_OCCLUSION_CULL,
+};
+
+enum DrawMode {
+  DRAW_MODE_SHADED,
+  DRAW_MODE_UNLIT,
+  DRAW_MODE_WIREFRAME,
+};
+
+enum AntiAliasingMode {
+  ANTI_ALIAS_MODE_NONE,
+  ANTI_ALIAS_MODE_FXAA,
+};
+
+enum RenderOutput {
+  RENDER_OUTPUT_DRAW_STAGE,
+  RENDER_OUTPUT_AA,
+};
+
+struct RenderSettings {
+  CullingMode culling_mode = CULLING_MODE_NONE;
+  DrawMode draw_mode = DRAW_MODE_SHADED;
+  AntiAliasingMode aliasing = ANTI_ALIAS_MODE_NONE;
+  RenderOutput output = RenderOutput::RENDER_OUTPUT_DRAW_STAGE;
 };
 
 // Contains all draw related data
@@ -95,7 +115,12 @@ class ForwardRenderer {
   void LoadTexture(blu::core::rendering::Material::TextureInfo&,
                    eastl::string folderpath);
 
-  void Prepare();
+  void GenerateResources();
+  void UpdateFrameData(RenderData& render_data);
+  void BuildFrameTimeline();
+  bool PrepareFrame();
+  bool PresentFrame(blu::core::Image* target_image, uint64_t wait_semaphore);
+
   RendererState Render(RenderData render_data);
 
   float GetAspectRatio() {
@@ -103,10 +128,13 @@ class ForwardRenderer {
   };
 
  private:
+  uint64_t GetNextSemaphoreValue();
   void OnResize();
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
+
+  RenderSettings settings_;
 
   blu::core::Window* window_;
 
@@ -118,7 +146,25 @@ class ForwardRenderer {
   // Render Data
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
-  eastl::vector<BufferInfo> buffer_infos_;
+  uint64_t current_semaphore_value = 0;
+
+  struct TimelineSemaphoreValues {
+    // Complete Operations
+    uint64_t cull_mode_complete;
+    uint64_t draw_mode_complete;
+    uint64_t anti_aliasing_mode_complete;
+
+    // Individual Stages
+    uint64_t build_command_buffer_stage_ = 0;
+    uint64_t frustum_cull_stage_ = 0;
+    uint64_t depth_only_stage_ = 0;
+    uint64_t occlusion_cull_stage_ = 0;
+    uint64_t opaque_render_stage_ = 0;
+    uint64_t unlit_opaque_render_stage_ = 0;
+    uint64_t wireframe_render_stage_ = 0;
+    uint64_t image_copy_stage_ = 0;
+    uint64_t anti_aliasing_stage_ = 0;
+  } semaphore_values;
 
   // MODEL INFO:
   eastl::hash_map<eastl::string, uint32_t> loaded_texture_indices_;
@@ -133,6 +179,9 @@ class ForwardRenderer {
 
   blu::core::DescriptorSet* buffer_infos_descriptor_set_;
   blu::core::Buffer* buffer_infos_buffer_;
+  eastl::vector<BufferInfo> buffer_infos_;
+  blu::core::DescriptorSet* textures_descriptor_set_;
+  eastl::vector<blu::core::Image*> textures;
 
   blu::core::Buffer* vertex_buffer_;
   uint32_t vertex_buffer_data_count_ = 0;
@@ -148,12 +197,7 @@ class ForwardRenderer {
   bool models_buffer_updated = false;
   blu::core::Buffer* models_buffer_;
 
-  eastl::vector<blu::core::Buffer*> dcg_output_buffers_;
-
   blu::core::Buffer* matrices_buffer_;
-
-  blu::core::DescriptorSet* textures_descriptor_set_;
-  eastl::vector<blu::core::Image*> textures;
 
   // Vulkan Render Resources
   eastl::vector<VkShaderModule> shader_modules_;
@@ -162,18 +206,23 @@ class ForwardRenderer {
   eastl::vector<VkCommandPool> graphics_command_pools_;
   eastl::vector<VkCommandPool> compute_command_pools_;
 
-  eastl::vector<VkCommandBuffer> draw_command_buffers;
-  eastl::vector<VkCommandBuffer> dcg_buffers;
+  eastl::vector<VkCommandBuffer> present_command_buffers;
 
-  blu::core::Image* depth_stencil_image_;
+  blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_;
+  blu::core::rendering::FrustumCullStage* frustum_cull_stage_;
+  blu::core::rendering::DepthOnlyStage* depth_only_stage_;
+  blu::core::rendering::ImageCopyStage* image_copy_stage_;
+  blu::core::rendering::OpaqueRenderStage* opaque_render_stage_;
+  blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_;
 
-  blu::core::rendering::Pipeline* dcg_pipeline_;
-  blu::core::rendering::Pipeline* triangle_pipeline_;
-  blu::core::rendering::Pipeline* cube_pipeline_;
+  blu::core::rendering::Stage* hierarchial_z_stage_;
+  blu::core::rendering::Stage* occlusion_cull_stage_;
+  blu::core::rendering::Stage* post_process_stage_;
+  blu::core::rendering::Stage* image_blit_stage_;
 
-  eastl::vector<VkSemaphore> image_available_semaphores_;
-  eastl::vector<VkSemaphore> render_finished_semaphores_;
-  eastl::vector<VkSemaphore> dcg_semaphores_;
+  VkSemaphore frame_semaphore;
+  eastl::vector<VkSemaphore> present_semaphores;
+  eastl::vector<VkSemaphore> image_available_semaphore;
   eastl::vector<VkFence> in_flight_fences_;
 };
 

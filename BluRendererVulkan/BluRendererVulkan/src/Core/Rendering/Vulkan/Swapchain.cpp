@@ -30,7 +30,7 @@ Swapchain::Swapchain(blu::core::Instance* vk_instance,
   // formats
   VkSurfaceFormatKHR selected_format = surfaceFormats[0];
   eastl::vector<VkFormat> preferred_image_formats = {
-      VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
+      VK_FORMAT_R8G8B8A8_UNORM,
       VK_FORMAT_A8B8G8R8_UNORM_PACK32};
 
   for (eastl::vector<VkSurfaceFormatKHR>::iterator

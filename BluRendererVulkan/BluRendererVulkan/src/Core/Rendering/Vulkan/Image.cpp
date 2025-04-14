@@ -57,6 +57,7 @@ blu::core::Image* blu::core::Image::CreateImage(
                                  &new_image->alloc, &alloc_info));
   new_image->size = alloc_info.size;
   new_image->mip_levels = mip_levels;
+  new_image->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   return new_image;
 }
@@ -295,7 +296,7 @@ VkPipelineStageFlags blu::core::Image::GetPipelineStageFlags(
              "VK_IMAGE_LAYOUT_GENERAL! Don't use it!");
       return 0;
     default:
-      assert(false);
+      assert(false && layout);
       return 0;
   }
 }
