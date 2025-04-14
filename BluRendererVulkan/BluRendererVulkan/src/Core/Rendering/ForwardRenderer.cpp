@@ -869,18 +869,19 @@ void ForwardRenderer::GenerateResources() {
 
     // anti_aliasing_stage_
     {
-      //blu::core::rendering::ComputePipelineCreateInfo anti_aliasing_create_info{
-      //    //.descriptor_set_layouts = // TODO
-      //    .shader = LoadShader("shaders/anti_aliasing.comp.spv",
-      //                         VK_SHADER_STAGE_COMPUTE_BIT),
-      //};
+      // blu::core::rendering::ComputePipelineCreateInfo
+      // anti_aliasing_create_info{
+      //     //.descriptor_set_layouts = // TODO
+      //     .shader = LoadShader("shaders/anti_aliasing.comp.spv",
+      //                          VK_SHADER_STAGE_COMPUTE_BIT),
+      // };
 
-      //auto anti_aliasing_pipeline = new blu::core::rendering::Pipeline(
-      //    device_, anti_aliasing_create_info);
+      // auto anti_aliasing_pipeline = new blu::core::rendering::Pipeline(
+      //     device_, anti_aliasing_create_info);
 
-      //anti_aliasing_stage_ = new blu::core::rendering::AntiAliasingStage(
-      //    device_, allocator_, anti_aliasing_pipeline, compute_command_pools_,
-      //    width, height);
+      // anti_aliasing_stage_ = new blu::core::rendering::AntiAliasingStage(
+      //     device_, allocator_, anti_aliasing_pipeline,
+      //     compute_command_pools_, width, height);
     }
   }
 
@@ -971,6 +972,7 @@ void ForwardRenderer::BuildFrameTimeline() {
     default:
       break;
   }
+  semaphore_values.cull_mode_complete = current_semaphore_value;
 
   switch (settings_.draw_mode) {
     case DRAW_MODE_SHADED:
@@ -985,16 +987,16 @@ void ForwardRenderer::BuildFrameTimeline() {
     default:
       break;
   }
+  semaphore_values.draw_mode_complete = current_semaphore_value;
 
   switch (settings_.aliasing) {
     case ANTI_ALIAS_MODE_NONE:
-      semaphore_values.image_copy_stage_ = GetNextSemaphoreValue();
       break;
     case ANTI_ALIAS_MODE_FXAA:
       semaphore_values.anti_aliasing_stage_ = GetNextSemaphoreValue();
-      semaphore_values.image_copy_stage_ = GetNextSemaphoreValue();
       break;
   }
+  semaphore_values.anti_aliasing_mode_complete = current_semaphore_value;
 }
 
 bool ForwardRenderer::PresentFrame(blu::core::Image* target_image,
@@ -1051,14 +1053,17 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   // FrustumCullStage
   // FrustumCullStage -> DepthOnlyStage->OcclusionCullStage
 
+  BuildFrameTimeline();
+
   // Swapchain Acquire Next image
   if (!PrepareFrame()) {
     OnResize();
     return RendererState::ASPECT_RATIO_UPDATED;
   }
-  BuildFrameTimeline();
 
   UpdateFrameData(render_data);
+
+  blu::core::Buffer* draw_command_buffer;
 
   switch (settings_.culling_mode) {
     case CULLING_MODE_NONE:
@@ -1068,6 +1073,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
           render_data.model_ids.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.build_command_buffer_stage_, nullptr);
+      draw_command_buffer = build_command_buffer_stage_
+                                ->command_buffer_output_buffers_[frame_index_];
       break;
     case CULLING_MODE_FRUSTUM_CULL:
       frustum_cull_stage_->Run(
@@ -1076,6 +1083,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
           render_data.model_ids.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.frustum_cull_stage_, nullptr);
+      draw_command_buffer =
+          frustum_cull_stage_->frustum_output_buffers_[frame_index_];
       break;
     case CULLING_MODE_OCCLUSION_CULL:
       frustum_cull_stage_->Run(
@@ -1098,11 +1107,10 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
   switch (settings_.draw_mode) {
     case DRAW_MODE_SHADED:
       opaque_render_stage_->Run(
-          frame_index_,
-          frustum_cull_stage_->frustum_output_buffers_[frame_index_],
+          frame_index_, draw_command_buffer,
           {buffer_infos_descriptor_set_->set, textures_descriptor_set_->set},
           vertex_buffer_, normal_buffer_, uv_buffer_, index_buffer_,
-          frame_semaphore, semaphore_values.depth_only_stage_,
+          frame_semaphore, semaphore_values.cull_mode_complete,
           VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
           semaphore_values.opaque_render_stage_, nullptr);
       break;
@@ -1136,7 +1144,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       break;
   }
 
-  if (!PresentFrame(output_image, semaphore_values.image_copy_stage_)) {
+  if (!PresentFrame(output_image, semaphore_values.draw_mode_complete)) {
     OnResize();
     return RendererState::ASPECT_RATIO_UPDATED;
   }
@@ -1147,8 +1155,8 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 }
 
 uint64_t ForwardRenderer::GetNextSemaphoreValue() {
-  next_semaphore_value += 1;
-  return next_semaphore_value;
+  current_semaphore_value += 1;
+  return current_semaphore_value;
 }
 
 void ForwardRenderer::OnResize() {

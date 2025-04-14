@@ -146,9 +146,15 @@ class ForwardRenderer {
   // Render Data
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
-  uint64_t next_semaphore_value = 0;
+  uint64_t current_semaphore_value = 0;
 
   struct TimelineSemaphoreValues {
+    // Complete Operations
+    uint64_t cull_mode_complete;
+    uint64_t draw_mode_complete;
+    uint64_t anti_aliasing_mode_complete;
+
+    // Individual Stages
     uint64_t build_command_buffer_stage_ = 0;
     uint64_t frustum_cull_stage_ = 0;
     uint64_t depth_only_stage_ = 0;
