@@ -30,6 +30,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
+#include "Stages/BuildCommandBufferStage.h"
 
 struct Vertex {
   glm::vec3 pos;
@@ -37,24 +38,33 @@ struct Vertex {
   glm::vec3 uv;
 };
 
-struct ComputeAliasingPushConst {
-  BufferInfo output_aliased_image;
+enum CullingMode {
+  CULLING_MODE_NONE,
+  CULLING_MODE_FRUSTUM_CULL,
+  CULLING_MODE_OCCLUSION_CULL,
 };
 
-enum AntiAliasing {
-  NONE,
-  FXAA,
+enum DrawMode {
+  DRAW_MODE_SHADED,
+  DRAW_MODE_UNLIT,
+  DRAW_MODE_WIREFRAME,
 };
 
-enum Output {
-  Early_Depth,
-  OpaqueDraw,
-  AA,
+enum AntiAliasingMode {
+  ANTI_ALIAS_MODE_NONE,
+  ANTI_ALIAS_MODE_FXAA,
+};
+
+enum RenderOutput {
+  RENDER_OUTPUT_DRAW_STAGE,
+  RENDER_OUTPUT_AA,
 };
 
 struct RenderSettings {
-  AntiAliasing aliasing = AntiAliasing::NONE;
-  Output output = Output::OpaqueDraw;
+  CullingMode culling_mode = CULLING_MODE_NONE;
+  DrawMode draw_mode = DRAW_MODE_SHADED;
+  AntiAliasingMode aliasing = ANTI_ALIAS_MODE_NONE;
+  RenderOutput output = RenderOutput::RENDER_OUTPUT_DRAW_STAGE;
 };
 
 // Contains all draw related data
@@ -107,7 +117,7 @@ class ForwardRenderer {
 
   void GenerateResources();
   void UpdateFrameData(RenderData& render_data);
-  void BuildFrameData();
+  void BuildFrameTimeline();
   bool PrepareFrame();
   bool PresentFrame(blu::core::Image* target_image, uint64_t wait_semaphore);
 
@@ -118,6 +128,7 @@ class ForwardRenderer {
   };
 
  private:
+  uint64_t GetNextSemaphoreValue();
   void OnResize();
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
@@ -135,14 +146,18 @@ class ForwardRenderer {
   // Render Data
   uint32_t frame_index_ = 0;
   uint32_t image_index_ = 0;
-  uint32_t next_semaphore_value = 1;
+  uint64_t next_semaphore_value = 0;
 
   struct TimelineSemaphoreValues {
-    uint64_t frustum_cull_stage_;
-    uint64_t depth_only_stage_;
-    uint64_t opaque_render_stage_;
-    uint64_t image_copy_stage_;
-    uint64_t anti_aliasing_stage_;
+    uint64_t build_command_buffer_stage_ = 0;
+    uint64_t frustum_cull_stage_ = 0;
+    uint64_t depth_only_stage_ = 0;
+    uint64_t occlusion_cull_stage_ = 0;
+    uint64_t opaque_render_stage_ = 0;
+    uint64_t unlit_opaque_render_stage_ = 0;
+    uint64_t wireframe_render_stage_ = 0;
+    uint64_t image_copy_stage_ = 0;
+    uint64_t anti_aliasing_stage_ = 0;
   } semaphore_values;
 
   // MODEL INFO:
@@ -187,6 +202,7 @@ class ForwardRenderer {
 
   eastl::vector<VkCommandBuffer> present_command_buffers;
 
+  blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_;
   blu::core::rendering::FrustumCullStage* frustum_cull_stage_;
   blu::core::rendering::DepthOnlyStage* depth_only_stage_;
   blu::core::rendering::ImageCopyStage* image_copy_stage_;
@@ -196,6 +212,7 @@ class ForwardRenderer {
   blu::core::rendering::Stage* hierarchial_z_stage_;
   blu::core::rendering::Stage* occlusion_cull_stage_;
   blu::core::rendering::Stage* post_process_stage_;
+  blu::core::rendering::Stage* image_blit_stage_;
 
   VkSemaphore frame_semaphore;
   eastl::vector<VkSemaphore> present_semaphores;

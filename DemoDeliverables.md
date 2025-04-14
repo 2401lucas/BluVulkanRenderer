@@ -50,7 +50,7 @@
 *  Final Image -> BLIT into Framebuffer
 *
 *
-*
+* I would like to manage command buffers/resources external to the stages, and move pipeline creation logic into the Stage setup
 
 ## ALIASING: 
 * FXAA: It takes the current rendered Image & outputs a new image. We should only need 2 image resources per frame for most if not all rendering and post passes. Main Render->IMG[0]->FXAA->IMG[1]->TONEMAPPING->[0]->SWAPCHAIN(Need solution for rendering directly to swapchain on last step of rendering, but I think that should be trivial)
