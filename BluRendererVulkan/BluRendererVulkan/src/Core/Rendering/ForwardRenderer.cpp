@@ -14,11 +14,33 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
   {
     eastl::vector<eastl::string> instance_extensions = {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+#ifdef _DEBUG
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
     };
 
     instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
                                         instance_extensions);
+
+#ifdef _DEBUG
+    debug_util.vkCmdBeginDebugUtilsLabelEXT =
+        (PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+            instance_->Get(), "vkCmdBeginDebugUtilsLabelEXT");
+
+    debug_util.vkCmdEndDebugUtilsLabelEXT =
+        (PFN_vkCmdEndDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+            instance_->Get(), "vkCmdEndDebugUtilsLabelEXT");
+
+    debug_util.vkCmdInsertDebugUtilsLabelEXT =
+        (PFN_vkCmdInsertDebugUtilsLabelEXT)vkGetInstanceProcAddr(
+            instance_->Get(), "vkCmdInsertDebugUtilsLabelEXT");
+
+    debug_util.vkSetDebugUtilsObjectNameEXT =
+        (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(
+            instance_->Get(), "vkSetDebugUtilsObjectNameEXT");
+#endif
   }
+
   // VkDevice Creation
   {
     VkPhysicalDeviceFeatures2 physical_device_features2{
@@ -145,7 +167,9 @@ ForwardRenderer::~ForwardRenderer() {
   delete depth_only_stage_;
   delete opaque_render_stage_;
   delete image_copy_stage_;
+  if (anti_aliasing_stage_ != nullptr) {
   delete anti_aliasing_stage_;
+  }
 
   for (eastl::vector<blu::core::rendering::ModelData>::iterator
            it = loaded_models_.begin(),
@@ -167,12 +191,12 @@ ForwardRenderer::~ForwardRenderer() {
 }
 
 // For now- NOT ASYNC
-eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
-  eastl::vector<int> output;
-  if (loaded_model_indices_.find(file) != loaded_model_indices_.end()) {
+eastl::vector<ModelInfo> ForwardRenderer::LoadModel(eastl::string file) {
+  eastl::vector<ModelInfo> output;
+  /* if (loaded_model_indices_.find(file) != loaded_model_indices_.end()) {
     output.push_back(loaded_model_indices_[file]);
     return output;
-  }
+  }*/
 
   eastl::string filepath = "assets/" + file;
 
@@ -263,7 +287,8 @@ eastl::vector<int> ForwardRenderer::LoadModel(eastl::string file) {
           .ambient_occlusion_id =
               material.GetAmbientOcclusionTextureInfo().index,
       };
-      output.push_back(model_indices_.size());
+      output.push_back(
+          ModelInfo(model_indices_.size(), mesh->GetBoundingSphere()));
       model_indices_.push_back(model_index_data);
 
       memcpy(vertex_data + vertex_data_offset, mesh_vertex_data.data,
@@ -687,7 +712,7 @@ void ForwardRenderer::GenerateResources() {
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     models_buffer_ = blu::core::Buffer::CreateBuffer(
-        device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_MODELS,
+        device_->GetLogicalDevice(), allocator_, sizeof(ModelData) * MAX_MODELS,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -946,9 +971,11 @@ void ForwardRenderer::UpdateFrameData(RenderData& render_data) {
            model_indices_.size() * sizeof(ModelIndices));
     models_data_buffer_updated = false;
   }
-  memcpy(models_buffer_->mapped_data, render_data.model_ids.data(),
-         render_data.model_ids.size() * sizeof(uint32_t));
+  memcpy(models_buffer_->mapped_data, render_data.model_data.data(),
+         render_data.model_data.size() * sizeof(ModelData));
   models_buffer_updated = false;
+  vmaFlushAllocation(allocator_, models_buffer_->alloc, 0,
+                     VK_WHOLE_SIZE);
   memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
          render_data.matrices.size() * sizeof(glm::mat4));
 }
@@ -1070,7 +1097,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       build_command_buffer_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_ids.size(), nullptr, UINT64_MAX,
+          render_data.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.build_command_buffer_stage_, nullptr);
       draw_command_buffer = build_command_buffer_stage_
@@ -1080,7 +1107,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       frustum_cull_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_ids.size(), nullptr, UINT64_MAX,
+          render_data.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.frustum_cull_stage_, nullptr);
       draw_command_buffer =
@@ -1090,7 +1117,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       frustum_cull_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_ids.size(), nullptr, UINT64_MAX,
+          render_data.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.frustum_cull_stage_, nullptr);
       depth_only_stage_->Run(
@@ -1173,9 +1200,6 @@ void ForwardRenderer::OnResize() {
   }
   if (opaque_render_stage_ != nullptr) {
     opaque_render_stage_->Resize(frame_count, width, height);
-  }
-  if (anti_aliasing_stage_ != nullptr) {
-    anti_aliasing_stage_->Resize(frame_count, width, height);
   }
 }
 

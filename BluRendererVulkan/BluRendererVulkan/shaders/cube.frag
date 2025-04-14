@@ -11,32 +11,17 @@ layout (location = 3) flat in int inInstanceIndex;
 
 layout(set = 1, binding = 0) uniform sampler2D textures[10];
 
-struct ModelInfo
-{
-	int vert_offset;
-	uint ind_count;
-	uint ind_offset;
-	uint material_type;  
-	int base_tex_id;
-	int normal_tex_id;
-	int emission_tex_id;
-	int metalness_tex_id;
-	int diffuse_roughness_id;
-	int ambient_occlusion_id;
-};
+#include "includes/BufferInfo.glsl"
+#include "includes/RenderModelData.glsl"
+#include "includes/SceneModelData.glsl"
+
 
 layout(buffer_reference, std430) buffer ModelInfoBuffer {
-  ModelInfo info[];
+  RenderModelData info[];
 };
 
 layout(buffer_reference, std430) buffer ModelIndex {
-  uint index[];
-};
-
-struct BufferInfo {
-  uint64_t address;
-  uint64_t offset;
-  uint64_t size;
+  SceneModelData data[];
 };
 
 layout (set = 0, binding = 0) buffer BufferAddresses{
@@ -50,5 +35,5 @@ void main() {
   ModelIndex indexInfo = ModelIndex(bufferAddresses.bufferPointers[2].address);
 
   outColor = vec4(texture(
-		textures[modelInfo.info[indexInfo.index[inInstanceIndex]].base_tex_id], inUV.xy));
+		textures[modelInfo.info[indexInfo.data[inInstanceIndex].id].base_tex_id], inUV.xy));
 }

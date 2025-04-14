@@ -5,14 +5,15 @@
 - [ ] Tonemapping Pass (Compute?)
 - [ ] Better Transform matrix calculation when using a camera 
 - [ ] Compute FXAA
-- [x] Improve Render Loop
-- [x] Render Settings & Live Changes
 - [ ] Culling
 - [ ] Manage command buffers/resources external to the stages, and move pipeline creation logic into the Stage setup
 - [ ] ImGUI Implementation
+- [ ] Recycle Resources
+- [ ] Reimplement Shaders
 ### V1.0
 - [ ] Metallic/Specular PBR Shading
 - [ ] Shadow
+- [ ] MultiThreaded Rendering
 - [ ] Scene Hierarchy
 ### Backlog
 - [ ] Scripting

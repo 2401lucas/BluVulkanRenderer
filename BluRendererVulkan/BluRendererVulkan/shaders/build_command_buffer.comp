@@ -4,11 +4,9 @@
 #extension GL_EXT_buffer_reference2 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 
-struct BufferInfo {
-  uint64_t address;
-  uint64_t offset;
-  uint64_t size;
-};
+#include "includes/BufferInfo.glsl"
+#include "includes/RenderModelData.glsl"
+#include "includes/SceneModelData.glsl"
 
 struct VkDrawIndexedIndirectCommand
 {
@@ -19,26 +17,12 @@ struct VkDrawIndexedIndirectCommand
 	uint firstInstance;
 };
 
-struct ModelInfo
-{
-	int vert_offset;
-	uint ind_count;
-	uint ind_offset;
-	uint material_type;  
-	int base_tex_id;
-	int normal_tex_id;
-	int emission_tex_id;
-	int metalness_tex_id;
-	int diffuse_roughness_id;
-	int ambient_occlusion_id;
+layout(buffer_reference, std430) buffer RenderModelDataBuffer {
+	RenderModelData data[];
 };
 
-layout(buffer_reference, std430, buffer_reference_align = 16) buffer ModelData {
-	ModelInfo model_infos[];
-};
-
-layout(buffer_reference, std430, buffer_reference_align = 16) buffer ModelIDs {
-	uint model_ids[];
+layout(buffer_reference, std430) buffer SceneModelDataBuffer {
+	SceneModelData data[];
 };
 
 layout(buffer_reference, std430) buffer OutputBuffer {
@@ -59,18 +43,18 @@ layout(local_size_x = 128) in;
 void main() {
 	uint idx = gl_GlobalInvocationID.x;
 
-	if(idx >= push_const.draw_count) { return; }
-
-	ModelData model_data = ModelData(push_const.model_input_model_data.address);
-	ModelIDs model_ids = ModelIDs(push_const.model_input_models.address);
+	RenderModelDataBuffer render_info = RenderModelDataBuffer(push_const.model_input_model_data.address);
+	SceneModelDataBuffer scene_info = SceneModelDataBuffer(push_const.model_input_models.address);
 	OutputBuffer output_buf = OutputBuffer(push_const.model_output_buffer.address);
 	
-	uint output_index = atomicAdd(output_buf.count, 1);
+	if(idx >= push_const.draw_count) { return; }
 	
+	uint output_index = atomicAdd(output_buf.count, 1);
+
 	output_buf.draw_cmd[output_index] = VkDrawIndexedIndirectCommand(
-		model_data.model_infos[model_ids.model_ids[idx]].ind_count, 
+		render_info.data[scene_info.data[idx].id].ind_count, 
 		1, 
-		model_data.model_infos[model_ids.model_ids[idx]].ind_offset, 
-		model_data.model_infos[model_ids.model_ids[idx]].vert_offset, 
+		render_info.data[scene_info.data[idx].id].ind_offset, 
+		render_info.data[scene_info.data[idx].id].vert_offset, 
 		idx);
 }
