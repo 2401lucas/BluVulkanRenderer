@@ -11,8 +11,6 @@ Engine::Engine(blu::core::Window* window, ForwardRenderer* renderer) {
   if (!input_->LoadKeybinds()) {
     SetDefaultKeybinds();
   }
-
-  prev_mouse_input_ = {0, 0};
 }
 
 Engine::~Engine() {
@@ -47,9 +45,10 @@ blu::game::components::Model* Engine::CreateModel(
   auto models = renderer_->LoadModel(filepath);
 
   for (auto& model : models) {
-    if (model >= 0) {
+    if (model.model_ids >= 0) {
       blu::game::components::Model* new_model =
-          new blu::game::components::Model(model, transform);
+          new blu::game::components::Model(model.model_ids, transform);
+      new_model->transform.SetBoundingSphere(model.model_bounding_box);
       models_.push_back(new_model);
     } else {
       assert(false);
@@ -57,7 +56,6 @@ blu::game::components::Model* Engine::CreateModel(
   }
 
   return models_[models_.size() - models.size()];
-
 }
 
 void Engine::Update(float frametime) {
@@ -70,19 +68,22 @@ void Engine::SetCameraAspectRatio(float aspect_ratio) {
 }
 
 RenderData Engine::GetRenderData() {
-  eastl::vector<uint32_t> model_ids;
-
   eastl::vector<glm::mat4> matrices(3);
   matrices[1] = camera_->GetTransform()->GetTransformMat();
   matrices[2] = camera_->GetPerspectiveMat();
   matrices[0] = matrices[2] * matrices[1];
 
+  eastl::vector<ModelData> model_data;
   for (auto& m : models_) {
     matrices.push_back(m->transform.GetTransformMat());
-    model_ids.push_back(m->model_index);
+    model_data.push_back({m->transform.GetBoundingSphere(), m->model_index});
   }
 
-  return RenderData(matrices, model_ids);
+  auto scene = SceneInfo{};
+
+  camera_->GetFrustumPlanes(matrices[0], scene.planes); 
+  scene.model_data = model_data;
+  return RenderData(matrices, scene);
 }
 
 void Engine::SetDefaultKeybinds() {

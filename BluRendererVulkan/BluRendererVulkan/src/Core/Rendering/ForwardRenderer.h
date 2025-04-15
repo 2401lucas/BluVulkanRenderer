@@ -3,9 +3,9 @@
 
 #ifdef _DEBUG
 constexpr bool USE_VALIDATION = true;
-#else   // _RELEASE
+#else   // _DEBUG
 constexpr bool USE_VALIDATION = false;
-#endif  // _DEBUG
+#endif  // _RELEASE
 
 #include <EASTL/array.h>
 #include <EASTL/hash_map.h>
@@ -19,6 +19,7 @@ constexpr bool USE_VALIDATION = false;
 #include "ForwardRendererConsts.h"
 #include "RenderData.h"
 #include "Stages/AntiAliasingStage.h"
+#include "Stages/BuildCommandBufferStage.h"
 #include "Stages/DepthOnlyStage.h"
 #include "Stages/FrustumCullStage.h"
 #include "Stages/ImageCopyStage.h"
@@ -30,7 +31,6 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
-#include "Stages/BuildCommandBufferStage.h"
 
 struct Vertex {
   glm::vec3 pos;
@@ -61,7 +61,7 @@ enum RenderOutput {
 };
 
 struct RenderSettings {
-  CullingMode culling_mode = CULLING_MODE_NONE;
+  CullingMode culling_mode = CULLING_MODE_FRUSTUM_CULL;
   DrawMode draw_mode = DRAW_MODE_SHADED;
   AntiAliasingMode aliasing = ANTI_ALIAS_MODE_NONE;
   RenderOutput output = RenderOutput::RENDER_OUTPUT_DRAW_STAGE;
@@ -83,7 +83,11 @@ struct ModelIndices {
   int ambient_occlusion_id;
 };
 
-struct ModelInfo {};
+struct ModelInfo {
+  int model_ids;
+  // Used for Culling
+  glm::vec4 model_bounding_box;
+};
 
 struct DCGPushConst {
   BufferInfo input_model_data;
@@ -108,7 +112,7 @@ class ForwardRenderer {
   ForwardRenderer(blu::core::Window* window);
   ~ForwardRenderer();
 
-  eastl::vector<int> LoadModel(eastl::string filepath);
+  eastl::vector<ModelInfo> LoadModel(eastl::string filepath);
   int LoadModel(blu::core::rendering::ModelData);
 
   int LoadImage(eastl::string filepath);
@@ -134,6 +138,44 @@ class ForwardRenderer {
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
 
+#ifdef _DEBUG
+  inline void BeginLabel(VkCommandBuffer cmd, const char* name, glm::vec3 rgb) {
+    VkDebugUtilsLabelEXT label = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = name,
+        .color = {rgb.x, rgb.y, rgb.z, 1},
+    };
+    vkCmdBeginDebugUtilsLabelEXT(cmd, &label);
+  }
+  inline void EndLabel(VkCommandBuffer cmd) { vkCmdEndDebugUtilsLabelEXT(cmd); }
+  inline void InsertLabel(VkCommandBuffer cmd, const char* name,
+                          glm::vec3 rgb) {
+    VkDebugUtilsLabelEXT label = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = name,
+        .color = {rgb.x, rgb.y, rgb.z, 1},
+    };
+    vkCmdInsertDebugUtilsLabelEXT(cmd, &label);
+  }
+  inline void NameObject(VkDevice device, uint64_t handle, VkObjectType type,
+                         const char* name) {
+    VkDebugUtilsObjectNameInfoEXT nameInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = type,
+        .objectHandle = handle,
+        .pObjectName = name,
+    };
+    vkSetDebugUtilsObjectNameEXT(device, &nameInfo);
+  }
+
+  struct DebugUtils {
+    PFN_vkCmdBeginDebugUtilsLabelEXT vkCmdBeginDebugUtilsLabelEXT;
+    PFN_vkCmdEndDebugUtilsLabelEXT vkCmdEndDebugUtilsLabelEXT;
+    PFN_vkCmdInsertDebugUtilsLabelEXT vkCmdInsertDebugUtilsLabelEXT;
+    PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT;
+  } debug_util;
+#endif
+
   RenderSettings settings_;
 
   blu::core::Window* window_;
@@ -150,9 +192,9 @@ class ForwardRenderer {
 
   struct TimelineSemaphoreValues {
     // Complete Operations
-    uint64_t cull_mode_complete;
-    uint64_t draw_mode_complete;
-    uint64_t anti_aliasing_mode_complete;
+    uint64_t cull_mode_complete = 0;
+    uint64_t draw_mode_complete = 0;
+    uint64_t anti_aliasing_mode_complete = 0;
 
     // Individual Stages
     uint64_t build_command_buffer_stage_ = 0;
@@ -208,12 +250,13 @@ class ForwardRenderer {
 
   eastl::vector<VkCommandBuffer> present_command_buffers;
 
-  blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_;
-  blu::core::rendering::FrustumCullStage* frustum_cull_stage_;
-  blu::core::rendering::DepthOnlyStage* depth_only_stage_;
-  blu::core::rendering::ImageCopyStage* image_copy_stage_;
-  blu::core::rendering::OpaqueRenderStage* opaque_render_stage_;
-  blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_;
+  blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_ =
+      nullptr;
+  blu::core::rendering::FrustumCullStage* frustum_cull_stage_ = nullptr;
+  blu::core::rendering::DepthOnlyStage* depth_only_stage_ = nullptr;
+  blu::core::rendering::ImageCopyStage* image_copy_stage_ = nullptr;
+  blu::core::rendering::OpaqueRenderStage* opaque_render_stage_ = nullptr;
+  blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
 
   blu::core::rendering::Stage* hierarchial_z_stage_;
   blu::core::rendering::Stage* occlusion_cull_stage_;

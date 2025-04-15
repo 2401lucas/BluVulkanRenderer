@@ -39,10 +39,20 @@ class Transform {
   void SetScale(glm::vec3 new_value) {
     scale_ = new_value;
     transform_mat_updated_ = true;
+    bounding_sphere_updated = true;
   }
   void AddToScale(glm::vec3 new_value) {
     scale_ += new_value;
     transform_mat_updated_ = true;
+    bounding_sphere_updated = true;
+  }
+  void SetBoundingSphere(glm::vec4 bounding_sphere) {
+    original_bounding_sphere_ = bounding_sphere;
+  }
+
+  glm::vec4 GetBoundingSphere() {
+    if (bounding_sphere_updated) CalculateBoundingSphere();
+    return scaled_bounding_sphere_;
   }
 
   glm::vec3 Front() const {
@@ -63,14 +73,19 @@ class Transform {
 
  private:
   void CalculateTransformMat();
+  void CalculateBoundingSphere();
 
   bool isCamera_ = false;
-  bool transform_mat_updated_ = false;
+  bool transform_mat_updated_ = true;
+  bool bounding_sphere_updated = true;
   glm::mat4 transform_mat_;
+
+  glm::vec4 original_bounding_sphere_ = glm::vec4(0);
+  glm::vec4 scaled_bounding_sphere_;
 
   glm::vec3 position_;
   glm::vec3 rotation_;
   glm::vec3 scale_;
 };
-}  // namespace blu::core::components
+}  // namespace blu::game::components
 #endif

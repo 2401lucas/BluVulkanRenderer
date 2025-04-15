@@ -2,6 +2,7 @@
 #define MESH_H
 
 #include <cstdint>
+#include <glm/vec4.hpp>
 
 namespace blu::core::rendering {
 class Mesh {
@@ -20,6 +21,7 @@ class Mesh {
   MeshData& GetNormalData() { return normal_data_; }
   MeshData& GetUVData() { return uv_data_; }
   uint32_t& GetMaterialIndex() { return material_index_; };
+  glm::vec4& GetBoundingSphere() { return bounding_sphere; };
 
  private:
   MeshData vertex_data_;
@@ -28,6 +30,7 @@ class Mesh {
   MeshData uv_data_;
 
   uint32_t material_index_;
+  glm::vec4 bounding_sphere;
 };
 }  // namespace blu::core::rendering
 #endif

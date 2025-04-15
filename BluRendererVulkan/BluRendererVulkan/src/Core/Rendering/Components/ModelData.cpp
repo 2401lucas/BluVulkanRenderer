@@ -1,9 +1,13 @@
 #include "ModelData.h"
 
+#include <glm/common.hpp>
+#include <glm/fwd.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtx/norm.hpp>
 #include <iostream>
 
 // Needs to distiguish vertex information based on provided info
-blu:: core::rendering::ModelData::ModelData(eastl::string filepath) {
+blu::core::rendering::ModelData::ModelData(eastl::string filepath) {
   Assimp::Importer importer;
 
   const aiScene* scene =
@@ -31,6 +35,51 @@ blu:: core::rendering::ModelData::ModelData(eastl::string filepath) {
       vertex_data.data_size = sizeof(float) * 3 * vertex_data.count;
       vertex_data.data = new char[vertex_data.data_size];
       memcpy(vertex_data.data, mesh->mVertices, vertex_data.data_size);
+
+      // TODO: IMPORT FLAGS TO ENABLE/DISABLE
+      // Ritter’s algorithm
+      glm::vec3 vmin = {mesh->mVertices[0].x, mesh->mVertices[0].y,
+                        mesh->mVertices[0].z};
+      glm::vec3 vmax = {mesh->mVertices[0].x, mesh->mVertices[0].y,
+                        mesh->mVertices[0].z};
+
+      for (uint32_t i = 1; i < vertex_data.count; i++) {
+        if (mesh->mVertices[i].x < vmin.x) vmin.x = mesh->mVertices[i].x;
+        if (mesh->mVertices[i].y < vmin.y) vmin.y = mesh->mVertices[i].y;
+        if (mesh->mVertices[i].z < vmin.z) vmin.z = mesh->mVertices[i].z;
+
+        if (mesh->mVertices[i].x > vmax.x) vmax.x = mesh->mVertices[i].x;
+        if (mesh->mVertices[i].y > vmax.y) vmax.y = mesh->mVertices[i].y;
+        if (mesh->mVertices[i].z > vmax.z) vmax.z = mesh->mVertices[i].z;
+      }
+
+      float xdiff = vmax.x - vmin.x;
+      float ydiff = vmax.y - vmin.y;
+      float zdiff = vmax.z - vmin.z;
+      float diameter = glm::max(xdiff, glm::max(ydiff, zdiff));
+
+      glm::vec3 center = (vmax + vmin) * (0.5f);
+      float radius = diameter / 2;
+      float sq_radius = radius * radius;
+
+      for (uint32_t i = 0; i < vertex_data.count; i++) {
+        glm::vec3 vert = {mesh->mVertices[i].x, mesh->mVertices[i].y,
+                          mesh->mVertices[i].z};
+        glm::vec3 direction = vert - center;
+        float sq_distance = glm::length2(direction);
+
+        if (sq_distance > sq_radius) {
+          float distance = sqrt(sq_distance);
+          float diff = distance - radius;
+          float new_diameter = 2 * radius + diff;
+          radius = new_diameter / 2;
+          sq_radius = radius * radius;
+          center += diff * direction;
+        }
+      }
+
+      auto& bounding_sphere = new_mesh->GetBoundingSphere();
+      bounding_sphere = {center, radius};
     }
     if (mesh->HasFaces()) {
       eastl::vector<uint32_t> indices;

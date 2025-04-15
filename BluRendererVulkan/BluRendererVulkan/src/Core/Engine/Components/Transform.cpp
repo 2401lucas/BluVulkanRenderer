@@ -32,4 +32,10 @@ void Transform::CalculateTransformMat() {
   }
   transform_mat_updated_ = false;
 }
+void Transform::CalculateBoundingSphere() {
+  scaled_bounding_sphere_ = original_bounding_sphere_;
+  scaled_bounding_sphere_.w = original_bounding_sphere_.w *
+                              glm::max(scale_.x, glm::max(scale_.y, scale_.z));
+  bounding_sphere_updated = false;
+}
 }  // namespace blu::game::components

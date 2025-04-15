@@ -57,7 +57,6 @@ class Engine {
   blu::game::TestGameManager game_manager_{};
 
   eastl::vector<blu::game::components::Model*> models_;
-  glm::vec2 prev_mouse_input_;
 };
 }  // namespace blu::core
 #endif

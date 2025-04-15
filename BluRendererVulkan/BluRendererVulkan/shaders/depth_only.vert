@@ -5,13 +5,9 @@
 #extension GL_EXT_buffer_reference2 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : enable
 
-layout (location = 0) in vec3 inPos;
+#include "includes/BufferInfo.glsl"
 
-struct BufferInfo {
-  uint64_t address;
-  uint64_t offset;
-  uint64_t size;
-};
+layout (location = 0) in vec3 inPos;
 
 layout(buffer_reference, std430) buffer MatrixBuffer {
   // [0] - Perspective * View

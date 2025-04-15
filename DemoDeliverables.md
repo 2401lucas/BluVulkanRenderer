@@ -5,14 +5,16 @@
 - [ ] Tonemapping Pass (Compute?)
 - [ ] Better Transform matrix calculation when using a camera 
 - [ ] Compute FXAA
-- [x] Improve Render Loop
-- [x] Render Settings & Live Changes
-- [ ] Culling
+- [x] Frustum Culling
 - [ ] Manage command buffers/resources external to the stages, and move pipeline creation logic into the Stage setup
 - [ ] ImGUI Implementation
+- [ ] Recycle Resources
+- [x] Reimplement Shaders
 ### V1.0
 - [ ] Metallic/Specular PBR Shading
+- [ ] Occlusion Culling
 - [ ] Shadow
+- [ ] MultiThreaded Rendering
 - [ ] Scene Hierarchy
 ### Backlog
 - [ ] Scripting
@@ -20,6 +22,7 @@
 - [ ] Model Buffer Based on Pipeline
 - [ ] Compute workload dispatchable from Engine
 - [ ] Physics (Library)
+- [ ] Visualize Frustum
 
 # ROUGH IDEAS
 * Compute Generating Vertex/Normal/UV/Indices culled buffers?

@@ -40,6 +40,8 @@ class Camera {
     return perspective_mat_;
   }
 
+  void GetFrustumPlanes(const glm::mat4& viewProj, glm::vec4 planes[6]);
+
  private:
   void CalculatePerspectiveMatrix();
 
