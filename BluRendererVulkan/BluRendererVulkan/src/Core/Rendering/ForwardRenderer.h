@@ -61,7 +61,7 @@ enum RenderOutput {
 };
 
 struct RenderSettings {
-  CullingMode culling_mode = CULLING_MODE_NONE;
+  CullingMode culling_mode = CULLING_MODE_FRUSTUM_CULL;
   DrawMode draw_mode = DRAW_MODE_SHADED;
   AntiAliasingMode aliasing = ANTI_ALIAS_MODE_NONE;
   RenderOutput output = RenderOutput::RENDER_OUTPUT_DRAW_STAGE;

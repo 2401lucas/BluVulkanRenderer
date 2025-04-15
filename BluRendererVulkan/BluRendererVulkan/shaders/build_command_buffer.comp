@@ -17,14 +17,6 @@ struct VkDrawIndexedIndirectCommand
 	uint firstInstance;
 };
 
-layout(buffer_reference, std430) buffer RenderModelDataBuffer {
-	RenderModelData data[];
-};
-
-layout(buffer_reference, std430) buffer SceneModelDataBuffer {
-	SceneModelData data[];
-};
-
 layout(buffer_reference, std430) buffer OutputBuffer {
     uint count;
 	VkDrawIndexedIndirectCommand draw_cmd[];
@@ -52,9 +44,9 @@ void main() {
 	uint output_index = atomicAdd(output_buf.count, 1);
 
 	output_buf.draw_cmd[output_index] = VkDrawIndexedIndirectCommand(
-		render_info.data[scene_info.data[idx].id].ind_count, 
+		render_info.data[scene_info.model_data[idx].id].ind_count, 
 		1, 
-		render_info.data[scene_info.data[idx].id].ind_offset, 
-		render_info.data[scene_info.data[idx].id].vert_offset, 
+		render_info.data[scene_info.model_data[idx].id].ind_offset, 
+		render_info.data[scene_info.model_data[idx].id].vert_offset, 
 		idx);
 }

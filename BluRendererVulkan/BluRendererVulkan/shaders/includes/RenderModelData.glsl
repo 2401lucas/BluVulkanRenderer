@@ -11,3 +11,7 @@ struct RenderModelData
 	int diffuse_roughness_id;
 	int ambient_occlusion_id;
 };
+
+layout(buffer_reference, std430) buffer RenderModelDataBuffer {
+	RenderModelData data[];
+};

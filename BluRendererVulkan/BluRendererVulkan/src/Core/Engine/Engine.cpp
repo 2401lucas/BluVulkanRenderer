@@ -79,7 +79,11 @@ RenderData Engine::GetRenderData() {
     model_data.push_back({m->transform.GetBoundingSphere(), m->model_index});
   }
 
-  return RenderData(matrices, model_data);
+  auto scene = SceneInfo{};
+
+  camera_->GetFrustumPlanes(matrices[0], scene.planes); 
+  scene.model_data = model_data;
+  return RenderData(matrices, scene);
 }
 
 void Engine::SetDefaultKeybinds() {

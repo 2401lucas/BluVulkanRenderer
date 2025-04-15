@@ -168,7 +168,7 @@ ForwardRenderer::~ForwardRenderer() {
   delete opaque_render_stage_;
   delete image_copy_stage_;
   if (anti_aliasing_stage_ != nullptr) {
-  delete anti_aliasing_stage_;
+    delete anti_aliasing_stage_;
   }
 
   for (eastl::vector<blu::core::rendering::ModelData>::iterator
@@ -712,7 +712,8 @@ void ForwardRenderer::GenerateResources() {
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
     models_buffer_ = blu::core::Buffer::CreateBuffer(
-        device_->GetLogicalDevice(), allocator_, sizeof(ModelData) * MAX_MODELS,
+        device_->GetLogicalDevice(), allocator_,
+        sizeof(glm::vec4) * 6 + sizeof(ModelData) * MAX_MODELS,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -971,11 +972,13 @@ void ForwardRenderer::UpdateFrameData(RenderData& render_data) {
            model_indices_.size() * sizeof(ModelIndices));
     models_data_buffer_updated = false;
   }
-  memcpy(models_buffer_->mapped_data, render_data.model_data.data(),
-         render_data.model_data.size() * sizeof(ModelData));
+  memcpy(models_buffer_->mapped_data, render_data.scene.planes,
+         sizeof(glm::vec4) * 6);
+  memcpy(models_buffer_->mapped_data + sizeof(glm::vec4) * 6,
+         render_data.scene.model_data.data(),
+         sizeof(ModelData) * render_data.scene.model_data.size());
   models_buffer_updated = false;
-  vmaFlushAllocation(allocator_, models_buffer_->alloc, 0,
-                     VK_WHOLE_SIZE);
+  vmaFlushAllocation(allocator_, models_buffer_->alloc, 0, VK_WHOLE_SIZE);
   memcpy(matrices_buffer_->mapped_data, render_data.matrices.data(),
          render_data.matrices.size() * sizeof(glm::mat4));
 }
@@ -1097,7 +1100,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       build_command_buffer_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_data.size(), nullptr, UINT64_MAX,
+          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.build_command_buffer_stage_, nullptr);
       draw_command_buffer = build_command_buffer_stage_
@@ -1107,7 +1110,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       frustum_cull_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_data.size(), nullptr, UINT64_MAX,
+          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.frustum_cull_stage_, nullptr);
       draw_command_buffer =
@@ -1117,7 +1120,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
       frustum_cull_stage_->Run(
           frame_index_, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address),
-          render_data.model_data.size(), nullptr, UINT64_MAX,
+          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
           VK_PIPELINE_STAGE_NONE, frame_semaphore,
           semaphore_values.frustum_cull_stage_, nullptr);
       depth_only_stage_->Run(

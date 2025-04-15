@@ -15,15 +15,6 @@ layout(set = 1, binding = 0) uniform sampler2D textures[10];
 #include "includes/RenderModelData.glsl"
 #include "includes/SceneModelData.glsl"
 
-
-layout(buffer_reference, std430) buffer ModelInfoBuffer {
-  RenderModelData info[];
-};
-
-layout(buffer_reference, std430) buffer ModelIndex {
-  SceneModelData data[];
-};
-
 layout (set = 0, binding = 0) buffer BufferAddresses{
   BufferInfo bufferPointers[];
 } bufferAddresses;
@@ -31,9 +22,9 @@ layout (set = 0, binding = 0) buffer BufferAddresses{
 layout (location = 0) out vec4 outColor;
 
 void main() {
-  ModelInfoBuffer modelInfo = ModelInfoBuffer(bufferAddresses.bufferPointers[1].address);
-  ModelIndex indexInfo = ModelIndex(bufferAddresses.bufferPointers[2].address);
+  RenderModelDataBuffer modelInfo = RenderModelDataBuffer(bufferAddresses.bufferPointers[1].address);
+  SceneModelDataBuffer indexInfo = SceneModelDataBuffer(bufferAddresses.bufferPointers[2].address);
 
   outColor = vec4(texture(
-		textures[modelInfo.info[indexInfo.data[inInstanceIndex].id].base_tex_id], inUV.xy));
+		textures[modelInfo.data[indexInfo.model_data[inInstanceIndex].id].base_tex_id], inUV.xy));
 }
