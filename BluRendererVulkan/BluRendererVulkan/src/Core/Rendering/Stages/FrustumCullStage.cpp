@@ -62,13 +62,15 @@ void FrustumCullStage::Run(uint32_t frame_index, BufferInfo model_data,
   vkCmdDispatch(frustum_buf, workgroupSizeX, 1, 1);
   End(frame_index);
 
-  VkSubmitInfo frustum_info = PrepareSubmitInfo(
-      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  VkTimelineSemaphoreSubmitInfo timeline_info;
+  VkSubmitInfo submit_info =
+      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
+                        signal_semaphore, signal_value);
 
-  frustum_info.commandBufferCount = 1;
-  frustum_info.pCommandBuffers = &frustum_buf;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &frustum_buf;
 
   VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.compute, 1, &frustum_info, fence));
+      vkQueueSubmit(device_->queues.compute, 1, &submit_info, fence));
 }
 }  // namespace blu::core::rendering

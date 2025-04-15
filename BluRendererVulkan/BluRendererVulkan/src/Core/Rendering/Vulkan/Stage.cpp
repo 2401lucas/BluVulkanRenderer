@@ -23,7 +23,6 @@ Stage::Stage(Device* device, VmaAllocator allocator,
     vkAllocateCommandBuffers(device_->GetLogicalDevice(),
                              &command_buffer_alloc_info, &command_buffers[i]);
   }
-  timeline_semaphore_values = new VkTimelineSemaphoreSubmitInfo;
 }
 
 Stage::~Stage() {
@@ -31,7 +30,6 @@ Stage::~Stage() {
     pipeline_->~Pipeline();
     delete pipeline_;
   }
-  delete timeline_semaphore_values;
 }
 
 VkCommandBuffer Stage::Begin(uint32_t index) {
@@ -51,16 +49,13 @@ VkCommandBuffer Stage::Begin(uint32_t index) {
 
 void Stage::End(uint32_t index) { vkEndCommandBuffer(command_buffers[index]); }
 
-VkSubmitInfo Stage::PrepareSubmitInfo(VkSemaphore& wait_semaphore,
-                                      uint64_t& wait_value,
-                                      VkPipelineStageFlags& wait_flag,
-                                      VkSemaphore& signal_semaphore,
-                                      uint64_t& signal_value) {
-  timeline_semaphore_values->sType =
-      VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-  timeline_semaphore_values->pNext = nullptr;
-  timeline_semaphore_values->waitSemaphoreValueCount = 0;
-  timeline_semaphore_values->signalSemaphoreValueCount = 0;
+VkSubmitInfo Stage::PrepareSubmitInfo(
+    VkTimelineSemaphoreSubmitInfo& timeline_semaphore_values,
+    VkSemaphore& wait_semaphore, uint64_t& wait_value,
+    VkPipelineStageFlags& wait_flag, VkSemaphore& signal_semaphore,
+    uint64_t& signal_value) {
+  timeline_semaphore_values = {
+      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
 
   VkSubmitInfo submit_info{
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -71,9 +66,9 @@ VkSubmitInfo Stage::PrepareSubmitInfo(VkSemaphore& wait_semaphore,
     submit_info.pWaitSemaphores = &wait_semaphore;
     submit_info.pWaitDstStageMask = &wait_flag;
     if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values->waitSemaphoreValueCount = 1;
-      timeline_semaphore_values->pWaitSemaphoreValues = &wait_value;
-      submit_info.pNext = timeline_semaphore_values;
+      timeline_semaphore_values.waitSemaphoreValueCount = 1;
+      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
+      submit_info.pNext = &timeline_semaphore_values;
     }
   }
 
@@ -81,9 +76,9 @@ VkSubmitInfo Stage::PrepareSubmitInfo(VkSemaphore& wait_semaphore,
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = &signal_semaphore;
     if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values->signalSemaphoreValueCount = 1;
-      timeline_semaphore_values->pSignalSemaphoreValues = &signal_value;
-      submit_info.pNext = timeline_semaphore_values;
+      timeline_semaphore_values.signalSemaphoreValueCount = 1;
+      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
+      submit_info.pNext = &timeline_semaphore_values;
     }
   }
 

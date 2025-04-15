@@ -70,12 +70,15 @@ void AntiAliasingStage::Run(uint32_t frame_index, VkSemaphore wait_semaphore,
   vkCmdDispatch(aa_buf, (width_ + 7) / 8, (height_ + 7) / 8, 1);
   End(frame_index);
 
-  VkSubmitInfo aa_info = PrepareSubmitInfo(
-      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  VkTimelineSemaphoreSubmitInfo timeline_info;
+  VkSubmitInfo submit_info =
+      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
+                        signal_semaphore, signal_value);
 
-  aa_info.commandBufferCount = 1;
-  aa_info.pCommandBuffers = &aa_buf;
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &aa_buf;
 
-  VK_CHECK_RESULT(vkQueueSubmit(device_->queues.compute, 1, &aa_info, fence));
+  VK_CHECK_RESULT(
+      vkQueueSubmit(device_->queues.compute, 1, &submit_info, fence));
 }
 }  // namespace blu::core::rendering

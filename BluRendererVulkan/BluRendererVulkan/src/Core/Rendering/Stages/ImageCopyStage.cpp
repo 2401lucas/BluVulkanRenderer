@@ -59,38 +59,15 @@ void ImageCopyStage::Run(uint32_t frame_index, VkImage src_img,
 
   End(frame_index);
 
-  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values{
-      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-  };
+  VkTimelineSemaphoreSubmitInfo timeline_info;
+  VkSubmitInfo submit_info =
+      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
+                        signal_semaphore, signal_value);
 
-  VkSubmitInfo copy_submit_info{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &copy_buffer,
-  };
-
-  if (wait_semaphore != VK_NULL_HANDLE) {
-    copy_submit_info.waitSemaphoreCount = 1;
-    copy_submit_info.pWaitSemaphores = &wait_semaphore;
-    copy_submit_info.pWaitDstStageMask = &wait_flag;
-    if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values.waitSemaphoreValueCount = 1;
-      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
-      copy_submit_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  if (signal_semaphore != VK_NULL_HANDLE) {
-    copy_submit_info.signalSemaphoreCount = 1;
-    copy_submit_info.pSignalSemaphores = &signal_semaphore;
-    if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values.signalSemaphoreValueCount = 1;
-      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
-      copy_submit_info.pNext = &timeline_semaphore_values;
-    }
-  }
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &copy_buffer;
 
   VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.graphics, 1, &copy_submit_info, fence));
+      vkQueueSubmit(device_->queues.graphics, 1, &submit_info, fence));
 }
 }  // namespace blu::core::rendering

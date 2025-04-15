@@ -66,9 +66,10 @@ void ImGuiStage::Run(uint32_t frame_index, VkSemaphore wait_semaphore,
   ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ui_buf);
   End(frame_index);
 
-
-  VkSubmitInfo submit_info = PrepareSubmitInfo(
-      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  VkTimelineSemaphoreSubmitInfo timeline_info;
+  VkSubmitInfo submit_info =
+      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
+                        signal_semaphore, signal_value);
 
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &ui_buf;

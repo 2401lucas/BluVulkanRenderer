@@ -128,8 +128,10 @@ void DepthOnlyStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depth_range);
   End(frame_index);
 
-  VkSubmitInfo submit_info = PrepareSubmitInfo(
-      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  VkTimelineSemaphoreSubmitInfo timeline_info;
+  VkSubmitInfo submit_info =
+      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
+                        signal_semaphore, signal_value);
   submit_info.commandBufferCount = 1;
   submit_info.pCommandBuffers = &depth_only_buf;
 
