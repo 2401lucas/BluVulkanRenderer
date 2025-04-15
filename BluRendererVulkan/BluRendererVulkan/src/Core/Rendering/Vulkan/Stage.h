@@ -24,11 +24,11 @@ class Stage {
   VkCommandBuffer Begin(uint32_t index);
   void End(uint32_t index);
 
-  VkSubmitInfo PrepareSubmitInfo(VkSemaphore wait_semaphore,
-                                 uint64_t wait_value,
-                                 VkPipelineStageFlags wait_flag,
-                                 VkSemaphore signal_semaphore,
-                                 uint64_t signal_value);
+  VkSubmitInfo PrepareSubmitInfo(VkSemaphore& wait_semaphore,
+                                 uint64_t& wait_value,
+                                 VkPipelineStageFlags& wait_flag,
+                                 VkSemaphore& signal_semaphore,
+                                 uint64_t& signal_value);
 
   Device* device_;
   VmaAllocator allocator_;

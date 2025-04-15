@@ -195,38 +195,12 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
 
   End(frame_index);
 
-  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values{
-      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-  };
-
-  VkSubmitInfo opaque_render_info{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &opaque_render_buf,
-  };
-
-  if (wait_semaphore != VK_NULL_HANDLE) {
-    opaque_render_info.waitSemaphoreCount = 1;
-    opaque_render_info.pWaitSemaphores = &wait_semaphore;
-    opaque_render_info.pWaitDstStageMask = &wait_flag;
-    if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values.waitSemaphoreValueCount = 1;
-      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
-      opaque_render_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  if (signal_semaphore != VK_NULL_HANDLE) {
-    opaque_render_info.signalSemaphoreCount = 1;
-    opaque_render_info.pSignalSemaphores = &signal_semaphore;
-    if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values.signalSemaphoreValueCount = 1;
-      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
-      opaque_render_info.pNext = &timeline_semaphore_values;
-    }
-  }
+  VkSubmitInfo submit_info = PrepareSubmitInfo(
+      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &opaque_render_buf;
 
   VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.graphics, 1, &opaque_render_info, fence));
+      vkQueueSubmit(device_->queues.graphics, 1, &submit_info, fence));
 }
 }  // namespace blu::core::rendering

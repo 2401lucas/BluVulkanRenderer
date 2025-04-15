@@ -18,6 +18,7 @@ find_library(EASTL_LIB eastl HINTS "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPL
 file(GLOB_RECURSE SOURCES "*.cpp" "*.h")
 
 add_subdirectory ("src")
+add_subdirectory ("includes")
 # Add source to this project's executable.
 add_executable (BluRendererVulkan ${SOURCES} ${include_files})
 

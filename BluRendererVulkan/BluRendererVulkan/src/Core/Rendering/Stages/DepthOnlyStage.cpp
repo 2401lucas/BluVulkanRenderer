@@ -40,8 +40,8 @@ void DepthOnlyStage::Resize(uint32_t frame_count, uint32_t width,
     };
 
     blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                      depth_only_output_images[i],
-                                      DEPTH_FORMAT, depth_range);
+                                      depth_only_output_images[i], DEPTH_FORMAT,
+                                      depth_range);
   }
 }
 
@@ -128,40 +128,14 @@ void DepthOnlyStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depth_range);
   End(frame_index);
 
-
-  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values{
-      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-  };
-
-  VkSubmitInfo depth_only_info{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &depth_only_buf,
-  };
-
-  if (wait_semaphore != VK_NULL_HANDLE) {
-    depth_only_info.waitSemaphoreCount = 1;
-    depth_only_info.pWaitSemaphores = &wait_semaphore;
-    depth_only_info.pWaitDstStageMask = &wait_flag;
-    if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values.waitSemaphoreValueCount = 1;
-      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
-      depth_only_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  if (signal_semaphore != VK_NULL_HANDLE) {
-    depth_only_info.signalSemaphoreCount = 1;
-    depth_only_info.pSignalSemaphores = &signal_semaphore;
-    if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values.signalSemaphoreValueCount = 1;
-      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
-      depth_only_info.pNext = &timeline_semaphore_values;
-    }
-  }
+  VkSubmitInfo submit_info = PrepareSubmitInfo(
+      wait_semaphore, wait_value, wait_flag, signal_semaphore, signal_value);
+  submit_info.commandBufferCount = 1;
+  submit_info.pCommandBuffers = &depth_only_buf;
 
   VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.graphics, 1, &depth_only_info, fence));
+      vkQueueSubmit(device_->queues.graphics, 1, &submit_info, fence));
+
   // This is used for debug output
   depth_only_output_images[frame_index]->layout =
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

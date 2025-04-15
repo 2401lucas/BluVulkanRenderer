@@ -167,6 +167,8 @@ ForwardRenderer::~ForwardRenderer() {
   delete depth_only_stage_;
   delete opaque_render_stage_;
   delete image_copy_stage_;
+  delete imgui_stage_;
+
   if (anti_aliasing_stage_ != nullptr) {
     delete anti_aliasing_stage_;
   }
@@ -908,6 +910,12 @@ void ForwardRenderer::GenerateResources() {
       // anti_aliasing_stage_ = new blu::core::rendering::AntiAliasingStage(
       //     device_, allocator_, anti_aliasing_pipeline,
       //     compute_command_pools_, width, height);
+    }
+
+    // imgui_ui_stage
+    {
+      imgui_stage_ = new blu::core::rendering::ImGuiStage(
+          instance_, device_, window_, frame_count, graphics_command_pools_);
     }
   }
 

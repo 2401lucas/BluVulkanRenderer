@@ -51,11 +51,11 @@ VkCommandBuffer Stage::Begin(uint32_t index) {
 
 void Stage::End(uint32_t index) { vkEndCommandBuffer(command_buffers[index]); }
 
-VkSubmitInfo Stage::PrepareSubmitInfo(VkSemaphore wait_semaphore,
-                                      uint64_t wait_value,
-                                      VkPipelineStageFlags wait_flag,
-                                      VkSemaphore signal_semaphore,
-                                      uint64_t signal_value) {
+VkSubmitInfo Stage::PrepareSubmitInfo(VkSemaphore& wait_semaphore,
+                                      uint64_t& wait_value,
+                                      VkPipelineStageFlags& wait_flag,
+                                      VkSemaphore& signal_semaphore,
+                                      uint64_t& signal_value) {
   timeline_semaphore_values->sType =
       VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
   timeline_semaphore_values->pNext = nullptr;

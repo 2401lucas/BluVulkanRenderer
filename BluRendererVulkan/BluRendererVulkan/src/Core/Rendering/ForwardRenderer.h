@@ -22,6 +22,7 @@ constexpr bool USE_VALIDATION = false;
 #include "Stages/BuildCommandBufferStage.h"
 #include "Stages/DepthOnlyStage.h"
 #include "Stages/FrustumCullStage.h"
+#include "Stages/ImGuiStage.h"
 #include "Stages/ImageCopyStage.h"
 #include "Stages/OpaqueRenderStage.h"
 #include "Vulkan/Buffer.h"
@@ -256,6 +257,7 @@ class ForwardRenderer {
   blu::core::rendering::DepthOnlyStage* depth_only_stage_ = nullptr;
   blu::core::rendering::ImageCopyStage* image_copy_stage_ = nullptr;
   blu::core::rendering::OpaqueRenderStage* opaque_render_stage_ = nullptr;
+  blu::core::rendering::ImGuiStage* imgui_stage_ = nullptr;
   blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
 
   blu::core::rendering::Stage* hierarchial_z_stage_;
