@@ -5,11 +5,9 @@
 - [ ] Tonemapping Pass (Compute?)
 - [ ] Better Transform matrix calculation when using a camera 
 - [ ] Compute FXAA
-- [x] Frustum Culling
-- [ ] Manage command buffers/resources external to the stages, and move pipeline creation logic into the Stage setup
+- [x] Manage command buffers/resources external to the stages, and move pipeline creation logic into the Stage setup
 - [ ] ImGUI Implementation
-- [ ] Recycle Resources
-- [x] Reimplement Shaders
+- [x] Recycle Resources
 ### V1.0
 - [ ] Metallic/Specular PBR Shading
 - [ ] Occlusion Culling

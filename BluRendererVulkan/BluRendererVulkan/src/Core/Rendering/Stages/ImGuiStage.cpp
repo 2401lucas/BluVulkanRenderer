@@ -93,7 +93,6 @@ void ImGuiStage::Start(VkCommandBuffer buf, Image* dst, uint32_t width,
   ImGui_ImplVulkan_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
-  ImGui::ShowDemoWindow();
 }
 
 void ImGuiStage::End(VkCommandBuffer buf) {

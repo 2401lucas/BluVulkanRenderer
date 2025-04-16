@@ -168,6 +168,26 @@ ForwardRenderer::~ForwardRenderer() {
   delete image_copy_stage_;
   delete imgui_stage_;
 
+  for (auto& buf : buffers_draw_command_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+
+  for (auto& img : ui_img_output) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
+  }
+
+  for (auto& img : images_render_assist_color) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
+  }
+
+  for (auto& img : images_render_assist_depth) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
+  }
+
   for (eastl::vector<blu::core::rendering::ModelData>::iterator
            it = loaded_models_.begin(),
            it_end = loaded_models_.end();
@@ -175,10 +195,9 @@ ForwardRenderer::~ForwardRenderer() {
     it->Delete();
   }
 
-  for (eastl::vector<VkShaderModule>::iterator it = shader_modules_.begin(),
-                                               it_end = shader_modules_.end();
+  for (auto it = shader_modules_.begin(), it_end = shader_modules_.end();
        it != it_end; ++it) {
-    vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
+    vkDestroyShaderModule(device_->GetLogicalDevice(), it->second, nullptr);
   }
 
   vmaDestroyAllocator(allocator_);
@@ -906,8 +925,7 @@ RendererState ForwardRenderer::Render(RenderData render_data) {
 
   UpdateFrameData(render_data);
 
-  blu::core::Buffer* draw_command_buffer;
-
+  DoDrawUI();
   DoCull(render_data.scene.model_data.size());
   DoDraw();
 
@@ -957,6 +975,15 @@ void ForwardRenderer::OnResize() {
                                &command_buffer_alloc_info, &cmd_bufs_draw_[i]);
     }
   }
+  if (cmd_bufs_ui_draw_.size() == 0) {
+    cmd_bufs_ui_draw_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info,
+                               &cmd_bufs_ui_draw_[i]);
+    }
+  }
   if (cmd_bufs_present_.size() == 0) {
     cmd_bufs_present_.resize(frame_count);
     for (size_t i = 0; i < frame_count; i++) {
@@ -989,6 +1016,46 @@ void ForwardRenderer::OnResize() {
           .objectType = VK_OBJECT_TYPE_BUFFER,
           .objectHandle = (uint64_t)buffers_draw_command_[i]->buffer,
           .pObjectName = "Culled Draw Commands",
+      };
+
+      debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                              &debug_info);
+#endif
+    }
+  }
+
+  if (ui_img_output.size() != frame_count) {
+    for (auto& img : ui_img_output) {
+      img->Destroy(device_->GetLogicalDevice(), allocator_);
+      delete img;
+    }
+    ui_img_output.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      ui_img_output[i] = blu::core::Image::CreateImage(
+          device_->GetLogicalDevice(), allocator_, COLOR_FORMAT,
+          swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
+          VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+      VkImageSubresourceRange range{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .baseArrayLayer = 0,
+          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+      };
+
+      blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                        ui_img_output[i], COLOR_FORMAT, range);
+
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_IMAGE,
+          .objectHandle = (uint64_t)ui_img_output[i]->image,
+          .pObjectName = "UI Output Images",
       };
 
       debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
@@ -1181,6 +1248,35 @@ void ForwardRenderer::DoAA() {
   }
 }
 
+void ForwardRenderer::DoDrawUI() {
+  auto buf = cmd_bufs_ui_draw_[frame_index_];
+  StartCommandBuffer(buf);
+#ifdef DEBUG_LABELS
+  VkDebugUtilsLabelEXT label_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pNext = nullptr,
+      .pLabelName = "UI Draw",
+      .color = {0, 1, 0, 1}};
+
+  debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
+#endif
+
+  imgui_stage_->Start(buf, ui_img_output[frame_index_], swapchain_->GetWidth(),
+                      swapchain_->GetHeight());
+
+  ImGui::ShowDebugLogWindow();
+
+  ImGui::ShowDemoWindow();
+
+  imgui_stage_->End(buf);
+#ifdef DEBUG_LABELS
+  debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
+#endif
+  EndCommandBuffer(buf);
+  SubmitCommandBuffer({buf}, device_->queues.graphics, nullptr, UINT64_MAX, 0,
+                      nullptr, UINT64_MAX, nullptr);
+}
+
 bool ForwardRenderer::DoPresent() {
   blu::core::Image* output_image;
   VkImageLayout output_image_layout;
@@ -1306,16 +1402,24 @@ void ForwardRenderer::SubmitCommandBuffer(
 
 VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(
     eastl::string file_name, VkShaderStageFlagBits stage) {
+  VkShaderModule shader_module = VK_NULL_HANDLE;
+
+  if (shader_modules_.find(file_name) != shader_modules_.end()) {
+    shader_module = shader_modules_[file_name];
+  } else {
+    shader_module = blu::core::file::LoadShader(file_name.c_str(),
+                                                device_->GetLogicalDevice());
+    shader_modules_[file_name] = shader_module;
+  }
+
+  assert(shader_module != VK_NULL_HANDLE);
+
   VkPipelineShaderStageCreateInfo shader_stage{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = stage,
-      .module = blu::core::file::LoadShader(file_name.c_str(),
-                                            device_->GetLogicalDevice()),
+      .module = shader_module,
       .pName = "main",
   };
-
-  assert(shader_stage.module != VK_NULL_HANDLE);
-  shader_modules_.push_back(shader_stage.module);
 
 #if DEBUG_LABELS
   VkDebugUtilsObjectNameInfoEXT debug_info{

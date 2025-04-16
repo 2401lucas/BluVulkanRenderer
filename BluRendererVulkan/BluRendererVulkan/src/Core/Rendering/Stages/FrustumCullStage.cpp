@@ -14,9 +14,7 @@ FrustumCullStage::FrustumCullStage(Device* device,
       new blu::core::rendering::Pipeline(device_, frustum_cull_create_info);
 }
 
-FrustumCullStage::~FrustumCullStage() {
-  delete pipeline_;
-}
+FrustumCullStage::~FrustumCullStage() { delete pipeline_; }
 
 void FrustumCullStage::Run(VkCommandBuffer buf, uint32_t frame_index,
                            BufferInfo model_data, BufferInfo models,

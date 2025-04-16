@@ -124,7 +124,6 @@ class ForwardRenderer {
   void UpdateFrameData(RenderData& render_data);
   void BuildFrameTimeline();
   bool PrepareFrame();
-  bool PresentFrame(blu::core::Image* target_image, uint64_t wait_semaphore);
 
   RendererState Render(RenderData render_data);
 
@@ -139,6 +138,7 @@ class ForwardRenderer {
   void DoCull(uint32_t model_count);
   void DoDraw();
   void DoAA();
+  void DoDrawUI();
   bool DoPresent();
 
   void StartCommandBuffer(VkCommandBuffer);
@@ -258,7 +258,8 @@ class ForwardRenderer {
   blu::core::Buffer* matrices_buffer_;
 
   // Vulkan Render Resources
-  eastl::vector<VkShaderModule> shader_modules_;
+  // eastl::vector<VkShaderModule> shader_modules_;
+  eastl::hash_map<eastl::string, VkShaderModule> shader_modules_;
 
   eastl::vector<VkCommandPool> transfer_command_pools;
   eastl::vector<VkCommandPool> graphics_command_pools_;
@@ -266,9 +267,11 @@ class ForwardRenderer {
 
   eastl::vector<VkCommandBuffer> cmd_bufs_cull_;
   eastl::vector<VkCommandBuffer> cmd_bufs_draw_;
+  eastl::vector<VkCommandBuffer> cmd_bufs_ui_draw_;
   eastl::vector<VkCommandBuffer> cmd_bufs_present_;
 
   eastl::vector<blu::core::Buffer*> buffers_draw_command_;
+  eastl::vector<blu::core::Image*> ui_img_output;
   eastl::vector<blu::core::Image*> images_render_assist_color;
   eastl::vector<blu::core::Image*> images_render_assist_depth;
 
