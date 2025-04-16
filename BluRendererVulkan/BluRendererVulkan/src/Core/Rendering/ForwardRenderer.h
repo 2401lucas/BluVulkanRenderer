@@ -20,6 +20,7 @@ constexpr bool USE_VALIDATION = false;
 #include "RenderData.h"
 #include "Stages/AntiAliasingStage.h"
 #include "Stages/BuildCommandBufferStage.h"
+#include "Stages/ColorOnlyStage.h"
 #include "Stages/DepthOnlyStage.h"
 #include "Stages/FrustumCullStage.h"
 #include "Stages/ImGuiStage.h"
@@ -32,6 +33,8 @@ constexpr bool USE_VALIDATION = false;
 #include "Vulkan/Instance.h"
 #include "Vulkan/Pipeline.h"
 #include "Vulkan/Swapchain.h"
+
+constexpr uint32_t RENDER_ASSIST_IMAGES_PER_FRAME = 2;
 
 struct Vertex {
   glm::vec3 pos;
@@ -270,6 +273,8 @@ class ForwardRenderer {
   eastl::vector<VkCommandBuffer> cmd_bufs_ui_draw_;
   eastl::vector<VkCommandBuffer> cmd_bufs_present_;
 
+  blu::core::DescriptorSet* render_images_descriptor_;
+
   eastl::vector<blu::core::Buffer*> buffers_draw_command_;
   eastl::vector<blu::core::Image*> ui_img_output;
   eastl::vector<blu::core::Image*> images_render_assist_color;
@@ -282,8 +287,10 @@ class ForwardRenderer {
   blu::core::rendering::ImageCopyStage* image_copy_stage_ = nullptr;
   blu::core::rendering::OpaqueRenderStage* opaque_render_stage_ = nullptr;
   blu::core::rendering::ImGuiStage* imgui_stage_ = nullptr;
+  blu::core::rendering::ColorOnlyStage* final_composition = nullptr;
   // blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
 
+  // TODO:
   blu::core::rendering::Stage* hierarchial_z_stage_;
   blu::core::rendering::Stage* occlusion_cull_stage_;
   blu::core::rendering::Stage* post_process_stage_;

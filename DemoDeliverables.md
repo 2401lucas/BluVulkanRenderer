@@ -14,6 +14,7 @@
 - [ ] Shadow
 - [ ] MultiThreaded Rendering
 - [ ] Scene Hierarchy
+- [ ] Cache Image Samplers
 ### Backlog
 - [ ] Scripting
 - [ ] Scene Editor

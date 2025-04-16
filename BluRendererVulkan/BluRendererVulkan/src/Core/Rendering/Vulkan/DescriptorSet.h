@@ -1,13 +1,14 @@
 #ifndef DESCRIPTORSET_H
 #define DESCRIPTORSET_H
 
+#include <EASTL/vector.h>
 #include <vulkan/vulkan_core.h>
 
 namespace blu::core {
 class DescriptorSet {
  public:
   VkDescriptorSetLayout layout;
-  VkDescriptorSet set;
+  eastl::vector<VkDescriptorSet> sets;
 
   void Destroy(const VkDevice& device);
 };

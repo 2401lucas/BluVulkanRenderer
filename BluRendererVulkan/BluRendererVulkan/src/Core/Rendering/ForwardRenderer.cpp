@@ -136,13 +136,8 @@ ForwardRenderer::~ForwardRenderer() {
 
   buffer_infos_buffer_->Destroy(allocator_);
   delete buffer_infos_buffer_;
-  buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
-  delete buffer_infos_descriptor_set_;
-  textures_descriptor_set_->Destroy(device_->GetLogicalDevice());
-  delete textures_descriptor_set_;
   matrices_buffer_->Destroy(allocator_);
   delete matrices_buffer_;
-
   vertex_buffer_->Destroy(allocator_);
   delete vertex_buffer_;
   normal_buffer_->Destroy(allocator_);
@@ -161,12 +156,20 @@ ForwardRenderer::~ForwardRenderer() {
   models_buffer_->Destroy(allocator_);
   delete models_buffer_;
 
+  buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete buffer_infos_descriptor_set_;
+  textures_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete textures_descriptor_set_;
+  render_images_descriptor_->Destroy(device_->GetLogicalDevice());
+  delete render_images_descriptor_;
+
   delete build_command_buffer_stage_;
   delete frustum_cull_stage_;
   delete depth_only_stage_;
   delete opaque_render_stage_;
   delete image_copy_stage_;
   delete imgui_stage_;
+  delete final_composition;
 
   for (auto& buf : buffers_draw_command_) {
     buf->Destroy(allocator_);
@@ -459,7 +462,8 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
   blu::core::Image::CreateImageView(device_->GetLogicalDevice(), new_image,
                                     COLOR_FORMAT, img_range);
   blu::core::Image::CreateImageSampler(
-      device_->GetLogicalDevice(), device_->GetDeviceProperties(), new_image);
+      device_->GetLogicalDevice(), new_image,
+      device_->GetDeviceProperties().limits.maxSamplerAnisotropy);
 
   vkFreeCommandBuffers(device_->GetLogicalDevice(),
                        graphics_command_pools_[frame_index_], 1, &copy_cmd_buf);
@@ -473,10 +477,9 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
       .imageView = new_image->view,
       .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
   };
-
   VkWriteDescriptorSet write_descriptor_set = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = textures_descriptor_set_->set,
+      .dstSet = textures_descriptor_set_->sets[0],
       .dstBinding = 0,
       .dstArrayElement = static_cast<uint32_t>(textures.size()),
       .descriptorCount = 1,
@@ -542,13 +545,14 @@ void ForwardRenderer::GenerateResources() {
     // Device Pointers
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_TEXTURES},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         MAX_TEXTURES + RENDER_ASSIST_IMAGES_PER_FRAME * frame_count},
     };
 
     VkDescriptorPoolCreateInfo descriptor_pool_create{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .flags = 0,
-        .maxSets = 2,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT,
+        .maxSets = 2 + frame_count,
         .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
@@ -570,6 +574,18 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)buffer_infos_buffer_->buffer,
+        .pObjectName = "BDA Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     VkDescriptorSetLayoutBinding buffer_metadata_binding{
         .binding = 0,
@@ -595,9 +611,22 @@ void ForwardRenderer::GenerateResources() {
         .descriptorSetCount = 1,
         .pSetLayouts = &buffer_infos_descriptor_set_->layout,
     };
+    buffer_infos_descriptor_set_->sets.resize(1);
     vkAllocateDescriptorSets(device_->GetLogicalDevice(),
                              &descriptor_alloc_info,
-                             &buffer_infos_descriptor_set_->set);
+                             &buffer_infos_descriptor_set_->sets[0]);
+
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_DESCRIPTOR_SET,
+        .objectHandle = (uint64_t)buffer_infos_descriptor_set_->sets[0],
+        .pObjectName = "BDA DescriptorSet",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     VkDescriptorBufferInfo descriptor_buffer_info{
         .buffer =
@@ -608,7 +637,7 @@ void ForwardRenderer::GenerateResources() {
 
     VkWriteDescriptorSet descriptor_write{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = buffer_infos_descriptor_set_->set,
+        .dstSet = buffer_infos_descriptor_set_->sets[0],
         .dstBinding = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -657,9 +686,9 @@ void ForwardRenderer::GenerateResources() {
         .descriptorSetCount = 1,
         .pSetLayouts = &textures_descriptor_set_->layout,
     };
-
+    textures_descriptor_set_->sets.resize(1);
     vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
-                             &textures_descriptor_set_->set);
+                             &textures_descriptor_set_->sets[0]);
   }
 
   // Buffer Creation
@@ -673,7 +702,17 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)matrices_buffer_->buffer,
+        .pObjectName = "BDA Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     // This is horrific and should be illigal to do...
     // but it works. I WILL fix this at somepoint soon
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
@@ -690,7 +729,17 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)vertex_buffer_->buffer,
+        .pObjectName = "Vertex Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     normal_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(Vertex::norm) * MAX_VERTICES,
@@ -698,14 +747,34 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)normal_buffer_->buffer,
+        .pObjectName = "Normal Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     index_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_INDICES,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)index_buffer_->buffer,
+        .pObjectName = "Index Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     uv_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(Vertex::uv) * MAX_VERTICES,
@@ -713,6 +782,17 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)uv_buffer_->buffer,
+        .pObjectName = "UV Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
   }
 
   // DCG Buffer Creation
@@ -727,6 +807,18 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)models_data_buffer_->buffer,
+        .pObjectName = "Model Data Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
+
     models_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(glm::vec4) * 6 + sizeof(ModelData) * MAX_MODELS,
@@ -736,6 +828,17 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)models_buffer_->buffer,
+        .pObjectName = "Instance Model Info Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     buffer_infos_.push_back(BufferInfo(models_data_buffer_->device_address,
                                        models_data_buffer_->offset,
@@ -1049,6 +1152,8 @@ void ForwardRenderer::OnResize() {
 
       blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
                                         ui_img_output[i], COLOR_FORMAT, range);
+      blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
+                                           ui_img_output[i], 0);
 
 #if DEBUG_LABELS
       VkDebugUtilsObjectNameInfoEXT debug_info{
@@ -1090,6 +1195,9 @@ void ForwardRenderer::OnResize() {
       blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
                                         images_render_assist_color[i],
                                         COLOR_FORMAT, range);
+
+      blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
+                                           images_render_assist_color[i], 0);
 
 #if DEBUG_LABELS
       VkDebugUtilsObjectNameInfoEXT debug_info{
@@ -1141,6 +1249,73 @@ void ForwardRenderer::OnResize() {
 #endif
     }
   }
+
+  {
+    render_images_descriptor_ = new blu::core::DescriptorSet();
+
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = RENDER_ASSIST_IMAGES_PER_FRAME,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &binding,
+    };
+    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
+                                nullptr, &render_images_descriptor_->layout);
+
+    render_images_descriptor_->sets.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      VkDescriptorSetAllocateInfo alloc_info = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .descriptorPool = render_descriptor_pool_,
+          .descriptorSetCount = 1,
+          .pSetLayouts = &render_images_descriptor_->layout,
+      };
+
+      VK_CHECK_RESULT(
+          vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
+                                   &render_images_descriptor_->sets[i]));
+
+      eastl::vector<VkDescriptorImageInfo> imageInfos;
+      imageInfos.resize(RENDER_ASSIST_IMAGES_PER_FRAME);
+      imageInfos[0] = {
+          .sampler = images_render_assist_color[i]->sampler,
+          .imageView = images_render_assist_color[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+      imageInfos[1] = {
+          .sampler = ui_img_output[i]->sampler,
+          .imageView = ui_img_output[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+
+      VkWriteDescriptorSet write = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = render_images_descriptor_->sets[i],
+          .dstBinding = 0,
+          .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = imageInfos.data(),
+      };
+
+      vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write, 0,
+                             nullptr);
+    }
+  }
+
+  final_composition = new blu::core::rendering::ColorOnlyStage(
+      device_, {render_images_descriptor_->layout},
+      {LoadShader("shaders/fullscreen_tri.vert.spv",
+                  VK_SHADER_STAGE_VERTEX_BIT),
+       LoadShader("shaders/final_composition.frag.spv",
+                  VK_SHADER_STAGE_FRAGMENT_BIT)});
 }
 
 void ForwardRenderer::DoCull(uint32_t model_count) {
@@ -1215,7 +1390,8 @@ void ForwardRenderer::DoDraw() {
           buf, frame_index_, images_render_assist_color[frame_index_],
           images_render_assist_depth[frame_index_], swapchain_->GetWidth(),
           swapchain_->GetHeight(), buffers_draw_command_[frame_index_],
-          {buffer_infos_descriptor_set_->set, textures_descriptor_set_->set},
+          {buffer_infos_descriptor_set_->sets[0],
+           textures_descriptor_set_->sets[0]},
           vertex_buffer_, normal_buffer_, uv_buffer_, index_buffer_);
       break;
     case DRAW_MODE_UNLIT:
@@ -1278,19 +1454,6 @@ void ForwardRenderer::DoDrawUI() {
 }
 
 bool ForwardRenderer::DoPresent() {
-  blu::core::Image* output_image;
-  VkImageLayout output_image_layout;
-  switch (settings_.output) {
-    case RENDER_OUTPUT_DRAW_STAGE:
-      output_image = images_render_assist_color[frame_index_];
-      output_image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      break;
-    case RENDER_OUTPUT_AA:
-      output_image = images_render_assist_color[frame_index_];
-      output_image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      break;
-  }
-
   auto swapchain = swapchain_->GetSwapchain();
   auto swapchain_buf = swapchain_->GetSwapchainBuffer(frame_index_);
 
@@ -1301,16 +1464,36 @@ bool ForwardRenderer::DoPresent() {
   VkDebugUtilsLabelEXT label_info{
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
       .pNext = nullptr,
-      .pLabelName = "Copy Final Image",
+      .pLabelName = "Final Image Composition",
       .color = {0, 1, 0, 1}};
 
   debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
 #endif
+  VkImageSubresourceRange range{
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+  };
+  blu::core::Image::ImageLayoutTransition(
+      buf, ui_img_output[frame_index_]->image,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+  blu::core::Image::ImageLayoutTransition(
+      buf, images_render_assist_color[frame_index_]->image,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
-  image_copy_stage_->Run(buf, frame_index_, output_image->image,
-                         output_image_layout, swapchain_buf.image,
-                         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                         swapchain_->GetWidth(), swapchain_->GetHeight());
+  blu::core::Image img{.image = swapchain_buf.image,
+                       .view = swapchain_buf.view};
+  final_composition->Run(buf, {render_images_descriptor_->sets[frame_index_]},
+                         &img, swapchain_->GetWidth(), swapchain_->GetHeight());
+
+  blu::core::Image::ImageLayoutTransition(
+      buf, swapchain_buf.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+
 #ifdef DEBUG_LABELS
   debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
 #endif
