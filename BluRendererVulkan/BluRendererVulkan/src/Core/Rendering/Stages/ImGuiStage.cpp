@@ -1,15 +1,17 @@
 #include "ImGuiStage.h"
 
- static void CheckVkResult(VkResult err) {
-   if (err == 0) return;
-   fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-   if (err < 0) abort();
- }
+#include <EASTL/array.h>
+
+static void CheckVkResult(VkResult err) {
+  if (err == 0) return;
+  fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+  if (err < 0) abort();
+}
 
 namespace blu::core::rendering {
 ImGuiStage::ImGuiStage(Instance* instance, Device* device, Window* window,
-                       uint32_t frame_count, eastl::vector<VkCommandPool> pools)
-    : Stage(device, nullptr, nullptr, pools) {
+                       uint32_t frame_count)
+    : Stage(device, nullptr) {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
@@ -50,31 +52,53 @@ ImGuiStage::~ImGuiStage() {
   ImGui::DestroyContext();
 }
 
-void ImGuiStage::Resize() {}
+void ImGuiStage::Start(VkCommandBuffer buf, Image* dst, uint32_t width,
+                       uint32_t height) {
+  VkImageSubresourceRange range{
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+  };
 
-void ImGuiStage::Run(uint32_t frame_index, VkSemaphore wait_semaphore,
-                     uint64_t wait_value, VkPipelineStageFlags wait_flag,
-                     VkSemaphore signal_semaphore, uint64_t signal_value,
-                     VkFence fence) {
-  auto ui_buf = Begin(frame_index);
+  blu::core::Image::ImageLayoutTransition(
+      buf, dst->image, VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
+
+  eastl::array<VkClearValue, 1> clear_values{};
+  clear_values[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+
+  VkRenderingAttachmentInfo color_attachment_info{
+      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      .imageView = dst->view,
+      .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .resolveMode = VK_RESOLVE_MODE_NONE,
+      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+      .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      .clearValue = clear_values[0],
+  };
+
+  VkRenderingInfo render_info{
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea = {{.x = 0, .y = 0}, width, height},
+      .layerCount = 1,
+      .viewMask = 0,
+      .colorAttachmentCount = 1,
+      .pColorAttachments = &color_attachment_info,
+  };
+
+  vkCmdBeginRendering(buf, &render_info);
+
   ImGui_ImplVulkan_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   ImGui::ShowDemoWindow();
+}
 
+void ImGuiStage::End(VkCommandBuffer buf) {
   ImGui::Render();
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ui_buf);
-  End(frame_index);
-
-  VkTimelineSemaphoreSubmitInfo timeline_info;
-  VkSubmitInfo submit_info =
-      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
-                        signal_semaphore, signal_value);
-
-  submit_info.commandBufferCount = 1;
-  submit_info.pCommandBuffers = &ui_buf;
-
-  VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.compute, 1, &submit_info, fence));
+  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buf);
+  vkCmdEndRendering(buf);
 }
 }  // namespace blu::core::rendering

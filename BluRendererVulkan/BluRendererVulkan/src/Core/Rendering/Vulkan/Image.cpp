@@ -57,7 +57,6 @@ blu::core::Image* blu::core::Image::CreateImage(
                                  &new_image->alloc, &alloc_info));
   new_image->size = alloc_info.size;
   new_image->mip_levels = mip_levels;
-  new_image->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   return new_image;
 }

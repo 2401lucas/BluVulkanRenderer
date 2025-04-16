@@ -18,7 +18,6 @@ class Image {
   VkDeviceSize offset = 0;
   uint32_t mip_levels;
   // Optional
-  VkImageLayout layout;
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
 

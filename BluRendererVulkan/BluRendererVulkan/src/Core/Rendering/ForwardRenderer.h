@@ -136,6 +136,20 @@ class ForwardRenderer {
   uint64_t GetNextSemaphoreValue();
   void OnResize();
 
+  void DoCull(uint32_t model_count);
+  void DoDraw();
+  void DoAA();
+  bool DoPresent();
+
+  void StartCommandBuffer(VkCommandBuffer);
+  void EndCommandBuffer(VkCommandBuffer);
+
+  void SubmitCommandBuffer(eastl::vector<VkCommandBuffer> cmd_bufs,
+                           VkQueue& queue, VkSemaphore wait_semaphore,
+                           uint64_t wait_value, VkPipelineStageFlags wait_flag,
+                           VkSemaphore signal_semaphore, uint64_t signal_value,
+                           VkFence fence);
+
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
 
@@ -196,6 +210,7 @@ class ForwardRenderer {
     uint64_t cull_mode_complete = 0;
     uint64_t draw_mode_complete = 0;
     uint64_t anti_aliasing_mode_complete = 0;
+    uint64_t present_complete = 0;
 
     // Individual Stages
     uint64_t build_command_buffer_stage_ = 0;
@@ -249,7 +264,13 @@ class ForwardRenderer {
   eastl::vector<VkCommandPool> graphics_command_pools_;
   eastl::vector<VkCommandPool> compute_command_pools_;
 
-  eastl::vector<VkCommandBuffer> present_command_buffers;
+  eastl::vector<VkCommandBuffer> cmd_bufs_cull_;
+  eastl::vector<VkCommandBuffer> cmd_bufs_draw_;
+  eastl::vector<VkCommandBuffer> cmd_bufs_present_;
+
+  eastl::vector<blu::core::Buffer*> buffers_draw_command_;
+  eastl::vector<blu::core::Image*> images_render_assist_color;
+  eastl::vector<blu::core::Image*> images_render_assist_depth;
 
   blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_ =
       nullptr;
@@ -258,7 +279,7 @@ class ForwardRenderer {
   blu::core::rendering::ImageCopyStage* image_copy_stage_ = nullptr;
   blu::core::rendering::OpaqueRenderStage* opaque_render_stage_ = nullptr;
   blu::core::rendering::ImGuiStage* imgui_stage_ = nullptr;
-  blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
+  // blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
 
   blu::core::rendering::Stage* hierarchial_z_stage_;
   blu::core::rendering::Stage* occlusion_cull_stage_;

@@ -6,16 +6,12 @@
 namespace blu::core::rendering {
 class ImageCopyStage : protected Stage {
  public:
-  ImageCopyStage(Device* device, VmaAllocator allocator,
-                 eastl::vector<VkCommandPool>& pools);
+  ImageCopyStage(Device* device, VmaAllocator allocator);
   ~ImageCopyStage();
 
-  void Run(uint32_t frame_index, VkImage src_img,
+  void Run(VkCommandBuffer buf, uint32_t frame_index, VkImage src_img,
            VkImageLayout src_image_layout, VkImage dst_img,
-           VkImageLayout dst_img_layout, uint32_t width, uint32_t height,
-           VkSemaphore wait_semaphore, uint64_t wait_value,
-           VkPipelineStageFlags wait_flag, VkSemaphore signal_semaphore,
-           uint64_t signal_value, VkFence fence);
+           VkImageLayout dst_img_layout, uint32_t width, uint32_t height);
 };
 }  // namespace blu::core::rendering
 #endif

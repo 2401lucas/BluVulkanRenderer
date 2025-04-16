@@ -1,58 +1,57 @@
 #include "DepthOnlyStage.h"
 
 namespace blu::core::rendering {
-DepthOnlyStage::DepthOnlyStage(Device* device, VmaAllocator allocator,
-                               blu::core::rendering::Pipeline* pipeline,
-                               eastl::vector<VkCommandPool>& pools,
-                               uint32_t width, uint32_t height)
-    : Stage(device, allocator, pipeline, pools) {
-  Resize(pools.size(), width, height);
-}
-DepthOnlyStage::~DepthOnlyStage() {
-  for (auto& img : depth_only_output_images) {
-    img->Destroy(device_->GetLogicalDevice(), allocator_);
-    delete img;
-  }
-}
-void DepthOnlyStage::Resize(uint32_t frame_count, uint32_t width,
-                            uint32_t height) {
-  for (auto& img : depth_only_output_images) {
-    img->Destroy(device_->GetLogicalDevice(), allocator_);
-    delete img;
-  }
-  width_ = width;
-  height_ = height;
-  depth_only_output_images.resize(frame_count);
-  for (size_t i = 0; i < frame_count; i++) {
-    depth_only_output_images[i] = blu::core::Image::CreateImage(
-        device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT, width_, height_,
-        1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-            VK_IMAGE_USAGE_SAMPLED_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+DepthOnlyStage::DepthOnlyStage(
+    Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
+    VkPipelineShaderStageCreateInfo shader_create_infos)
+    : Stage(device, nullptr) {
+  blu::core::rendering::GraphicsPipelineCreateInfo depth_only_stage_create_info{
+      .descriptor_set_layouts = descriptor_set_layouts,
+      .input_assembly_flags = 0,
+      .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+      .input_assembly_primitive_restart_enable = VK_FALSE,
+      .rasteriazation_flags = 0,
+      .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+      .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
+      .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+      .color_blend_attachment_states = {},
+      .depth_stencil_depth_test = VK_TRUE,
+      .depth_stencil_depth_write = VK_TRUE,
+      .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
+      .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+      .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+      .viewport_count = 1,
+      .scissor_count = 1,
+      .multisample_flags = 0,
+      .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+      .dynamic_state_flags = 0,
+      .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                VK_DYNAMIC_STATE_SCISSOR},
+      .vertex_input_bindings =
+          {
+              {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // POS
+          },
+      .vertex_input_attributes =
+          {
+              {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
+          },
+      .color_attachment_formats = {},
+      .depth_format = DEPTH_FORMAT,
 
-    VkImageSubresourceRange depth_range{
-        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-        .baseMipLevel = 0,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .baseArrayLayer = 0,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS,
-    };
+      .shaders{shader_create_infos},
+  };
 
-    blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                      depth_only_output_images[i], DEPTH_FORMAT,
-                                      depth_range);
-  }
+  pipeline_ =
+      new blu::core::rendering::Pipeline(device_, depth_only_stage_create_info);
 }
+DepthOnlyStage::~DepthOnlyStage() { delete pipeline_; }
 
-void DepthOnlyStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
+void DepthOnlyStage::Run(VkCommandBuffer buf, blu::core::Image* image,
+                         uint32_t width, uint32_t height,
+                         blu::core::Buffer* draw_command_buffer,
                          eastl::vector<VkDescriptorSet> descriptor_sets,
-                         Buffer* vertex_buffer, Buffer* index_buffer,
-                         VkSemaphore wait_semaphore, uint64_t wait_value,
-                         VkPipelineStageFlags wait_flag,
-                         VkSemaphore signal_semaphore, uint64_t signal_value,
-                         VkFence fence) {
-  auto depth_only_buf = Begin(frame_index);
+                         blu::core::Buffer* vertex_buffer,
+                         blu::core::Buffer* index_buffer) {
   VkImageSubresourceRange depth_range{
       .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
       .baseMipLevel = 0,
@@ -62,14 +61,13 @@ void DepthOnlyStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
   };
 
   blu::core::Image::ImageLayoutTransition(
-      depth_only_buf, depth_only_output_images[frame_index]->image,
-      VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-      depth_range);
+      buf, image->image, VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, depth_range);
 
   VkClearValue depth_value = {1.0f, 0};
   VkRenderingAttachmentInfo depth_attachment_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = depth_only_output_images[frame_index]->view,
+      .imageView = image->view,
       .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       .resolveMode = VK_RESOLVE_MODE_NONE,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -78,68 +76,50 @@ void DepthOnlyStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
   };
   VkRenderingInfo depth_only_render_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = {{.x = 0, .y = 0}, width_, height_},
+      .renderArea = {{.x = 0, .y = 0}, width, height},
       .layerCount = 1,
       .viewMask = 0,
       .colorAttachmentCount = 0,
       .pDepthAttachment = &depth_attachment_info,
   };
 
-  vkCmdBeginRendering(depth_only_buf, &depth_only_render_info);
+  vkCmdBeginRendering(buf, &depth_only_render_info);
   VkViewport viewport{
-      .width = static_cast<float>(width_),
-      .height = static_cast<float>(height_),
+      .width = static_cast<float>(width),
+      .height = static_cast<float>(height),
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
-  vkCmdSetViewport(depth_only_buf, 0, 1, &viewport);
+  vkCmdSetViewport(buf, 0, 1, &viewport);
 
   VkRect2D scissor{
       .offset{.x = 0, .y = 0},
       .extent{
-          .width = width_,
-          .height = height_,
+          .width = width,
+          .height = height,
       },
   };
-  vkCmdSetScissor(depth_only_buf, 0, 1, &scissor);
+  vkCmdSetScissor(buf, 0, 1, &scissor);
 
-  vkCmdBindPipeline(depth_only_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+  vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     *pipeline_->GetPipeline());
 
-  vkCmdBindDescriptorSets(depth_only_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          *pipeline_->GetPipelineLayout(), 0,
-                          descriptor_sets.size(), descriptor_sets.data(), 0,
-                          nullptr);
+  vkCmdBindDescriptorSets(
+      buf, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline_->GetPipelineLayout(), 0,
+      descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
 
   VkDeviceSize offsets[1] = {0};
-  vkCmdBindVertexBuffers(depth_only_buf, 0, 1, &vertex_buffer->buffer, offsets);
-  vkCmdBindIndexBuffer(depth_only_buf, index_buffer->buffer, 0,
-                       VK_INDEX_TYPE_UINT32);
+  vkCmdBindVertexBuffers(buf, 0, 1, &vertex_buffer->buffer, offsets);
+  vkCmdBindIndexBuffer(buf, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 
-  vkCmdDrawIndexedIndirectCount(depth_only_buf, draw_command_buffer->buffer,
+  vkCmdDrawIndexedIndirectCount(buf, draw_command_buffer->buffer,
                                 sizeof(uint32_t), draw_command_buffer->buffer,
                                 0, MAX_MODELS, DRAW_COMMAND_BUFFER_SIZE);
 
-  vkCmdEndRendering(depth_only_buf);
+  vkCmdEndRendering(buf);
 
   blu::core::Image::ImageLayoutTransition(
-      depth_only_buf, depth_only_output_images[frame_index]->image,
-      VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+      buf, image->image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depth_range);
-  End(frame_index);
-
-  VkTimelineSemaphoreSubmitInfo timeline_info;
-  VkSubmitInfo submit_info =
-      PrepareSubmitInfo(timeline_info, wait_semaphore, wait_value, wait_flag,
-                        signal_semaphore, signal_value);
-  submit_info.commandBufferCount = 1;
-  submit_info.pCommandBuffers = &depth_only_buf;
-
-  VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.graphics, 1, &submit_info, fence));
-
-  // This is used for debug output
-  depth_only_output_images[frame_index]->layout =
-      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 }  // namespace blu::core::rendering
