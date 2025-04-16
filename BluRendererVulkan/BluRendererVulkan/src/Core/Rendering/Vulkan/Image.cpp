@@ -57,7 +57,6 @@ blu::core::Image* blu::core::Image::CreateImage(
                                  &new_image->alloc, &alloc_info));
   new_image->size = alloc_info.size;
   new_image->mip_levels = mip_levels;
-  new_image->layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
   return new_image;
 }
@@ -171,10 +170,9 @@ void blu::core::Image::CreateImageView(
   vkCreateImageView(device, &image_view_info, nullptr, &image->view);
 }
 
-void blu::core::Image::CreateImageSampler(
-    const VkDevice& device,
-    const VkPhysicalDeviceProperties& physical_device_properties,
-    blu::core::Image* image) {
+void blu::core::Image::CreateImageSampler(const VkDevice& device,
+                                          blu::core::Image* image,
+                                          float max_anisotropy) {
   VkSamplerCreateInfo sampler_create_info{
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .flags = 0,
@@ -185,8 +183,8 @@ void blu::core::Image::CreateImageSampler(
       .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
       .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
       .mipLodBias = 0.0f,
-      .anisotropyEnable = VK_TRUE,
-      .maxAnisotropy = physical_device_properties.limits.maxSamplerAnisotropy,
+      .anisotropyEnable = max_anisotropy > 1.0f,
+      .maxAnisotropy = max_anisotropy,
       .compareEnable = VK_FALSE,
       .compareOp = VK_COMPARE_OP_ALWAYS,
       .minLod = 0.0f,

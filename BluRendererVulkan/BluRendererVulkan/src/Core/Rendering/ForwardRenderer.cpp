@@ -22,7 +22,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
     instance_ = new blu::core::Instance("Forward Renderer", USE_VALIDATION,
                                         instance_extensions);
 
-#ifdef _DEBUG
+#ifdef DEBUG_LABELS
     debug_util.vkCmdBeginDebugUtilsLabelEXT =
         (PFN_vkCmdBeginDebugUtilsLabelEXT)vkGetInstanceProcAddr(
             instance_->Get(), "vkCmdBeginDebugUtilsLabelEXT");
@@ -40,7 +40,6 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
             instance_->Get(), "vkSetDebugUtilsObjectNameEXT");
 #endif
   }
-
   // VkDevice Creation
   {
     VkPhysicalDeviceFeatures2 physical_device_features2{
@@ -137,13 +136,8 @@ ForwardRenderer::~ForwardRenderer() {
 
   buffer_infos_buffer_->Destroy(allocator_);
   delete buffer_infos_buffer_;
-  buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
-  delete buffer_infos_descriptor_set_;
-  textures_descriptor_set_->Destroy(device_->GetLogicalDevice());
-  delete textures_descriptor_set_;
   matrices_buffer_->Destroy(allocator_);
   delete matrices_buffer_;
-
   vertex_buffer_->Destroy(allocator_);
   delete vertex_buffer_;
   normal_buffer_->Destroy(allocator_);
@@ -162,13 +156,39 @@ ForwardRenderer::~ForwardRenderer() {
   models_buffer_->Destroy(allocator_);
   delete models_buffer_;
 
+  buffer_infos_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete buffer_infos_descriptor_set_;
+  textures_descriptor_set_->Destroy(device_->GetLogicalDevice());
+  delete textures_descriptor_set_;
+  render_images_descriptor_->Destroy(device_->GetLogicalDevice());
+  delete render_images_descriptor_;
+
   delete build_command_buffer_stage_;
   delete frustum_cull_stage_;
   delete depth_only_stage_;
   delete opaque_render_stage_;
   delete image_copy_stage_;
-  if (anti_aliasing_stage_ != nullptr) {
-    delete anti_aliasing_stage_;
+  delete imgui_stage_;
+  delete final_composition;
+
+  for (auto& buf : buffers_draw_command_) {
+    buf->Destroy(allocator_);
+    delete buf;
+  }
+
+  for (auto& img : ui_img_output) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
+  }
+
+  for (auto& img : images_render_assist_color) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
+  }
+
+  for (auto& img : images_render_assist_depth) {
+    img->Destroy(device_->GetLogicalDevice(), allocator_);
+    delete img;
   }
 
   for (eastl::vector<blu::core::rendering::ModelData>::iterator
@@ -178,10 +198,9 @@ ForwardRenderer::~ForwardRenderer() {
     it->Delete();
   }
 
-  for (eastl::vector<VkShaderModule>::iterator it = shader_modules_.begin(),
-                                               it_end = shader_modules_.end();
+  for (auto it = shader_modules_.begin(), it_end = shader_modules_.end();
        it != it_end; ++it) {
-    vkDestroyShaderModule(device_->GetLogicalDevice(), *it, nullptr);
+    vkDestroyShaderModule(device_->GetLogicalDevice(), it->second, nullptr);
   }
 
   vmaDestroyAllocator(allocator_);
@@ -443,7 +462,8 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
   blu::core::Image::CreateImageView(device_->GetLogicalDevice(), new_image,
                                     COLOR_FORMAT, img_range);
   blu::core::Image::CreateImageSampler(
-      device_->GetLogicalDevice(), device_->GetDeviceProperties(), new_image);
+      device_->GetLogicalDevice(), new_image,
+      device_->GetDeviceProperties().limits.maxSamplerAnisotropy);
 
   vkFreeCommandBuffers(device_->GetLogicalDevice(),
                        graphics_command_pools_[frame_index_], 1, &copy_cmd_buf);
@@ -457,10 +477,9 @@ int ForwardRenderer::LoadImage(eastl::string filepath) {
       .imageView = new_image->view,
       .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
   };
-
   VkWriteDescriptorSet write_descriptor_set = {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = textures_descriptor_set_->set,
+      .dstSet = textures_descriptor_set_->sets[0],
       .dstBinding = 0,
       .dstArrayElement = static_cast<uint32_t>(textures.size()),
       .descriptorCount = 1,
@@ -526,13 +545,14 @@ void ForwardRenderer::GenerateResources() {
     // Device Pointers
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_TEXTURES},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         MAX_TEXTURES + RENDER_ASSIST_IMAGES_PER_FRAME * frame_count},
     };
 
     VkDescriptorPoolCreateInfo descriptor_pool_create{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .flags = 0,
-        .maxSets = 2,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT,
+        .maxSets = 2 + frame_count,
         .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
@@ -554,6 +574,18 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)buffer_infos_buffer_->buffer,
+        .pObjectName = "BDA Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     VkDescriptorSetLayoutBinding buffer_metadata_binding{
         .binding = 0,
@@ -579,9 +611,22 @@ void ForwardRenderer::GenerateResources() {
         .descriptorSetCount = 1,
         .pSetLayouts = &buffer_infos_descriptor_set_->layout,
     };
+    buffer_infos_descriptor_set_->sets.resize(1);
     vkAllocateDescriptorSets(device_->GetLogicalDevice(),
                              &descriptor_alloc_info,
-                             &buffer_infos_descriptor_set_->set);
+                             &buffer_infos_descriptor_set_->sets[0]);
+
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_DESCRIPTOR_SET,
+        .objectHandle = (uint64_t)buffer_infos_descriptor_set_->sets[0],
+        .pObjectName = "BDA DescriptorSet",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     VkDescriptorBufferInfo descriptor_buffer_info{
         .buffer =
@@ -592,7 +637,7 @@ void ForwardRenderer::GenerateResources() {
 
     VkWriteDescriptorSet descriptor_write{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = buffer_infos_descriptor_set_->set,
+        .dstSet = buffer_infos_descriptor_set_->sets[0],
         .dstBinding = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
@@ -641,9 +686,9 @@ void ForwardRenderer::GenerateResources() {
         .descriptorSetCount = 1,
         .pSetLayouts = &textures_descriptor_set_->layout,
     };
-
+    textures_descriptor_set_->sets.resize(1);
     vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
-                             &textures_descriptor_set_->set);
+                             &textures_descriptor_set_->sets[0]);
   }
 
   // Buffer Creation
@@ -657,7 +702,17 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)matrices_buffer_->buffer,
+        .pObjectName = "BDA Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     // This is horrific and should be illigal to do...
     // but it works. I WILL fix this at somepoint soon
     buffer_infos_.push_back(BufferInfo(matrices_buffer_->device_address,
@@ -674,7 +729,17 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)vertex_buffer_->buffer,
+        .pObjectName = "Vertex Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     normal_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(Vertex::norm) * MAX_VERTICES,
@@ -682,14 +747,34 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)normal_buffer_->buffer,
+        .pObjectName = "Normal Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     index_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_, sizeof(uint32_t) * MAX_INDICES,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)index_buffer_->buffer,
+        .pObjectName = "Index Buffer",
+    };
 
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
     uv_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(Vertex::uv) * MAX_VERTICES,
@@ -697,6 +782,17 @@ void ForwardRenderer::GenerateResources() {
             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)uv_buffer_->buffer,
+        .pObjectName = "UV Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
   }
 
   // DCG Buffer Creation
@@ -711,6 +807,18 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
+#if DEBUG_LABELS
+    VkDebugUtilsObjectNameInfoEXT debug_info{
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)models_data_buffer_->buffer,
+        .pObjectName = "Model Data Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
+
     models_buffer_ = blu::core::Buffer::CreateBuffer(
         device_->GetLogicalDevice(), allocator_,
         sizeof(glm::vec4) * 6 + sizeof(ModelData) * MAX_MODELS,
@@ -720,6 +828,17 @@ void ForwardRenderer::GenerateResources() {
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
             VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
         VMA_ALLOCATION_CREATE_MAPPED_BIT);
+#if DEBUG_LABELS
+    debug_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+        .objectType = VK_OBJECT_TYPE_BUFFER,
+        .objectHandle = (uint64_t)models_buffer_->buffer,
+        .pObjectName = "Instance Model Info Buffer",
+    };
+
+    debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                            &debug_info);
+#endif
 
     buffer_infos_.push_back(BufferInfo(models_data_buffer_->device_address,
                                        models_data_buffer_->offset,
@@ -733,182 +852,32 @@ void ForwardRenderer::GenerateResources() {
 
   // Stage Creation
   {
-    // build_command_buffer_stage_
-    {
-      blu::core::rendering::ComputePipelineCreateInfo
-          build_command_buffer_create_info{
-              .shader = LoadShader("shaders/build_command_buffer.comp.spv",
-                                   VK_SHADER_STAGE_COMPUTE_BIT),
-              .push_const = {VkPushConstantRange(
-                  VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                  sizeof(blu::core::rendering::BuildCommandBufferStage::
-                             BuildCommandBufferPushConst))},
-          };
+    build_command_buffer_stage_ =
+        new blu::core::rendering::BuildCommandBufferStage(
+            device_, LoadShader("shaders/build_command_buffer.comp.spv",
+                                VK_SHADER_STAGE_COMPUTE_BIT));
 
-      auto build_command_buffer_pipeline = new blu::core::rendering::Pipeline(
-          device_, build_command_buffer_create_info);
+    frustum_cull_stage_ = new blu::core::rendering::FrustumCullStage(
+        device_, LoadShader("shaders/frustum_cull.comp.spv",
+                            VK_SHADER_STAGE_COMPUTE_BIT));
 
-      build_command_buffer_stage_ =
-          new blu::core::rendering::BuildCommandBufferStage(
-              device_, allocator_, build_command_buffer_pipeline,
-              compute_command_pools_);
-    }
-    // frustum_cull_stage_
-    {
-      blu::core::rendering::ComputePipelineCreateInfo frustum_cull_create_info{
-          .shader = LoadShader("shaders/frustum_cull.comp.spv",
-                               VK_SHADER_STAGE_COMPUTE_BIT),
-          .push_const = {VkPushConstantRange(
-              VK_SHADER_STAGE_COMPUTE_BIT, 0,
-              sizeof(
-                  blu::core::rendering::FrustumCullStage::FrustumPushConst))},
-      };
+    depth_only_stage_ = new blu::core::rendering::DepthOnlyStage(
+        device_, {{buffer_infos_descriptor_set_->layout}},
+        LoadShader("shaders/depth_only.vert.spv", VK_SHADER_STAGE_VERTEX_BIT));
 
-      auto frustum_cull_pipeline =
-          new blu::core::rendering::Pipeline(device_, frustum_cull_create_info);
+    opaque_render_stage_ = new blu::core::rendering::OpaqueRenderStage(
+        device_,
+        {
+            buffer_infos_descriptor_set_->layout,
+            textures_descriptor_set_->layout,
+        },
+        {LoadShader("shaders/cube.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
+         LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)});
 
-      frustum_cull_stage_ = new blu::core::rendering::FrustumCullStage(
-          device_, allocator_, frustum_cull_pipeline, compute_command_pools_);
-    }
-
-    // depth_only_stage_
-    {
-      blu::core::rendering::GraphicsPipelineCreateInfo
-          depth_only_stage_create_info{
-              .descriptor_set_layouts = {buffer_infos_descriptor_set_->layout},
-              .input_assembly_flags = 0,
-              .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-              .input_assembly_primitive_restart_enable = VK_FALSE,
-              .rasteriazation_flags = 0,
-              .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
-              .rasteriazation_state_cull_mode = VK_CULL_MODE_FRONT_BIT,
-              .rasteriazation_state_front_face =
-                  VK_FRONT_FACE_COUNTER_CLOCKWISE,
-              .color_blend_attachment_states = {},
-              .depth_stencil_depth_test = VK_TRUE,
-              .depth_stencil_depth_write = VK_TRUE,
-              .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
-              .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
-              .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
-              .viewport_count = 1,
-              .scissor_count = 1,
-              .multisample_flags = 0,
-              .multisample_count = VK_SAMPLE_COUNT_1_BIT,
-              .dynamic_state_flags = 0,
-              .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                        VK_DYNAMIC_STATE_SCISSOR},
-              .vertex_input_bindings =
-                  {
-                      {0, 3 * sizeof(float),
-                       VK_VERTEX_INPUT_RATE_VERTEX},  // POS
-                  },
-              .vertex_input_attributes =
-                  {
-                      {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
-                  },
-              .color_attachment_formats = {},
-              .depth_format = DEPTH_FORMAT,
-
-              .shaders{LoadShader("shaders/depth_only.vert.spv",
-                                  VK_SHADER_STAGE_VERTEX_BIT)},
-          };
-
-      auto depth_only_stage_pipeline = new blu::core::rendering::Pipeline(
-          device_, depth_only_stage_create_info);
-
-      depth_only_stage_ = new blu::core::rendering::DepthOnlyStage(
-          device_, allocator_, depth_only_stage_pipeline,
-          graphics_command_pools_, width, height);
-    }
-
-    // opaque_render_stage_
-    {
-      blu::core::rendering::GraphicsPipelineCreateInfo
-          opaque_render_stage_create_info{
-              .descriptor_set_layouts =
-                  {
-                      buffer_infos_descriptor_set_->layout,
-                      textures_descriptor_set_->layout,
-                  },
-              .input_assembly_flags = 0,
-              .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-              .input_assembly_primitive_restart_enable = VK_FALSE,
-              .rasteriazation_flags = 0,
-              .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
-              .rasteriazation_state_cull_mode = VK_CULL_MODE_BACK_BIT,
-              .rasteriazation_state_front_face =
-                  VK_FRONT_FACE_COUNTER_CLOCKWISE,
-              .color_blend_attachment_states = {{
-                  .blendEnable = VK_FALSE,
-                  .colorWriteMask = 0xf /*RGBA*/,
-              }},
-              .depth_stencil_depth_test = VK_TRUE,
-              .depth_stencil_depth_write = VK_TRUE,
-              .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
-              .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
-              .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
-              .viewport_count = 1,
-              .scissor_count = 1,
-              .multisample_flags = 0,
-              .multisample_count = VK_SAMPLE_COUNT_1_BIT,
-              .dynamic_state_flags = 0,
-              .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
-                                        VK_DYNAMIC_STATE_SCISSOR},
-              .vertex_input_bindings =
-                  {
-                      {0, 3 * sizeof(float),
-                       VK_VERTEX_INPUT_RATE_VERTEX},  // POS
-                      {1, 3 * sizeof(float),
-                       VK_VERTEX_INPUT_RATE_VERTEX},  // NORM
-                      {2, 3 * sizeof(float),
-                       VK_VERTEX_INPUT_RATE_VERTEX},  // UV
-                  },
-              .vertex_input_attributes =
-                  {
-                      {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
-                      {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
-                      {2, 2, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
-                  },
-              .color_attachment_formats = {COLOR_FORMAT},
-              .depth_format = DEPTH_FORMAT,
-              .shaders{
-                  LoadShader("shaders/cube.vert.spv",
-                             VK_SHADER_STAGE_VERTEX_BIT),
-                  LoadShader("shaders/cube.frag.spv",
-                             VK_SHADER_STAGE_FRAGMENT_BIT),
-              },
-          };
-
-      auto opaque_render_stage_pipeline_ = new blu::core::rendering::Pipeline(
-          device_, opaque_render_stage_create_info);
-
-      opaque_render_stage_ = new blu::core::rendering::OpaqueRenderStage(
-          device_, allocator_, opaque_render_stage_pipeline_,
-          graphics_command_pools_, width, height);
-    }
-
-    // image_copy_stage_
-    {
-      image_copy_stage_ = new blu::core::rendering::ImageCopyStage(
-          device_, allocator_, graphics_command_pools_);
-    }
-
-    // anti_aliasing_stage_
-    {
-      // blu::core::rendering::ComputePipelineCreateInfo
-      // anti_aliasing_create_info{
-      //     //.descriptor_set_layouts = // TODO
-      //     .shader = LoadShader("shaders/anti_aliasing.comp.spv",
-      //                          VK_SHADER_STAGE_COMPUTE_BIT),
-      // };
-
-      // auto anti_aliasing_pipeline = new blu::core::rendering::Pipeline(
-      //     device_, anti_aliasing_create_info);
-
-      // anti_aliasing_stage_ = new blu::core::rendering::AntiAliasingStage(
-      //     device_, allocator_, anti_aliasing_pipeline,
-      //     compute_command_pools_, width, height);
-    }
+    image_copy_stage_ =
+        new blu::core::rendering::ImageCopyStage(device_, allocator_);
+    imgui_stage_ = new blu::core::rendering::ImGuiStage(instance_, device_,
+                                                        window_, frame_count);
   }
 
   // Create Fence & Semaphores
@@ -944,6 +913,8 @@ void ForwardRenderer::GenerateResources() {
 
     LoadImage("assets/uv-test.png");  // Default Tex
   }
+
+  OnResize();
 }
 
 bool ForwardRenderer::PrepareFrame() {
@@ -1029,18 +1000,510 @@ void ForwardRenderer::BuildFrameTimeline() {
   semaphore_values.anti_aliasing_mode_complete = current_semaphore_value;
 }
 
-bool ForwardRenderer::PresentFrame(blu::core::Image* target_image,
-                                   uint64_t wait_semaphore_value) {
+RendererState ForwardRenderer::Render(RenderData render_data) {
+  // TODO:
+  //  UPDATE INFO SOONER (IE while prev frame is in last stages, allow cur frame
+  //  first stages to run)
+  // Based on output of BuildFrameTimeline, Each stage should be updated
+  // accordingly
+  //  Something similar to->
+  // If StageSignalValue is 0, skip
+  // Else Record Commands & run
+  // Render Settings Should not control individual stages but complete
+  // operations: An example would be Occlusion Culling, which requires the
+  // Frustum & Depth only stages
+  // Settings should be, No Cull, Frustum Cull, Occl. Cull.
+  // Recording would then be
+  // NoCullStage
+  // FrustumCullStage
+  // FrustumCullStage->DepthOnlyStage->OcclusionCullStage
+
+  BuildFrameTimeline();
+
+  // Swapchain Acquire Next image
+  if (!PrepareFrame()) {
+    OnResize();
+    return RendererState::ASPECT_RATIO_UPDATED;
+  }
+
+  UpdateFrameData(render_data);
+
+  DoDrawUI();
+  DoCull(render_data.scene.model_data.size());
+  DoDraw();
+
+  if (!DoPresent()) {
+    OnResize();
+    return RendererState::ASPECT_RATIO_UPDATED;
+  }
+
+  frame_index_ = (frame_index_ + 1) % swapchain_->GetImageCount();
+
+  return RendererState::OK;
+}
+
+uint64_t ForwardRenderer::GetNextSemaphoreValue() {
+  current_semaphore_value += 1;
+  return current_semaphore_value;
+}
+
+void ForwardRenderer::OnResize() {
+  vkDeviceWaitIdle(device_->GetLogicalDevice());
+
+  swapchain_->Create(false, false);
+
+  auto frame_count = swapchain_->GetImageCount();
+  auto width = swapchain_->GetWidth();
+  auto height = swapchain_->GetHeight();
+  VkCommandBufferAllocateInfo command_buffer_alloc_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .pNext = nullptr,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+  };
+
+  if (cmd_bufs_cull_.size() == 0) {
+    cmd_bufs_cull_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      command_buffer_alloc_info.commandPool = compute_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info, &cmd_bufs_cull_[i]);
+    }
+  }
+  if (cmd_bufs_draw_.size() == 0) {
+    cmd_bufs_draw_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info, &cmd_bufs_draw_[i]);
+    }
+  }
+  if (cmd_bufs_ui_draw_.size() == 0) {
+    cmd_bufs_ui_draw_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info,
+                               &cmd_bufs_ui_draw_[i]);
+    }
+  }
+  if (cmd_bufs_present_.size() == 0) {
+    cmd_bufs_present_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
+      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                               &command_buffer_alloc_info,
+                               &cmd_bufs_present_[i]);
+    }
+  }
+
+  if (buffers_draw_command_.size() != frame_count) {
+    for (auto& buf : buffers_draw_command_) {
+      buf->Destroy(allocator_);
+      delete buf;
+    }
+    buffers_draw_command_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      buffers_draw_command_[i] = blu::core::Buffer::CreateBuffer(
+          device_->GetLogicalDevice(), allocator_,
+          DRAW_COMMAND_BUFFER_SIZE * MAX_MODELS + sizeof(uint32_t),
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+              VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+              VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_BUFFER,
+          .objectHandle = (uint64_t)buffers_draw_command_[i]->buffer,
+          .pObjectName = "Culled Draw Commands",
+      };
+
+      debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                              &debug_info);
+#endif
+    }
+  }
+
+  if (ui_img_output.size() != frame_count) {
+    for (auto& img : ui_img_output) {
+      img->Destroy(device_->GetLogicalDevice(), allocator_);
+      delete img;
+    }
+    ui_img_output.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      ui_img_output[i] = blu::core::Image::CreateImage(
+          device_->GetLogicalDevice(), allocator_, COLOR_FORMAT,
+          swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
+          VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+      VkImageSubresourceRange range{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .baseArrayLayer = 0,
+          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+      };
+
+      blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                        ui_img_output[i], COLOR_FORMAT, range);
+      blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
+                                           ui_img_output[i], 0);
+
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_IMAGE,
+          .objectHandle = (uint64_t)ui_img_output[i]->image,
+          .pObjectName = "UI Output Images",
+      };
+
+      debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                              &debug_info);
+#endif
+    }
+  }
+
+  if (images_render_assist_color.size() != frame_count) {
+    for (auto& img : images_render_assist_color) {
+      img->Destroy(device_->GetLogicalDevice(), allocator_);
+      delete img;
+    }
+    images_render_assist_color.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      images_render_assist_color[i] = blu::core::Image::CreateImage(
+          device_->GetLogicalDevice(), allocator_, COLOR_FORMAT,
+          swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
+          VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+      VkImageSubresourceRange range{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .baseArrayLayer = 0,
+          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+      };
+
+      blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                        images_render_assist_color[i],
+                                        COLOR_FORMAT, range);
+
+      blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
+                                           images_render_assist_color[i], 0);
+
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_IMAGE,
+          .objectHandle = (uint64_t)images_render_assist_color[i]->image,
+          .pObjectName = "Render Assist Colour Images",
+      };
+
+      debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                              &debug_info);
+#endif
+    }
+  }
+
+  if (images_render_assist_depth.size() != frame_count) {
+    for (auto& img : images_render_assist_depth) {
+      img->Destroy(device_->GetLogicalDevice(), allocator_);
+      delete img;
+    }
+    images_render_assist_depth.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      images_render_assist_depth[i] = blu::core::Image::CreateImage(
+          device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT, width, height,
+          1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+      VkImageSubresourceRange depth_range{
+          .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+          .baseMipLevel = 0,
+          .levelCount = VK_REMAINING_MIP_LEVELS,
+          .baseArrayLayer = 0,
+          .layerCount = VK_REMAINING_ARRAY_LAYERS,
+      };
+      blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                        images_render_assist_depth[i],
+                                        DEPTH_FORMAT, depth_range);
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_IMAGE,
+          .objectHandle = (uint64_t)images_render_assist_depth[i]->image,
+          .pObjectName = "Render Assist Depth Images",
+      };
+
+      debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                              &debug_info);
+#endif
+    }
+  }
+
+  {
+    render_images_descriptor_ = new blu::core::DescriptorSet();
+
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = RENDER_ASSIST_IMAGES_PER_FRAME,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &binding,
+    };
+    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
+                                nullptr, &render_images_descriptor_->layout);
+
+    render_images_descriptor_->sets.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      VkDescriptorSetAllocateInfo alloc_info = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .descriptorPool = render_descriptor_pool_,
+          .descriptorSetCount = 1,
+          .pSetLayouts = &render_images_descriptor_->layout,
+      };
+
+      VK_CHECK_RESULT(
+          vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
+                                   &render_images_descriptor_->sets[i]));
+
+      eastl::vector<VkDescriptorImageInfo> imageInfos;
+      imageInfos.resize(RENDER_ASSIST_IMAGES_PER_FRAME);
+      imageInfos[0] = {
+          .sampler = images_render_assist_color[i]->sampler,
+          .imageView = images_render_assist_color[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+      imageInfos[1] = {
+          .sampler = ui_img_output[i]->sampler,
+          .imageView = ui_img_output[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+
+      VkWriteDescriptorSet write = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = render_images_descriptor_->sets[i],
+          .dstBinding = 0,
+          .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = imageInfos.data(),
+      };
+
+      vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write, 0,
+                             nullptr);
+    }
+  }
+
+  final_composition = new blu::core::rendering::ColorOnlyStage(
+      device_, {render_images_descriptor_->layout},
+      {LoadShader("shaders/fullscreen_tri.vert.spv",
+                  VK_SHADER_STAGE_VERTEX_BIT),
+       LoadShader("shaders/final_composition.frag.spv",
+                  VK_SHADER_STAGE_FRAGMENT_BIT)});
+}
+
+void ForwardRenderer::DoCull(uint32_t model_count) {
+  VkCommandBuffer buf = cmd_bufs_cull_[frame_index_];
+  StartCommandBuffer(buf);
+#ifdef DEBUG_LABELS
+  VkDebugUtilsLabelEXT label_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pNext = nullptr,
+      .pLabelName = "Cull Models",
+      .color = {1, 0, 0, 1}};
+
+  debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
+#endif
+  switch (settings_.culling_mode) {
+    case CULLING_MODE_NONE:
+      build_command_buffer_stage_->Run(
+          buf, frame_index_, BufferInfo(models_data_buffer_->device_address),
+          BufferInfo(models_buffer_->device_address), model_count,
+          buffers_draw_command_[frame_index_]);
+      break;
+    case CULLING_MODE_FRUSTUM_CULL:
+      frustum_cull_stage_->Run(
+          buf, frame_index_, BufferInfo(models_data_buffer_->device_address),
+          BufferInfo(models_buffer_->device_address), model_count,
+          buffers_draw_command_[frame_index_]);
+      break;
+    case CULLING_MODE_OCCLUSION_CULL:
+      // frustum_cull_stage_->Run(
+      //     frame_index_, BufferInfo(models_data_buffer_->device_address),
+      //     BufferInfo(models_buffer_->device_address),
+      //     render_data.scene.model_data.size(), nullptr, UINT64_MAX,
+      //     VK_PIPELINE_STAGE_NONE, frame_semaphore,
+      //     semaphore_values.frustum_cull_stage_, nullptr);
+      // depth_only_stage_->Run(
+      //     frame_index_,
+      //     frustum_cull_stage_->frustum_output_buffers_[frame_index_],
+      //     {buffer_infos_descriptor_set_->set}, vertex_buffer_,
+      //     index_buffer_, frame_semaphore,
+      //     semaphore_values.frustum_cull_stage_,
+      //     VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
+      //     semaphore_values.depth_only_stage_, nullptr);
+      //  OCCL.STAGE
+      break;
+  }
+
+#ifdef DEBUG_LABELS
+  debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
+#endif
+  EndCommandBuffer(buf);
+  SubmitCommandBuffer({buf}, device_->queues.compute, nullptr, UINT64_MAX, 0,
+                      frame_semaphore, semaphore_values.cull_mode_complete,
+                      nullptr);
+}
+
+void ForwardRenderer::DoDraw() {
+  VkCommandBuffer buf = cmd_bufs_draw_[frame_index_];
+  StartCommandBuffer(buf);
+
+#ifdef DEBUG_LABELS
+  VkDebugUtilsLabelEXT label_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pNext = nullptr,
+      .pLabelName = "Draw Opaque Models",
+      .color = {0, 1, 0, 1}};
+
+  debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
+#endif
+  switch (settings_.draw_mode) {
+    case DRAW_MODE_SHADED:
+      opaque_render_stage_->Run(
+          buf, frame_index_, images_render_assist_color[frame_index_],
+          images_render_assist_depth[frame_index_], swapchain_->GetWidth(),
+          swapchain_->GetHeight(), buffers_draw_command_[frame_index_],
+          {buffer_infos_descriptor_set_->sets[0],
+           textures_descriptor_set_->sets[0]},
+          vertex_buffer_, normal_buffer_, uv_buffer_, index_buffer_);
+      break;
+    case DRAW_MODE_UNLIT:
+    case DRAW_MODE_WIREFRAME:
+    default:
+      assert(false && "Not Yet Implemented");
+      break;
+  }
+#ifdef DEBUG_LABELS
+  debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
+#endif
+  EndCommandBuffer(buf);
+  SubmitCommandBuffer({buf}, device_->queues.graphics, frame_semaphore,
+                      semaphore_values.cull_mode_complete,
+                      VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
+                      semaphore_values.draw_mode_complete, nullptr);
+}
+
+void ForwardRenderer::DoAA() {
+  switch (settings_.aliasing) {
+    case ANTI_ALIAS_MODE_NONE:
+      break;
+    case ANTI_ALIAS_MODE_FXAA:
+      // anti_aliasing_stage_->Run(
+      //     frame_index_, frame_semaphore,
+      //     semaphore_values.opaque_render_stage_,
+      //     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, frame_semaphore,
+      //     semaphore_values.anti_aliasing_stage_, nullptr);
+      break;
+  }
+}
+
+void ForwardRenderer::DoDrawUI() {
+  auto buf = cmd_bufs_ui_draw_[frame_index_];
+  StartCommandBuffer(buf);
+#ifdef DEBUG_LABELS
+  VkDebugUtilsLabelEXT label_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pNext = nullptr,
+      .pLabelName = "UI Draw",
+      .color = {0, 1, 0, 1}};
+
+  debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
+#endif
+
+  imgui_stage_->Start(buf, ui_img_output[frame_index_], swapchain_->GetWidth(),
+                      swapchain_->GetHeight());
+
+  ImGui::ShowDebugLogWindow();
+
+  ImGui::ShowDemoWindow();
+
+  imgui_stage_->End(buf);
+#ifdef DEBUG_LABELS
+  debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
+#endif
+  EndCommandBuffer(buf);
+  SubmitCommandBuffer({buf}, device_->queues.graphics, nullptr, UINT64_MAX, 0,
+                      nullptr, UINT64_MAX, nullptr);
+}
+
+bool ForwardRenderer::DoPresent() {
   auto swapchain = swapchain_->GetSwapchain();
   auto swapchain_buf = swapchain_->GetSwapchainBuffer(frame_index_);
 
-  image_copy_stage_->Run(
-      frame_index_, target_image->image, target_image->layout,
-      swapchain_buf.image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-      swapchain_->GetWidth(), swapchain_->GetHeight(), frame_semaphore,
-      wait_semaphore_value, VK_PIPELINE_STAGE_TRANSFER_BIT,
-      present_semaphores[frame_index_], UINT64_MAX,
-      in_flight_fences_[frame_index_]);
+  VkCommandBuffer buf = cmd_bufs_present_[frame_index_];
+
+  StartCommandBuffer(buf);
+#ifdef DEBUG_LABELS
+  VkDebugUtilsLabelEXT label_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+      .pNext = nullptr,
+      .pLabelName = "Final Image Composition",
+      .color = {0, 1, 0, 1}};
+
+  debug_util.vkCmdBeginDebugUtilsLabelEXT(buf, &label_info);
+#endif
+  VkImageSubresourceRange range{
+      .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+      .baseMipLevel = 0,
+      .levelCount = 1,
+      .baseArrayLayer = 0,
+      .layerCount = 1,
+  };
+  blu::core::Image::ImageLayoutTransition(
+      buf, ui_img_output[frame_index_]->image,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+  blu::core::Image::ImageLayoutTransition(
+      buf, images_render_assist_color[frame_index_]->image,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+
+  blu::core::Image img{.image = swapchain_buf.image,
+                       .view = swapchain_buf.view};
+  final_composition->Run(buf, {render_images_descriptor_->sets[frame_index_]},
+                         &img, swapchain_->GetWidth(), swapchain_->GetHeight());
+
+  blu::core::Image::ImageLayoutTransition(
+      buf, swapchain_buf.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, range);
+
+#ifdef DEBUG_LABELS
+  debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
+#endif
+  EndCommandBuffer(buf);
+
+  SubmitCommandBuffer({buf}, device_->queues.graphics, frame_semaphore,
+                      semaphore_values.draw_mode_complete,
+                      VK_PIPELINE_STAGE_TRANSFER_BIT,
+                      present_semaphores[frame_index_], UINT64_MAX,
+                      in_flight_fences_[frame_index_]);
 
   VkSemaphore present_wait_semaphore[] = {
       present_semaphores[frame_index_],
@@ -1065,159 +1528,93 @@ bool ForwardRenderer::PresentFrame(blu::core::Image* target_image,
   return true;
 }
 
-RendererState ForwardRenderer::Render(RenderData render_data) {
-  // TODO:
-  //  UPDATE INFO SOONER (IE while prev frame is in last stages, allow cur frame
-  //  first stages to run)
-  // Based on output of BuildFrameTimeline, Each stage should be updated
-  // accordingly
-  //  Something similar to->
-  // If StageSignalValue is 0, skip
-  // Else Record Commands & run
-  // Render Settings Should not control individual stages but complete
-  // operations: An example would be Occlusion Culling, which requires the
-  // Frustum & Depth only stages
-  // Settings should be, No Cull, Frustum Cull, Occl. Cull.
-  // Recording would then be
-  // NoCullStage
-  // FrustumCullStage
-  // FrustumCullStage -> DepthOnlyStage->OcclusionCullStage
+void ForwardRenderer::StartCommandBuffer(VkCommandBuffer buf) {
+  vkResetCommandBuffer(buf, 0);
 
-  BuildFrameTimeline();
+  VkCommandBufferBeginInfo cmd_buf_begin{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .pNext = nullptr,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+      .pInheritanceInfo = nullptr,
+  };
 
-  // Swapchain Acquire Next image
-  if (!PrepareFrame()) {
-    OnResize();
-    return RendererState::ASPECT_RATIO_UPDATED;
-  }
-
-  UpdateFrameData(render_data);
-
-  blu::core::Buffer* draw_command_buffer;
-
-  switch (settings_.culling_mode) {
-    case CULLING_MODE_NONE:
-      build_command_buffer_stage_->Run(
-          frame_index_, BufferInfo(models_data_buffer_->device_address),
-          BufferInfo(models_buffer_->device_address),
-          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
-          VK_PIPELINE_STAGE_NONE, frame_semaphore,
-          semaphore_values.build_command_buffer_stage_, nullptr);
-      draw_command_buffer = build_command_buffer_stage_
-                                ->command_buffer_output_buffers_[frame_index_];
-      break;
-    case CULLING_MODE_FRUSTUM_CULL:
-      frustum_cull_stage_->Run(
-          frame_index_, BufferInfo(models_data_buffer_->device_address),
-          BufferInfo(models_buffer_->device_address),
-          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
-          VK_PIPELINE_STAGE_NONE, frame_semaphore,
-          semaphore_values.frustum_cull_stage_, nullptr);
-      draw_command_buffer =
-          frustum_cull_stage_->frustum_output_buffers_[frame_index_];
-      break;
-    case CULLING_MODE_OCCLUSION_CULL:
-      frustum_cull_stage_->Run(
-          frame_index_, BufferInfo(models_data_buffer_->device_address),
-          BufferInfo(models_buffer_->device_address),
-          render_data.scene.model_data.size(), nullptr, UINT64_MAX,
-          VK_PIPELINE_STAGE_NONE, frame_semaphore,
-          semaphore_values.frustum_cull_stage_, nullptr);
-      depth_only_stage_->Run(
-          frame_index_,
-          frustum_cull_stage_->frustum_output_buffers_[frame_index_],
-          {buffer_infos_descriptor_set_->set}, vertex_buffer_, index_buffer_,
-          frame_semaphore, semaphore_values.frustum_cull_stage_,
-          VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
-          semaphore_values.depth_only_stage_, nullptr);
-      // OCCL.STAGE
-      break;
-  }
-
-  switch (settings_.draw_mode) {
-    case DRAW_MODE_SHADED:
-      opaque_render_stage_->Run(
-          frame_index_, draw_command_buffer,
-          {buffer_infos_descriptor_set_->set, textures_descriptor_set_->set},
-          vertex_buffer_, normal_buffer_, uv_buffer_, index_buffer_,
-          frame_semaphore, semaphore_values.cull_mode_complete,
-          VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
-          semaphore_values.opaque_render_stage_, nullptr);
-      break;
-    case DRAW_MODE_UNLIT:
-      break;
-    case DRAW_MODE_WIREFRAME:
-      break;
-    default:
-      break;
-  }
-
-  switch (settings_.aliasing) {
-    case ANTI_ALIAS_MODE_NONE:
-      break;
-    case ANTI_ALIAS_MODE_FXAA:
-      // anti_aliasing_stage_->Run(
-      //     frame_index_, frame_semaphore,
-      //     semaphore_values.opaque_render_stage_,
-      //     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, frame_semaphore,
-      //     semaphore_values.anti_aliasing_stage_, nullptr);
-      break;
-  }
-
-  blu::core::Image* output_image;
-  switch (settings_.output) {
-    case RENDER_OUTPUT_DRAW_STAGE:
-      output_image = opaque_render_stage_->color_output_images[frame_index_];
-      break;
-    case RENDER_OUTPUT_AA:
-      output_image = anti_aliasing_stage_->aliased_output_images[frame_index_];
-      break;
-  }
-
-  if (!PresentFrame(output_image, semaphore_values.draw_mode_complete)) {
-    OnResize();
-    return RendererState::ASPECT_RATIO_UPDATED;
-  }
-
-  frame_index_ = (frame_index_ + 1) % swapchain_->GetImageCount();
-
-  return RendererState::OK;
+  vkBeginCommandBuffer(buf, &cmd_buf_begin);
 }
 
-uint64_t ForwardRenderer::GetNextSemaphoreValue() {
-  current_semaphore_value += 1;
-  return current_semaphore_value;
+void ForwardRenderer::EndCommandBuffer(VkCommandBuffer buf) {
+  vkEndCommandBuffer(buf);
 }
 
-void ForwardRenderer::OnResize() {
-  vkDeviceWaitIdle(device_->GetLogicalDevice());
+void ForwardRenderer::SubmitCommandBuffer(
+    eastl::vector<VkCommandBuffer> cmd_bufs, VkQueue& queue,
+    VkSemaphore wait_semaphore, uint64_t wait_value,
+    VkPipelineStageFlags wait_flag, VkSemaphore signal_semaphore,
+    uint64_t signal_value, VkFence fence) {
+  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values = {
+      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
 
-  swapchain_->Create(false, false);
+  VkSubmitInfo submit_info{
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = static_cast<uint32_t>(cmd_bufs.size()),
+      .pCommandBuffers = cmd_bufs.data(),
+  };
 
-  auto frame_count = swapchain_->GetImageCount();
-  auto width = swapchain_->GetWidth();
-  auto height = swapchain_->GetHeight();
-
-  if (depth_only_stage_ != nullptr) {
-    depth_only_stage_->Resize(frame_count, width, height);
+  if (wait_semaphore != VK_NULL_HANDLE) {
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = &wait_semaphore;
+    submit_info.pWaitDstStageMask = &wait_flag;
+    if (wait_value != UINT64_MAX) {
+      timeline_semaphore_values.waitSemaphoreValueCount = 1;
+      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
+      submit_info.pNext = &timeline_semaphore_values;
+    }
   }
-  if (opaque_render_stage_ != nullptr) {
-    opaque_render_stage_->Resize(frame_count, width, height);
+
+  if (signal_semaphore != VK_NULL_HANDLE) {
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &signal_semaphore;
+    if (signal_value != UINT64_MAX) {
+      timeline_semaphore_values.signalSemaphoreValueCount = 1;
+      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
+      submit_info.pNext = &timeline_semaphore_values;
+    }
   }
+
+  VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence));
 }
 
 VkPipelineShaderStageCreateInfo ForwardRenderer::LoadShader(
     eastl::string file_name, VkShaderStageFlagBits stage) {
+  VkShaderModule shader_module = VK_NULL_HANDLE;
+
+  if (shader_modules_.find(file_name) != shader_modules_.end()) {
+    shader_module = shader_modules_[file_name];
+  } else {
+    shader_module = blu::core::file::LoadShader(file_name.c_str(),
+                                                device_->GetLogicalDevice());
+    shader_modules_[file_name] = shader_module;
+  }
+
+  assert(shader_module != VK_NULL_HANDLE);
+
   VkPipelineShaderStageCreateInfo shader_stage{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = stage,
-      .module = blu::core::file::LoadShader(file_name.c_str(),
-                                            device_->GetLogicalDevice()),
+      .module = shader_module,
       .pName = "main",
   };
 
-  assert(shader_stage.module != VK_NULL_HANDLE);
-  shader_modules_.push_back(shader_stage.module);
+#if DEBUG_LABELS
+  VkDebugUtilsObjectNameInfoEXT debug_info{
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+      .objectType = VK_OBJECT_TYPE_SHADER_MODULE,
+      .objectHandle = (uint64_t)shader_stage.module,
+      .pObjectName = file_name.c_str(),
+  };
+
+  debug_util.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                          &debug_info);
+#endif
 
   return shader_stage;
 }

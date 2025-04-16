@@ -3,88 +3,65 @@
 #include <EASTL/array.h>
 
 namespace blu::core::rendering {
-OpaqueRenderStage::OpaqueRenderStage(Device* device, VmaAllocator allocator,
-                                     blu::core::rendering::Pipeline* pipeline,
-                                     eastl::vector<VkCommandPool>& pools,
-                                     uint32_t width, uint32_t height)
-    : Stage(device, allocator, pipeline, pools) {
-  Resize(pools.size(), width, height);
+OpaqueRenderStage::OpaqueRenderStage(
+    Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
+    eastl::vector<VkPipelineShaderStageCreateInfo> shader_create_infos)
+    : Stage(device, nullptr) {
+  blu::core::rendering::GraphicsPipelineCreateInfo
+      opaque_render_stage_create_info{
+          .descriptor_set_layouts = descriptor_set_layouts,
+          .input_assembly_flags = 0,
+          .input_assembly_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+          .input_assembly_primitive_restart_enable = VK_FALSE,
+          .rasteriazation_flags = 0,
+          .rasteriazation_state_polygone_mode = VK_POLYGON_MODE_FILL,
+          .rasteriazation_state_cull_mode = VK_CULL_MODE_BACK_BIT,
+          .rasteriazation_state_front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+          .color_blend_attachment_states = {{
+              .blendEnable = VK_FALSE,
+              .colorWriteMask = 0xf /*RGBA*/,
+          }},
+          .depth_stencil_depth_test = VK_TRUE,
+          .depth_stencil_depth_write = VK_TRUE,
+          .depth_stencil_depth_compare_op = VK_COMPARE_OP_LESS,
+          .depth_stencil_front_compare_op = VK_COMPARE_OP_ALWAYS,
+          .depth_stencil_back_compare_op = VK_COMPARE_OP_ALWAYS,
+          .viewport_count = 1,
+          .scissor_count = 1,
+          .multisample_flags = 0,
+          .multisample_count = VK_SAMPLE_COUNT_1_BIT,
+          .dynamic_state_flags = 0,
+          .dynamic_state_enables = {VK_DYNAMIC_STATE_VIEWPORT,
+                                    VK_DYNAMIC_STATE_SCISSOR},
+          .vertex_input_bindings =
+              {
+                  {0, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // POS
+                  {1, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // NORM
+                  {2, 3 * sizeof(float), VK_VERTEX_INPUT_RATE_VERTEX},  // UV
+              },
+          .vertex_input_attributes =
+              {
+                  {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},  // POS
+                  {1, 1, VK_FORMAT_R32G32B32_SFLOAT, 0},  // NORM
+                  {2, 2, VK_FORMAT_R32G32B32_SFLOAT, 0},  // UV
+              },
+          .color_attachment_formats = {COLOR_FORMAT},
+          .depth_format = DEPTH_FORMAT,
+          .shaders = shader_create_infos,
+      };
+
+  pipeline_ = new blu::core::rendering::Pipeline(
+      device_, opaque_render_stage_create_info);
 }
 
-OpaqueRenderStage::~OpaqueRenderStage() {
-  for (auto& img : color_output_images) {
-    img->Destroy(device_->GetLogicalDevice(), allocator_);
-    delete img;
-  }
-  depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
-  delete depth_stencil_image_;
-}
+OpaqueRenderStage::~OpaqueRenderStage() { delete pipeline_; }
 
-void OpaqueRenderStage::Resize(uint32_t frame_count, uint32_t width,
-                               uint32_t height) {
-  width_ = width;
-  height_ = height;
-  if (depth_stencil_image_ != nullptr) {
-    depth_stencil_image_->Destroy(device_->GetLogicalDevice(), allocator_);
-    delete depth_stencil_image_;
-  }
-
-  for (auto& img : color_output_images) {
-    img->Destroy(device_->GetLogicalDevice(), allocator_);
-    delete img;
-  }
-
-  depth_stencil_image_ = blu::core::Image::CreateImage(
-      device_->GetLogicalDevice(), allocator_, DEPTH_FORMAT, width_, height_, 1,
-      VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
-      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-  VkImageSubresourceRange depth_range{
-      .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-      .baseMipLevel = 0,
-      .levelCount = VK_REMAINING_MIP_LEVELS,
-      .baseArrayLayer = 0,
-      .layerCount = VK_REMAINING_ARRAY_LAYERS,
-  };
-
-  blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                    depth_stencil_image_, DEPTH_FORMAT,
-                                    depth_range);
-
-  color_output_images.resize(frame_count);
-  for (size_t i = 0; i < frame_count; i++) {
-    color_output_images[i] = blu::core::Image::CreateImage(
-        device_->GetLogicalDevice(), allocator_, COLOR_FORMAT, width_, height_,
-        1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VkImageSubresourceRange range{
-        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .baseMipLevel = 0,
-        .levelCount = VK_REMAINING_MIP_LEVELS,
-        .baseArrayLayer = 0,
-        .layerCount = VK_REMAINING_ARRAY_LAYERS,
-    };
-
-    blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
-                                      color_output_images[i], COLOR_FORMAT,
-                                      range);
-  }
-}
-
-void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
+void OpaqueRenderStage::Run(VkCommandBuffer buf, uint32_t frame_index,
+                            Image* color, Image* depth, uint32_t width,
+                            uint32_t height, Buffer* draw_command_buffer,
                             eastl::vector<VkDescriptorSet> descriptor_sets,
                             Buffer* vertex_buffer, Buffer* normal_buffer,
-                            Buffer* uv_buffer, Buffer* index_buffer,
-                            VkSemaphore wait_semaphore, uint64_t wait_value,
-                            VkPipelineStageFlags wait_flag,
-                            VkSemaphore signal_semaphore, uint64_t signal_value,
-                            VkFence fence) {
-  auto opaque_render_buf = Begin(frame_index);
-
+                            Buffer* uv_buffer, Buffer* index_buffer) {
   VkImageSubresourceRange range{
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
@@ -102,12 +79,11 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
   };
 
   blu::core::Image::ImageLayoutTransition(
-      opaque_render_buf, color_output_images[frame_index]->image,
-      VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      range);
+      buf, color->image, VK_IMAGE_LAYOUT_UNDEFINED,
+      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, range);
 
   blu::core::Image::ImageLayoutTransition(
-      opaque_render_buf, depth_stencil_image_->image, VK_IMAGE_LAYOUT_UNDEFINED,
+      buf, depth->image, VK_IMAGE_LAYOUT_UNDEFINED,
       VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, depth_range);
 
   eastl::array<VkClearValue, 2> clear_values{};
@@ -116,7 +92,7 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
 
   VkRenderingAttachmentInfo color_attachment_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = color_output_images[frame_index]->view,
+      .imageView = color->view,
       .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
       .resolveMode = VK_RESOLVE_MODE_NONE,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -126,7 +102,7 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
 
   VkRenderingAttachmentInfo depth_attachment_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-      .imageView = depth_stencil_image_->view,
+      .imageView = depth->view,
       .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       .resolveMode = VK_RESOLVE_MODE_NONE,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -135,7 +111,7 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
   };
   VkRenderingInfo render_info{
       .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-      .renderArea = {{.x = 0, .y = 0}, width_, height_},
+      .renderArea = {{.x = 0, .y = 0}, width, height},
       .layerCount = 1,
       .viewMask = 0,
       .colorAttachmentCount = 1,
@@ -144,89 +120,45 @@ void OpaqueRenderStage::Run(uint32_t frame_index, Buffer* draw_command_buffer,
       //.pStencilAttachment = &depth_attachment_info,
   };
 
-  vkCmdBeginRendering(opaque_render_buf, &render_info);
+  vkCmdBeginRendering(buf, &render_info);
 
   VkViewport viewport{
-      .width = static_cast<float>(width_),
-      .height = static_cast<float>(height_),
+      .width = static_cast<float>(width),
+      .height = static_cast<float>(height),
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
 
-  vkCmdSetViewport(opaque_render_buf, 0, 1, &viewport);
+  vkCmdSetViewport(buf, 0, 1, &viewport);
 
   VkRect2D scissor{
       .offset{.x = 0, .y = 0},
       .extent{
-          .width = width_,
-          .height = height_,
+          .width = width,
+          .height = height,
       },
   };
 
-  vkCmdSetScissor(opaque_render_buf, 0, 1, &scissor);
+  vkCmdSetScissor(buf, 0, 1, &scissor);
   VkDeviceSize offsets[1] = {0};
 
-  vkCmdBindPipeline(opaque_render_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+  vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                     *pipeline_->GetPipeline());
 
-  vkCmdBindDescriptorSets(opaque_render_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          *pipeline_->GetPipelineLayout(), 0,
-                          descriptor_sets.size(), descriptor_sets.data(), 0,
-                          nullptr);
+  vkCmdBindDescriptorSets(
+      buf, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline_->GetPipelineLayout(), 0,
+      descriptor_sets.size(), descriptor_sets.data(), 0, nullptr);
 
-  vkCmdBindVertexBuffers(opaque_render_buf, 0, 1, &vertex_buffer->buffer,
-                         offsets);
-  vkCmdBindVertexBuffers(opaque_render_buf, 1, 1, &normal_buffer->buffer,
-                         offsets);
-  vkCmdBindVertexBuffers(opaque_render_buf, 2, 1, &uv_buffer->buffer, offsets);
+  vkCmdBindVertexBuffers(buf, 0, 1, &vertex_buffer->buffer, offsets);
+  vkCmdBindVertexBuffers(buf, 1, 1, &normal_buffer->buffer, offsets);
+  vkCmdBindVertexBuffers(buf, 2, 1, &uv_buffer->buffer, offsets);
 
-  vkCmdBindIndexBuffer(opaque_render_buf, index_buffer->buffer, 0,
-                       VK_INDEX_TYPE_UINT32);
+  vkCmdBindIndexBuffer(buf, index_buffer->buffer, 0, VK_INDEX_TYPE_UINT32);
 
-  vkCmdDrawIndexedIndirectCount(opaque_render_buf, draw_command_buffer->buffer,
+  vkCmdDrawIndexedIndirectCount(buf, draw_command_buffer->buffer,
                                 sizeof(uint32_t), draw_command_buffer->buffer,
                                 0, MAX_MODELS, DRAW_COMMAND_BUFFER_SIZE);
 
-  vkCmdEndRendering(opaque_render_buf);
-
-  // This is used for debug output
-  color_output_images[frame_index]->layout =
-      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-  End(frame_index);
-
-  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values{
-      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
-  };
-
-  VkSubmitInfo opaque_render_info{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &opaque_render_buf,
-  };
-
-  if (wait_semaphore != VK_NULL_HANDLE) {
-    opaque_render_info.waitSemaphoreCount = 1;
-    opaque_render_info.pWaitSemaphores = &wait_semaphore;
-    opaque_render_info.pWaitDstStageMask = &wait_flag;
-    if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values.waitSemaphoreValueCount = 1;
-      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
-      opaque_render_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  if (signal_semaphore != VK_NULL_HANDLE) {
-    opaque_render_info.signalSemaphoreCount = 1;
-    opaque_render_info.pSignalSemaphores = &signal_semaphore;
-    if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values.signalSemaphoreValueCount = 1;
-      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
-      opaque_render_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  VK_CHECK_RESULT(
-      vkQueueSubmit(device_->queues.graphics, 1, &opaque_render_info, fence));
+  vkCmdEndRendering(buf);
 }
 }  // namespace blu::core::rendering

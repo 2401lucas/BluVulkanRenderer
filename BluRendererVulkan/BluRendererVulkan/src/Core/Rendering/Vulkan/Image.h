@@ -18,7 +18,6 @@ class Image {
   VkDeviceSize offset = 0;
   uint32_t mip_levels;
   // Optional
-  VkImageLayout layout;
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
 
@@ -43,10 +42,8 @@ class Image {
       const VkImageSubresourceRange& subresource_range,
       VkImageViewType image_view_type = VK_IMAGE_VIEW_TYPE_2D);
 
-  static void CreateImageSampler(
-      const VkDevice& device,
-      const VkPhysicalDeviceProperties& physical_device_properties,
-      blu::core::Image* image);
+  static void CreateImageSampler(const VkDevice& device,
+                                 blu::core::Image* image, float max_anisotropy);
 
   static void ImageLayoutTransition(
       VkCommandBuffer, VkImage image, VkPipelineStageFlags src_stage_mask,

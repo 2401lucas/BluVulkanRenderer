@@ -18,6 +18,7 @@ find_library(EASTL_LIB eastl HINTS "${VCPKG_ROOT}/installed/${VCPKG_TARGET_TRIPL
 file(GLOB_RECURSE SOURCES "*.cpp" "*.h")
 
 add_subdirectory ("src")
+add_subdirectory ("includes")
 # Add source to this project's executable.
 add_executable (BluRendererVulkan ${SOURCES} ${include_files})
 
@@ -38,6 +39,7 @@ target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
   target_compile_definitions(BluRendererVulkan PUBLIC GLM_ENABLE_EXPERIMENTAL)
   # target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_UV)
   target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_MODEL)
+  target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_LABELS)
   
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET BluRendererVulkan PROPERTY CXX_STANDARD 20)

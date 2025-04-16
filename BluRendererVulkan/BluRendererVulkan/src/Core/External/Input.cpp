@@ -1,5 +1,7 @@
 #include "Input.h"
 
+#include <imgui.h>
+
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -44,11 +46,17 @@ bool KeybindManager::IsActionPressed(const eastl::string& action, int mods) {
 
   // Less than 8 specifies mouse input
   if (bind.primary_key < 8) {
+    if (ImGui::GetIO().WantCaptureMouse) {
+      return false;
+    }
     return glfwGetMouseButton(window_->Get(), bind.primary_key) == GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
             glfwGetMouseButton(window_->Get(), bind.alternate_key) ==
                 GLFW_PRESS);
   } else {
+    if (ImGui::GetIO().WantCaptureKeyboard) {
+      return false;
+    }
     return glfwGetKey(window_->Get(), bind.primary_key) == GLFW_PRESS ||
            (bind.alternate_key != GLFW_KEY_UNKNOWN &&
             glfwGetKey(window_->Get(), bind.alternate_key) == GLFW_PRESS);
