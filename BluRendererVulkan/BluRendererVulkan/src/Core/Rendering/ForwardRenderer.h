@@ -148,15 +148,17 @@ class ForwardRenderer {
   void EndCommandBuffer(VkCommandBuffer);
 
   void SubmitCommandBuffer(eastl::vector<VkCommandBuffer> cmd_bufs,
-                           VkQueue& queue, VkSemaphore wait_semaphore,
-                           uint64_t wait_value, VkPipelineStageFlags wait_flag,
-                           VkSemaphore signal_semaphore, uint64_t signal_value,
-                           VkFence fence);
+                           VkQueue& queue,
+                           eastl::vector<VkSemaphore> wait_semaphores,
+                           eastl::vector<uint64_t> wait_values,
+                           eastl::vector<VkPipelineStageFlags> wait_flags,
+                           eastl::vector<VkSemaphore> signal_semaphores,
+                           eastl::vector<uint64_t> signal_values, VkFence fence);
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
 
-#ifdef _DEBUG
+#ifdef DEBUG_LABELS
   inline void BeginLabel(VkCommandBuffer cmd, const char* name, glm::vec3 rgb) {
     VkDebugUtilsLabelEXT label = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
@@ -193,6 +195,12 @@ class ForwardRenderer {
     PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT;
   } debug_util;
 #endif
+
+  struct Semaphore {
+    VkSemaphore semaphore;
+    uint64_t value;
+    VkPipelineStageFlags wait_flag;
+  };
 
   RenderSettings settings_;
 
@@ -296,7 +304,8 @@ class ForwardRenderer {
   blu::core::rendering::Stage* post_process_stage_;
   blu::core::rendering::Stage* image_blit_stage_;
 
-  VkSemaphore frame_semaphore;
+  VkSemaphore main_frame_semaphore;
+  eastl::vector<VkSemaphore> ui_semaphores;
   eastl::vector<VkSemaphore> present_semaphores;
   eastl::vector<VkSemaphore> image_available_semaphore;
   eastl::vector<VkFence> in_flight_fences_;

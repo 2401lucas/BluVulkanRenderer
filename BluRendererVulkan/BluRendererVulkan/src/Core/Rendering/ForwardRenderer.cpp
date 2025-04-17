@@ -14,7 +14,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window) {
   {
     eastl::vector<eastl::string> instance_extensions = {
         VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-#ifdef _DEBUG
+#ifdef DEBUG_LABELS
         VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
     };
@@ -125,12 +125,14 @@ ForwardRenderer::~ForwardRenderer() {
                          nullptr);
     vkDestroySemaphore(device_->GetLogicalDevice(), present_semaphores[i],
                        nullptr);
+    vkDestroySemaphore(device_->GetLogicalDevice(), ui_semaphores[i], nullptr);
     vkDestroySemaphore(device_->GetLogicalDevice(),
                        image_available_semaphore[i], nullptr);
     vkDestroyFence(device_->GetLogicalDevice(), in_flight_fences_[i], nullptr);
   }
 
-  vkDestroySemaphore(device_->GetLogicalDevice(), frame_semaphore, nullptr);
+  vkDestroySemaphore(device_->GetLogicalDevice(), main_frame_semaphore,
+                     nullptr);
   vkDestroyDescriptorPool(device_->GetLogicalDevice(), render_descriptor_pool_,
                           nullptr);
 
@@ -883,6 +885,7 @@ void ForwardRenderer::GenerateResources() {
   // Create Fence & Semaphores
   {
     present_semaphores.resize(frame_count);
+    ui_semaphores.resize(frame_count);
     image_available_semaphore.resize(frame_count);
     in_flight_fences_.resize(frame_count);
 
@@ -897,6 +900,8 @@ void ForwardRenderer::GenerateResources() {
       vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
                         &present_semaphores[i]);
       vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
+                        &ui_semaphores[i]);
+      vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
                         &image_available_semaphore[i]);
       vkCreateFence(device_->GetLogicalDevice(), &fence_info, nullptr,
                     &in_flight_fences_[i]);
@@ -909,7 +914,7 @@ void ForwardRenderer::GenerateResources() {
     semaphore_info.pNext = &type_create_info;
 
     vkCreateSemaphore(device_->GetLogicalDevice(), &semaphore_info, nullptr,
-                      &frame_semaphore);
+                      &main_frame_semaphore);
 
     LoadImage("assets/uv-test.png");  // Default Tex
   }
@@ -1366,9 +1371,9 @@ void ForwardRenderer::DoCull(uint32_t model_count) {
   debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
 #endif
   EndCommandBuffer(buf);
-  SubmitCommandBuffer({buf}, device_->queues.compute, nullptr, UINT64_MAX, 0,
-                      frame_semaphore, semaphore_values.cull_mode_complete,
-                      nullptr);
+  SubmitCommandBuffer({buf}, device_->queues.compute, {}, {}, {},
+                      {main_frame_semaphore},
+                      {semaphore_values.cull_mode_complete}, nullptr);
 }
 
 void ForwardRenderer::DoDraw() {
@@ -1404,10 +1409,11 @@ void ForwardRenderer::DoDraw() {
   debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
 #endif
   EndCommandBuffer(buf);
-  SubmitCommandBuffer({buf}, device_->queues.graphics, frame_semaphore,
-                      semaphore_values.cull_mode_complete,
-                      VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, frame_semaphore,
-                      semaphore_values.draw_mode_complete, nullptr);
+  SubmitCommandBuffer({buf}, device_->queues.graphics, {main_frame_semaphore},
+                      {semaphore_values.cull_mode_complete},
+                      {VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT},
+                      {main_frame_semaphore},
+                      {semaphore_values.draw_mode_complete}, nullptr);
 }
 
 void ForwardRenderer::DoAA() {
@@ -1449,8 +1455,8 @@ void ForwardRenderer::DoDrawUI() {
   debug_util.vkCmdEndDebugUtilsLabelEXT(buf);
 #endif
   EndCommandBuffer(buf);
-  SubmitCommandBuffer({buf}, device_->queues.graphics, nullptr, UINT64_MAX, 0,
-                      nullptr, UINT64_MAX, nullptr);
+  SubmitCommandBuffer({buf}, device_->queues.graphics, {}, {}, {},
+                      {ui_semaphores[frame_index_]}, {0}, nullptr);
 }
 
 bool ForwardRenderer::DoPresent() {
@@ -1499,10 +1505,12 @@ bool ForwardRenderer::DoPresent() {
 #endif
   EndCommandBuffer(buf);
 
-  SubmitCommandBuffer({buf}, device_->queues.graphics, frame_semaphore,
-                      semaphore_values.draw_mode_complete,
-                      VK_PIPELINE_STAGE_TRANSFER_BIT,
-                      present_semaphores[frame_index_], UINT64_MAX,
+  SubmitCommandBuffer({buf}, device_->queues.graphics,
+                      {main_frame_semaphore, ui_semaphores[frame_index_]},
+                      {semaphore_values.draw_mode_complete, 0},
+                      {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT},
+                      {present_semaphores[frame_index_]}, {0},
                       in_flight_fences_[frame_index_]);
 
   VkSemaphore present_wait_semaphore[] = {
@@ -1547,38 +1555,30 @@ void ForwardRenderer::EndCommandBuffer(VkCommandBuffer buf) {
 
 void ForwardRenderer::SubmitCommandBuffer(
     eastl::vector<VkCommandBuffer> cmd_bufs, VkQueue& queue,
-    VkSemaphore wait_semaphore, uint64_t wait_value,
-    VkPipelineStageFlags wait_flag, VkSemaphore signal_semaphore,
-    uint64_t signal_value, VkFence fence) {
-  VkTimelineSemaphoreSubmitInfo timeline_semaphore_values = {
-      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
+    eastl::vector<VkSemaphore> wait_semaphores,
+    eastl::vector<uint64_t> wait_values,
+    eastl::vector<VkPipelineStageFlags> wait_flags,
+    eastl::vector<VkSemaphore> signal_semaphores,
+    eastl::vector<uint64_t> signal_values, VkFence fence) {
+  VkTimelineSemaphoreSubmitInfo timeline_info{
+      .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+      .waitSemaphoreValueCount = static_cast<uint32_t>(wait_values.size()),
+      .pWaitSemaphoreValues = wait_values.data(),
+      .signalSemaphoreValueCount = static_cast<uint32_t>(signal_values.size()),
+      .pSignalSemaphoreValues = signal_values.data(),
+  };
 
   VkSubmitInfo submit_info{
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .pNext = &timeline_info,
+      .waitSemaphoreCount = static_cast<uint32_t>(wait_semaphores.size()),
+      .pWaitSemaphores = wait_semaphores.data(),
+      .pWaitDstStageMask = wait_flags.data(),
       .commandBufferCount = static_cast<uint32_t>(cmd_bufs.size()),
       .pCommandBuffers = cmd_bufs.data(),
+      .signalSemaphoreCount = static_cast<uint32_t>(signal_semaphores.size()),
+      .pSignalSemaphores = signal_semaphores.data(),
   };
-
-  if (wait_semaphore != VK_NULL_HANDLE) {
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = &wait_semaphore;
-    submit_info.pWaitDstStageMask = &wait_flag;
-    if (wait_value != UINT64_MAX) {
-      timeline_semaphore_values.waitSemaphoreValueCount = 1;
-      timeline_semaphore_values.pWaitSemaphoreValues = &wait_value;
-      submit_info.pNext = &timeline_semaphore_values;
-    }
-  }
-
-  if (signal_semaphore != VK_NULL_HANDLE) {
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = &signal_semaphore;
-    if (signal_value != UINT64_MAX) {
-      timeline_semaphore_values.signalSemaphoreValueCount = 1;
-      timeline_semaphore_values.pSignalSemaphoreValues = &signal_value;
-      submit_info.pNext = &timeline_semaphore_values;
-    }
-  }
 
   VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submit_info, fence));
 }

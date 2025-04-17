@@ -1,14 +1,14 @@
 # TODO: Features
 ### In Progress
-- [ ] Robust Model Buffers
-- [ ] Better Model Data Management
-- [ ] Tonemapping Pass (Compute?)
-- [ ] Better Transform matrix calculation when using a camera 
-- [ ] Compute FXAA
-- [ ] Metallic/Specular PBR Shading
 - [ ] MultiThreaded Rendering
+- [ ] Compute FXAA
+- [ ] Tonemapping Pass (Compute?)
+- [ ] Metallic/Specular PBR Shading
 - [ ] Shadows
 - [ ] Lights (Clustered)
+- [ ] Robust Model Buffers
+- [ ] Better Model Data Management
+- [ ] Better Transform matrix calculation when using a camera 
 ### V1.0
 - [ ] Occlusion Culling
 - [ ] Scene Hierarchy
