@@ -153,7 +153,8 @@ class ForwardRenderer {
                            eastl::vector<uint64_t> wait_values,
                            eastl::vector<VkPipelineStageFlags> wait_flags,
                            eastl::vector<VkSemaphore> signal_semaphores,
-                           eastl::vector<uint64_t> signal_values, VkFence fence);
+                           eastl::vector<uint64_t> signal_values,
+                           VkFence fence);
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
@@ -282,21 +283,25 @@ class ForwardRenderer {
   eastl::vector<VkCommandBuffer> cmd_bufs_present_;
 
   blu::core::DescriptorSet* render_images_descriptor_;
+  blu::core::DescriptorSet* anti_aliasing_images_descriptor_;
 
   eastl::vector<blu::core::Buffer*> buffers_draw_command_;
   eastl::vector<blu::core::Image*> ui_img_output;
   eastl::vector<blu::core::Image*> images_render_assist_color;
+  eastl::vector<blu::core::Image*> images_fxaa_assist_color;
   eastl::vector<blu::core::Image*> images_render_assist_depth;
 
-  blu::core::rendering::BuildCommandBufferStage* build_command_buffer_stage_ =
+  blu::core::rendering::stage::BuildCommandBufferStage*
+      build_command_buffer_stage_ = nullptr;
+  blu::core::rendering::stage::FrustumCullStage* frustum_cull_stage_ = nullptr;
+  blu::core::rendering::stage::DepthOnlyStage* depth_only_stage_ = nullptr;
+  blu::core::rendering::stage::ImageCopyStage* image_copy_stage_ = nullptr;
+  blu::core::rendering::stage::OpaqueRenderStage* opaque_render_stage_ =
       nullptr;
-  blu::core::rendering::FrustumCullStage* frustum_cull_stage_ = nullptr;
-  blu::core::rendering::DepthOnlyStage* depth_only_stage_ = nullptr;
-  blu::core::rendering::ImageCopyStage* image_copy_stage_ = nullptr;
-  blu::core::rendering::OpaqueRenderStage* opaque_render_stage_ = nullptr;
-  blu::core::rendering::ImGuiStage* imgui_stage_ = nullptr;
-  blu::core::rendering::ColorOnlyStage* final_composition = nullptr;
-  // blu::core::rendering::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
+  blu::core::rendering::stage::ImGuiStage* imgui_stage_ = nullptr;
+  blu::core::rendering::stage::ColorOnlyStage* final_composition = nullptr;
+  blu::core::rendering::stage::AntiAliasingStage* anti_aliasing_stage_ =
+      nullptr;
 
   // TODO:
   blu::core::rendering::Stage* hierarchial_z_stage_;

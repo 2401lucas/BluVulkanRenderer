@@ -1,6 +1,6 @@
 #include "DepthOnlyStage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 DepthOnlyStage::DepthOnlyStage(
     Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
     VkPipelineShaderStageCreateInfo shader_create_infos)

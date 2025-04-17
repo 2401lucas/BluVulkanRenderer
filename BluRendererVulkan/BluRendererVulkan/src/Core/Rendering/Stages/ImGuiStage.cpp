@@ -8,7 +8,7 @@ static void CheckVkResult(VkResult err) {
   if (err < 0) abort();
 }
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 ImGuiStage::ImGuiStage(Instance* instance, Device* device, Window* window,
                        uint32_t frame_count)
     : Stage(device, nullptr) {

@@ -6,7 +6,7 @@
 #include "../Vulkan/Pipeline.h"
 #include "../Vulkan/Stage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class BuildCommandBufferStage : protected Stage {
  public:
   struct BuildCommandBufferPushConst {
@@ -20,10 +20,10 @@ class BuildCommandBufferStage : protected Stage {
                           VkPipelineShaderStageCreateInfo shader_create_info);
   ~BuildCommandBufferStage();
 
-  void Run(VkCommandBuffer buf, uint32_t frame_index, BufferInfo model_data,
-           BufferInfo models, uint32_t model_count, Buffer* output_buffer);
+  void Run(VkCommandBuffer buf, BufferInfo model_data, BufferInfo models,
+           uint32_t model_count, Buffer* output_buffer);
 
   blu::core::rendering::Pipeline* pipeline_;
 };
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage
 #endif

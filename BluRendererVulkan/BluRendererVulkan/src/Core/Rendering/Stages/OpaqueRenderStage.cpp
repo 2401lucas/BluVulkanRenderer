@@ -2,7 +2,7 @@
 
 #include <EASTL/array.h>
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 OpaqueRenderStage::OpaqueRenderStage(
     Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
     eastl::vector<VkPipelineShaderStageCreateInfo> shader_create_infos)
@@ -56,9 +56,9 @@ OpaqueRenderStage::OpaqueRenderStage(
 
 OpaqueRenderStage::~OpaqueRenderStage() { delete pipeline_; }
 
-void OpaqueRenderStage::Run(VkCommandBuffer buf, uint32_t frame_index,
-                            Image* color, Image* depth, uint32_t width,
-                            uint32_t height, Buffer* draw_command_buffer,
+void OpaqueRenderStage::Run(VkCommandBuffer buf, Image* color, Image* depth,
+                            uint32_t width, uint32_t height,
+                            Buffer* draw_command_buffer,
                             eastl::vector<VkDescriptorSet> descriptor_sets,
                             Buffer* vertex_buffer, Buffer* normal_buffer,
                             Buffer* uv_buffer, Buffer* index_buffer) {
@@ -161,4 +161,4 @@ void OpaqueRenderStage::Run(VkCommandBuffer buf, uint32_t frame_index,
 
   vkCmdEndRendering(buf);
 }
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage

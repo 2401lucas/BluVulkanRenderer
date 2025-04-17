@@ -1,6 +1,6 @@
 #include "FrustumCullStage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 FrustumCullStage::FrustumCullStage(Device* device,
                                    VkPipelineShaderStageCreateInfo shader_infos)
     : Stage(device, nullptr) {
@@ -16,7 +16,7 @@ FrustumCullStage::FrustumCullStage(Device* device,
 
 FrustumCullStage::~FrustumCullStage() { delete pipeline_; }
 
-void FrustumCullStage::Run(VkCommandBuffer buf, uint32_t frame_index,
+void FrustumCullStage::Run(VkCommandBuffer buf,
                            BufferInfo model_data, BufferInfo models,
                            uint32_t model_count, Buffer* output_buffer) {
   vkCmdFillBuffer(buf, output_buffer->buffer, 0, sizeof(uint32_t), 0);

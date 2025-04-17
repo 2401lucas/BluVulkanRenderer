@@ -2,7 +2,7 @@
 
 #include <EASTL/array.h>
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 ColorOnlyStage::ColorOnlyStage(
     Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
     eastl::vector<VkPipelineShaderStageCreateInfo> shader_infos)

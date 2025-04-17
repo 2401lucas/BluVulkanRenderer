@@ -9,7 +9,7 @@
 #include "../includes/imgui_impl_glfw.h"
 #include "../includes/imgui_impl_vulkan.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class ImGuiStage : protected Stage {
  public:
   ImGuiStage(Instance*, Device*, Window*, uint32_t frame_count);

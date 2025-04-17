@@ -172,6 +172,7 @@ ForwardRenderer::~ForwardRenderer() {
   delete image_copy_stage_;
   delete imgui_stage_;
   delete final_composition;
+  delete anti_aliasing_stage_;
 
   for (auto& buf : buffers_draw_command_) {
     buf->Destroy(allocator_);
@@ -852,22 +853,43 @@ void ForwardRenderer::GenerateResources() {
            buffer_infos_.size() * sizeof(BufferInfo));
   }
 
+  // Global Descriptor Layouts
+  {
+    render_images_descriptor_ = new blu::core::DescriptorSet();
+
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = RENDER_ASSIST_IMAGES_PER_FRAME,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &binding,
+    };
+    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
+                                nullptr, &render_images_descriptor_->layout);
+  }
+
   // Stage Creation
   {
     build_command_buffer_stage_ =
-        new blu::core::rendering::BuildCommandBufferStage(
+        new blu::core::rendering::stage::BuildCommandBufferStage(
             device_, LoadShader("shaders/build_command_buffer.comp.spv",
                                 VK_SHADER_STAGE_COMPUTE_BIT));
 
-    frustum_cull_stage_ = new blu::core::rendering::FrustumCullStage(
+    frustum_cull_stage_ = new blu::core::rendering::stage::FrustumCullStage(
         device_, LoadShader("shaders/frustum_cull.comp.spv",
                             VK_SHADER_STAGE_COMPUTE_BIT));
 
-    depth_only_stage_ = new blu::core::rendering::DepthOnlyStage(
+    depth_only_stage_ = new blu::core::rendering::stage::DepthOnlyStage(
         device_, {{buffer_infos_descriptor_set_->layout}},
         LoadShader("shaders/depth_only.vert.spv", VK_SHADER_STAGE_VERTEX_BIT));
 
-    opaque_render_stage_ = new blu::core::rendering::OpaqueRenderStage(
+    opaque_render_stage_ = new blu::core::rendering::stage::OpaqueRenderStage(
         device_,
         {
             buffer_infos_descriptor_set_->layout,
@@ -877,9 +899,20 @@ void ForwardRenderer::GenerateResources() {
          LoadShader("shaders/cube.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT)});
 
     image_copy_stage_ =
-        new blu::core::rendering::ImageCopyStage(device_, allocator_);
-    imgui_stage_ = new blu::core::rendering::ImGuiStage(instance_, device_,
-                                                        window_, frame_count);
+        new blu::core::rendering::stage::ImageCopyStage(device_, allocator_);
+    imgui_stage_ = new blu::core::rendering::stage::ImGuiStage(
+        instance_, device_, window_, frame_count);
+
+    final_composition = new blu::core::rendering::stage::ColorOnlyStage(
+        device_, {render_images_descriptor_->layout},
+        {LoadShader("shaders/fullscreen_tri.vert.spv",
+                    VK_SHADER_STAGE_VERTEX_BIT),
+         LoadShader("shaders/final_composition.frag.spv",
+                    VK_SHADER_STAGE_FRAGMENT_BIT)});
+
+    /*anti_aliasing_stage_ = new blu::core::rendering::stage::AntiAliasingStage(
+        device_, {anti_aliasing_images_descriptor_->layout},
+        LoadShader("shaders/fxaa.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT));*/
   }
 
   // Create Fence & Semaphores
@@ -1256,24 +1289,6 @@ void ForwardRenderer::OnResize() {
   }
 
   {
-    render_images_descriptor_ = new blu::core::DescriptorSet();
-
-    VkDescriptorSetLayoutBinding binding = {
-        .binding = 0,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = RENDER_ASSIST_IMAGES_PER_FRAME,
-        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-        .pImmutableSamplers = nullptr,
-    };
-
-    VkDescriptorSetLayoutCreateInfo layout_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
-        .pBindings = &binding,
-    };
-    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
-                                nullptr, &render_images_descriptor_->layout);
-
     render_images_descriptor_->sets.resize(frame_count);
     for (size_t i = 0; i < frame_count; i++) {
       VkDescriptorSetAllocateInfo alloc_info = {
@@ -1314,13 +1329,6 @@ void ForwardRenderer::OnResize() {
                              nullptr);
     }
   }
-
-  final_composition = new blu::core::rendering::ColorOnlyStage(
-      device_, {render_images_descriptor_->layout},
-      {LoadShader("shaders/fullscreen_tri.vert.spv",
-                  VK_SHADER_STAGE_VERTEX_BIT),
-       LoadShader("shaders/final_composition.frag.spv",
-                  VK_SHADER_STAGE_FRAGMENT_BIT)});
 }
 
 void ForwardRenderer::DoCull(uint32_t model_count) {
@@ -1338,13 +1346,13 @@ void ForwardRenderer::DoCull(uint32_t model_count) {
   switch (settings_.culling_mode) {
     case CULLING_MODE_NONE:
       build_command_buffer_stage_->Run(
-          buf, frame_index_, BufferInfo(models_data_buffer_->device_address),
+          buf, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address), model_count,
           buffers_draw_command_[frame_index_]);
       break;
     case CULLING_MODE_FRUSTUM_CULL:
       frustum_cull_stage_->Run(
-          buf, frame_index_, BufferInfo(models_data_buffer_->device_address),
+          buf, BufferInfo(models_data_buffer_->device_address),
           BufferInfo(models_buffer_->device_address), model_count,
           buffers_draw_command_[frame_index_]);
       break;
@@ -1392,7 +1400,7 @@ void ForwardRenderer::DoDraw() {
   switch (settings_.draw_mode) {
     case DRAW_MODE_SHADED:
       opaque_render_stage_->Run(
-          buf, frame_index_, images_render_assist_color[frame_index_],
+          buf, images_render_assist_color[frame_index_],
           images_render_assist_depth[frame_index_], swapchain_->GetWidth(),
           swapchain_->GetHeight(), buffers_draw_command_[frame_index_],
           {buffer_infos_descriptor_set_->sets[0],

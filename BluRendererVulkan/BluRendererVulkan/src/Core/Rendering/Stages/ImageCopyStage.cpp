@@ -2,16 +2,16 @@
 
 #include "../Vulkan/Image.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 ImageCopyStage::ImageCopyStage(Device* device, VmaAllocator allocator)
     : Stage(device, allocator) {}
 
 ImageCopyStage::~ImageCopyStage() {}
 
-void ImageCopyStage::Run(VkCommandBuffer buf, uint32_t frame_index,
-                         VkImage src_img, VkImageLayout src_image_layout,
-                         VkImage dst_img, VkImageLayout dst_img_layout,
-                         uint32_t width, uint32_t height) {
+void ImageCopyStage::Run(VkCommandBuffer buf, VkImage src_img,
+                         VkImageLayout src_image_layout, VkImage dst_img,
+                         VkImageLayout dst_img_layout, uint32_t width,
+                         uint32_t height) {
   VkImageSubresourceRange range{
       .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
       .baseMipLevel = 0,
@@ -53,4 +53,4 @@ void ImageCopyStage::Run(VkCommandBuffer buf, uint32_t frame_index,
                                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                           dst_img_layout, range);
 }
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage
