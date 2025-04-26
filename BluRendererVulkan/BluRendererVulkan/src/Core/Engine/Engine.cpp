@@ -45,9 +45,9 @@ blu::game::components::Model* Engine::CreateModel(
   auto models = renderer_->LoadModel(filepath);
 
   for (auto& model : models) {
-    if (model.model_ids >= 0) {
+    if (model.model_id >= 0) {
       blu::game::components::Model* new_model =
-          new blu::game::components::Model(model.model_ids, transform);
+          new blu::game::components::Model(model.model_id, transform);
       new_model->transform.SetBoundingSphere(model.model_bounding_box);
       models_.push_back(new_model);
     } else {
@@ -68,22 +68,19 @@ void Engine::SetCameraAspectRatio(float aspect_ratio) {
 }
 
 RenderData Engine::GetRenderData() {
-  eastl::vector<glm::mat4> matrices(3);
-  matrices[1] = camera_->GetTransform()->GetTransformMat();
-  matrices[2] = camera_->GetPerspectiveMat();
-  matrices[0] = matrices[2] * matrices[1];
-
-  eastl::vector<ModelData> model_data;
+  RenderData render_data{};
+  render_data.matrices.resize(3);
+  render_data.matrices[1] = camera_->GetTransform()->GetTransformMat();
+  render_data.matrices[2] = camera_->GetPerspectiveMat();
+  render_data.matrices[0] = render_data.matrices[2] * render_data.matrices[1];
   for (auto& m : models_) {
-    matrices.push_back(m->transform.GetTransformMat());
-    model_data.push_back({m->transform.GetBoundingSphere(), m->model_index});
+    render_data.matrices.push_back(m->transform.GetTransformMat());
+    render_data.model_data.push_back(
+        {m->transform.GetBoundingSphere(), m->model_index});
   }
 
-  auto scene = SceneInfo{};
-
-  camera_->GetFrustumPlanes(matrices[0], scene.planes); 
-  scene.model_data = model_data;
-  return RenderData(matrices, scene);
+  camera_->GetFrustumPlanes(render_data.matrices[0], render_data.planes);
+  return render_data;
 }
 
 void Engine::SetDefaultKeybinds() {

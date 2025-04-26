@@ -5,7 +5,7 @@
 #include "../Vulkan/Pipeline.h"
 #include "../Vulkan/Stage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class FrustumCullStage : protected Stage {
  public:
   struct FrustumPushConst {
@@ -19,11 +19,11 @@ class FrustumCullStage : protected Stage {
                    VkPipelineShaderStageCreateInfo shader_infos);
   ~FrustumCullStage();
 
-  void Run(VkCommandBuffer buf, uint32_t frame_index, BufferInfo model_data,
-           BufferInfo models, uint32_t model_count, Buffer* output_buffer);
+  void Run(VkCommandBuffer buf, BufferInfo model_data, BufferInfo models,
+           uint32_t model_count, Buffer* output_buffer);
 
   blu::core::rendering::Pipeline* pipeline_;
   eastl::vector<blu::core::Buffer*> frustum_output_buffers_;
 };
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage
 #endif

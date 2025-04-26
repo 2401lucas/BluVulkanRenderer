@@ -1,8 +1,13 @@
 #include "Buffer.h"
+
 #include <cstring>
 
 void blu::core::Buffer::Destroy(const VmaAllocator& allocator) {
   vmaDestroyBuffer(allocator, buffer, alloc);
+}
+
+BufferInfo blu::core::Buffer::GetBufferInfo() {
+  return BufferInfo(device_address, offset, size);
 }
 
 blu::core::Buffer* blu::core::Buffer::CreateBuffer(

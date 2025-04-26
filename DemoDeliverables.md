@@ -1,8 +1,8 @@
 # TODO: Features
 ### In Progress
-- [ ] MultiThreaded Rendering
 - [ ] Compute FXAA
 - [ ] Tonemapping Pass (Compute?)
+- [ ] MultiThreaded Rendering
 - [ ] Metallic/Specular PBR Shading
 - [ ] Shadows
 - [ ] Lights (Clustered)

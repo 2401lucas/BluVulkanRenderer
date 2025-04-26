@@ -1,6 +1,6 @@
 #include "BuildCommandBufferStage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 BuildCommandBufferStage::BuildCommandBufferStage(
     Device* device, VkPipelineShaderStageCreateInfo shader_create_info)
     : Stage(device, nullptr) {
@@ -18,7 +18,7 @@ BuildCommandBufferStage::BuildCommandBufferStage(
 
 BuildCommandBufferStage::~BuildCommandBufferStage() { delete pipeline_; }
 
-void BuildCommandBufferStage::Run(VkCommandBuffer buf, uint32_t frame_index,
+void BuildCommandBufferStage::Run(VkCommandBuffer buf,
                                   BufferInfo model_data, BufferInfo models,
                                   uint32_t model_count, Buffer* output_buffer) {
   vkCmdFillBuffer(buf, output_buffer->buffer, 0, sizeof(uint32_t), 0);

@@ -1,6 +1,6 @@
 #include "DepthOnlyStage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 DepthOnlyStage::DepthOnlyStage(
     Device* device, eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts,
     VkPipelineShaderStageCreateInfo shader_create_infos)
@@ -122,4 +122,4 @@ void DepthOnlyStage::Run(VkCommandBuffer buf, blu::core::Image* image,
       buf, image->image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depth_range);
 }
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage

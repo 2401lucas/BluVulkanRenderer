@@ -22,6 +22,8 @@ class Buffer {
 
   void Destroy(const VmaAllocator& allocator);
 
+  BufferInfo GetBufferInfo();
+
   static blu::core::Buffer* CreateBuffer(const VkDevice& device,
                                          const VmaAllocator& allocator,
                                          VkDeviceSize size,

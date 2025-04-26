@@ -3,13 +3,13 @@
 
 #include "../Vulkan/Stage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class ImageCopyStage : protected Stage {
  public:
   ImageCopyStage(Device* device, VmaAllocator allocator);
   ~ImageCopyStage();
 
-  void Run(VkCommandBuffer buf, uint32_t frame_index, VkImage src_img,
+  void Run(VkCommandBuffer buf, VkImage src_img,
            VkImageLayout src_image_layout, VkImage dst_img,
            VkImageLayout dst_img_layout, uint32_t width, uint32_t height);
 };

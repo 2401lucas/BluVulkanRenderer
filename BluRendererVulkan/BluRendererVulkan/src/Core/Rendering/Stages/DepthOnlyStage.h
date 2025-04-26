@@ -6,7 +6,7 @@
 #include "../Vulkan/Pipeline.h"
 #include "../Vulkan/Stage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class DepthOnlyStage : protected Stage {
  public:
   DepthOnlyStage(Device* device,

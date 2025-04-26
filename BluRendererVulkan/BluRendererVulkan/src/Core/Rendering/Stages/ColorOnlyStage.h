@@ -5,7 +5,7 @@
 #include "../Vulkan/Pipeline.h"
 #include "../Vulkan/Stage.h"
 
-namespace blu::core::rendering {
+namespace blu::core::rendering::stage {
 class ColorOnlyStage : protected Stage {
  public:
   ColorOnlyStage(Device* device,

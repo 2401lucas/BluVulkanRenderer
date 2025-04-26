@@ -6,19 +6,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
-struct ModelData {
-  glm::vec4 sphere_bounding_box;
-  uint32_t model_id;
-
-  uint32_t pad1;
-  uint32_t pad2;
-  uint32_t pad3;
-};
-
-struct SceneInfo {
-  glm::vec4 planes[6];
-  eastl::vector<ModelData> model_data;
-};
+#include "GpuStructs.h"
 
 struct RenderData {
   // Matrix[0] - V * P
@@ -26,7 +14,8 @@ struct RenderData {
   // Matrix[2] - Camera Perspective
   // Matrix[3...] - Model Position
   eastl::vector<glm::mat4> matrices;
-  SceneInfo scene;
+  glm::vec4 planes[6];
+  eastl::vector<GPUModelData> model_data;
 };
 
 #endif

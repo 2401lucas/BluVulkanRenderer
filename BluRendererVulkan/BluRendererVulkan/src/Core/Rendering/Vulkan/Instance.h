@@ -11,7 +11,7 @@
 namespace blu::core {
 class Instance {
  public:
-  Instance(const eastl::string name, const bool use_validation,
+  Instance(const eastl::string name,
            eastl::vector<eastl::string> requested_instance_extensions);
   ~Instance();
 
