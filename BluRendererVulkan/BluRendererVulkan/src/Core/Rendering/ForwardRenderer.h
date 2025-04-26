@@ -19,7 +19,6 @@ class ForwardRenderer : public BluCoreRenderer {
   ForwardRenderer(blu::core::Window* window);
   ~ForwardRenderer();
 
-  void Build();
   void Render(RenderData render_data);
 
  protected:

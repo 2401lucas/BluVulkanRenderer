@@ -317,64 +317,62 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
 
   // Post Processing Pass
   {
-    {
-      VkDescriptorSetLayoutBinding binding = {
-          .binding = 0,
+    VkDescriptorSetLayoutBinding binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = FINAL_COMPOSITION_MAX_IMAGES,
+        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 1,
+        .pBindings = &binding,
+    };
+    vkCreateDescriptorSetLayout(
+        device_->GetLogicalDevice(), &layout_info, nullptr,
+        &post_processing_pass_.ui_composition_descriptor_set_layout_);
+
+    post_processing_pass_.ui_composition_descriptor_sets_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      VkDescriptorSetAllocateInfo alloc_info = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .descriptorPool = render_descriptor_pool_,
+          .descriptorSetCount = 1,
+          .pSetLayouts =
+              &post_processing_pass_.ui_composition_descriptor_set_layout_,
+      };
+
+      VK_CHECK_RESULT(vkAllocateDescriptorSets(
+          device_->GetLogicalDevice(), &alloc_info,
+          &post_processing_pass_.ui_composition_descriptor_sets_[i]));
+
+      eastl::vector<VkDescriptorImageInfo> imageInfos;
+      imageInfos.resize(FINAL_COMPOSITION_MAX_IMAGES);
+      imageInfos[0] = {
+          .sampler = opaque_pass_.color_output_[i]->sampler,
+          .imageView = opaque_pass_.color_output_[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+      imageInfos[1] = {
+          .sampler = ui_pass_.output_[i]->sampler,
+          .imageView = ui_pass_.output_[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+
+      VkWriteDescriptorSet write = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = post_processing_pass_.ui_composition_descriptor_sets_[i],
+          .dstBinding = 0,
+          .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
           .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-          .descriptorCount = FINAL_COMPOSITION_MAX_IMAGES,
-          .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-          .pImmutableSamplers = nullptr,
+          .pImageInfo = imageInfos.data(),
       };
 
-      VkDescriptorSetLayoutCreateInfo layout_info = {
-          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-          .bindingCount = 1,
-          .pBindings = &binding,
-      };
-      vkCreateDescriptorSetLayout(
-          device_->GetLogicalDevice(), &layout_info, nullptr,
-          &post_processing_pass_.ui_composition_descriptor_set_layout_);
-
-      post_processing_pass_.ui_composition_descriptor_sets_.resize(frame_count);
-      for (size_t i = 0; i < frame_count; i++) {
-        VkDescriptorSetAllocateInfo alloc_info = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .pNext = nullptr,
-            .descriptorPool = render_descriptor_pool_,
-            .descriptorSetCount = 1,
-            .pSetLayouts =
-                &post_processing_pass_.ui_composition_descriptor_set_layout_,
-        };
-
-        VK_CHECK_RESULT(vkAllocateDescriptorSets(
-            device_->GetLogicalDevice(), &alloc_info,
-            &post_processing_pass_.ui_composition_descriptor_sets_[i]));
-
-        eastl::vector<VkDescriptorImageInfo> imageInfos;
-        imageInfos.resize(FINAL_COMPOSITION_MAX_IMAGES);
-        imageInfos[0] = {
-            .sampler = opaque_pass_.color_output_[i]->sampler,
-            .imageView = opaque_pass_.color_output_[i]->view,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
-        imageInfos[1] = {
-            .sampler = ui_pass_.output_[i]->sampler,
-            .imageView = ui_pass_.output_[i]->view,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
-
-        VkWriteDescriptorSet write = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = post_processing_pass_.ui_composition_descriptor_sets_[i],
-            .dstBinding = 0,
-            .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = imageInfos.data(),
-        };
-
-        vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write, 0,
-                               nullptr);
-      }
+      vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write, 0,
+                             nullptr);
     }
 
     post_processing_pass_.ui_composition_stage_ = new stage::ColorOnlyStage(
@@ -482,8 +480,6 @@ void ForwardRenderer::UpdateFrameData(RenderData& render_data) {
   memcpy(matrix_buffer_->mapped_data, render_data.matrices.data(),
          render_data.matrices.size() * sizeof(glm::mat4));
 }
-
-void ForwardRenderer::Build() {}
 
 void ForwardRenderer::Render(RenderData render_data) {
   BuildFrameTimeline();
