@@ -21,7 +21,6 @@ void BluRendererVulkan::run(int argc, char** argv) {
   blu::core::Window* window =
       new blu::core::Window(800, 600, "Blu: Rendering Prototype");
   ForwardRenderer* renderer = new ForwardRenderer(window);
-  renderer->GenerateResources();
 
   blu::core::Engine* engine = new blu::core::Engine(window, renderer);
   engine->LoadScene("TODO");
@@ -36,10 +35,10 @@ void BluRendererVulkan::run(int argc, char** argv) {
 
     window->ProcessEvents();
     engine->Update(frame_duration.count());
-    auto res = renderer->Render(engine->GetRenderData());
-    if (res == RendererState::ASPECT_RATIO_UPDATED) {
+    renderer->Render(engine->GetRenderData());
+    /*if (res == RendererState::ASPECT_RATIO_UPDATED) {
       engine->SetCameraAspectRatio(renderer->GetAspectRatio());
-    }
+    }*/
   }
 
   delete renderer;

@@ -8,7 +8,7 @@
 #include "Tools.h"
 
 namespace blu::core {
-Instance::Instance(const eastl::string name, const bool use_validation,
+Instance::Instance(const eastl::string name,
                    eastl::vector<eastl::string> requested_instance_extensions) {
   // TODO:: CHECK THIS
   // EA::EASTL::Allocator::Init();
@@ -61,52 +61,51 @@ Instance::Instance(const eastl::string name, const bool use_validation,
       .pApplicationInfo = &app_info,
   };
 
-  VkDebugUtilsMessengerCreateInfoEXT debug_utils_Messenger_ci;
-  if (use_validation) {
-    debug_utils_Messenger_ci = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                       VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
-        .pfnUserCallback = debugUtilsMessageCallback,
-    };
-    instance_ci.pNext = &debug_utils_Messenger_ci;
-  }
-
   if (!enabled_instance_extensions_.empty()) {
     instance_ci.enabledExtensionCount = enabled_instance_extensions_.size();
     instance_ci.ppEnabledExtensionNames = enabled_instance_extensions_.data();
   }
 
-  if (use_validation) {
-    const char* validation_layer_name = "VK_LAYER_KHRONOS_validation";
-    
-    uint32_t instance_layer_count;
-    vkEnumerateInstanceLayerProperties(&instance_layer_count, nullptr);
-    eastl::vector<VkLayerProperties> instance_layer_properties(
-        instance_layer_count);
-    vkEnumerateInstanceLayerProperties(&instance_layer_count,
-                                       instance_layer_properties.data());
+#ifdef DEBUG_VALIDATION_LAYERS
+  VkDebugUtilsMessengerCreateInfoEXT debug_utils_Messenger_ci;
+  debug_utils_Messenger_ci = {
+      .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+      .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                         VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+      .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                     VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+      .pfnUserCallback = debugUtilsMessageCallback,
+  };
+  instance_ci.pNext = &debug_utils_Messenger_ci;
 
-    bool validation_layer_present = false;
-    for (eastl::vector<VkLayerProperties>::iterator
-             it = instance_layer_properties.begin(),
-             it_end = instance_layer_properties.end();
-         it != it_end; ++it) {
-      if (strcmp(it->layerName, validation_layer_name)) {
-        validation_layer_present = true;
-        break;
-      }
-    }
-    if (validation_layer_present) {
-      instance_ci.ppEnabledLayerNames = &validation_layer_name;
-      instance_ci.enabledLayerCount = 1;
-    } else {
-      std::cout << "Validation layer VK_LAYER_KHRONOS_validation not present, "
-                   "validation is disabled";
+  const char* validation_layer_name = "VK_LAYER_KHRONOS_validation";
+
+  uint32_t instance_layer_count;
+  vkEnumerateInstanceLayerProperties(&instance_layer_count, nullptr);
+  eastl::vector<VkLayerProperties> instance_layer_properties(
+      instance_layer_count);
+  vkEnumerateInstanceLayerProperties(&instance_layer_count,
+                                     instance_layer_properties.data());
+
+  bool validation_layer_present = false;
+  for (eastl::vector<VkLayerProperties>::iterator
+           it = instance_layer_properties.begin(),
+           it_end = instance_layer_properties.end();
+       it != it_end; ++it) {
+    if (strcmp(it->layerName, validation_layer_name)) {
+      validation_layer_present = true;
+      break;
     }
   }
+  if (validation_layer_present) {
+    instance_ci.ppEnabledLayerNames = &validation_layer_name;
+    instance_ci.enabledLayerCount = 1;
+  } else {
+    std::cout << "Validation layer VK_LAYER_KHRONOS_validation not present, "
+                 "validation is disabled";
+  }
+
+#endif
 
   VK_CHECK_RESULT(vkCreateInstance(&instance_ci, nullptr, &instance_));
 }

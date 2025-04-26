@@ -40,6 +40,7 @@ target_include_directories(BluRendererVulkan PRIVATE source_dir, include_dir)
   # target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_UV)
   target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_MODEL)
   target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_LABELS)
+  target_compile_definitions(BluRendererVulkan PUBLIC DEBUG_VALIDATION_LAYERS)
   
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET BluRendererVulkan PROPERTY CXX_STANDARD 20)
