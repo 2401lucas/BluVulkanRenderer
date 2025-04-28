@@ -1,13 +1,15 @@
 # TODO: Features
 ### In Progress
+- [ ] Descriptor Update Template
+- [ ] DELETE RESOURCES
+- [ ] UI CHANGING RENDERING / FIX RENDER OUTPUT LOGIC
 - [ ] Compute FXAA
 - [ ] Tonemapping Pass (Compute?)
-- [ ] MultiThreaded Rendering
+- [ ] Robust Model Buffers
 - [ ] Metallic/Specular PBR Shading
 - [ ] Shadows
 - [ ] Lights (Clustered)
-- [ ] Robust Model Buffers
-- [ ] Better Model Data Management
+- [ ] MultiThreaded Rendering
 - [ ] Better Transform matrix calculation when using a camera 
 ### V1.0
 - [ ] Occlusion Culling

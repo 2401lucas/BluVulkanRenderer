@@ -636,6 +636,40 @@ void ForwardRenderer::PostProcessingPass() {
 
   blu::core::Image img{.image = swapchain_buf.image,
                        .view = swapchain_buf.view};
+
+  VkDescriptorImageInfo image_info = {
+      .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+  };
+
+  switch (settings_.output) {
+    case ForwardRenderSettings::RENDER_OUTPUT_DRAW_STAGE:
+      image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
+      image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
+      break;
+    case ForwardRenderSettings::RENDER_OUTPUT_AA:
+      image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
+      image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
+      break;
+    case ForwardRenderSettings::RENDER_OUTPUT_FINAL:
+      image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
+      image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
+      break;
+  }
+
+  VkWriteDescriptorSet write_descriptor_set = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet =
+          post_processing_pass_.ui_composition_descriptor_sets_[frame_index_],
+      .dstBinding = 0,
+      .dstArrayElement = 0,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .pImageInfo = &image_info,
+  };
+
+  vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write_descriptor_set,
+                         0, nullptr);
+
   post_processing_pass_.ui_composition_stage_->Run(
       buf,
       {post_processing_pass_.ui_composition_descriptor_sets_[frame_index_]},
