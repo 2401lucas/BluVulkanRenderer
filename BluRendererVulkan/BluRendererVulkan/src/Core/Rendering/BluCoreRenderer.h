@@ -49,6 +49,8 @@ class BluCoreRenderer {
 
   virtual void Resize() = 0;
 
+  void BuildCoreDebugUI();
+
   uint64_t GetNextSemaphoreValue();
 
   void StartCommandBuffer(VkCommandBuffer, const char* name, glm::vec4 rgb);

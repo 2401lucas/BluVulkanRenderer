@@ -1,5 +1,8 @@
 #include "BluCoreRenderer.h"
 
+#include <imgui.h>
+
+#include "../../../includes/imgui_impl_vulkan.h"
 #include "../External/FileManager.h"
 #include "../External/stb_image.h"
 
@@ -699,6 +702,43 @@ void BluCoreRenderer::Build() {
     debug_util_.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
                                              &debug_info);
 #endif
+  }
+  LoadImage("assets/uv-test.png");
+}
+
+void BluCoreRenderer::BuildCoreDebugUI() {
+  // Models
+  {
+    ImGui::Begin("Render Resource Info");
+    ImGui::SetWindowPos(ImVec2(swapchain_->GetWidth() - 400, 0), ImGuiCond_Once);
+    ImGui::SetWindowSize(ImVec2(400, 400), ImGuiCond_Once);
+
+    ImGui::Text("Loaded Stages: %i", loaded_stages.size());
+    ImGui::Text("Loaded Models: %i", loaded_model_indices_.size());
+    ImGui::Text("Loaded Textures: %i", loaded_texture_indices_.size());
+
+#ifdef IMGUI_TEXTURE_DEBUG
+    if (ImGui::TreeNode("Model Textures")) {
+      for (auto& img : model_textures_) {
+        ImVec2 size = ImVec2(64, 64);
+        if (img->imgui_descriptor_set == nullptr) {
+          img->imgui_descriptor_set = ImGui_ImplVulkan_AddTexture(
+              img->sampler, img->view,
+              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
+        ImGui::Image((ImTextureID)img->imgui_descriptor_set, size);
+      }
+      ImGui::TreePop();
+    }
+#endif
+
+    ImGui::Text("Render Images: %i", render_images_.size());
+    ImGui::Text("Render Buffers: %i", render_buffers_.size());
+
+    ImGui::Text("Generic Buffers: %i", generic_buffers_.size());
+
+    ImGui::End();
   }
 }
 

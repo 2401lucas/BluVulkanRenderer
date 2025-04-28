@@ -23,6 +23,9 @@ class Image {
   // Optional
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
+#ifdef IMGUI_TEXTURE_DEBUG
+  VkDescriptorSet imgui_descriptor_set;
+#endif
 
   ~Image() {
     // It is possible the image is simply a placeholder for framebuffer data, in

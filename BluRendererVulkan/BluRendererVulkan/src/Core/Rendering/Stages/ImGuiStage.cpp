@@ -2,11 +2,7 @@
 
 #include <EASTL/array.h>
 
-static void CheckVkResult(VkResult err) {
-  if (err == 0) return;
-  fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-  if (err < 0) abort();
-}
+static void CheckVkResult(VkResult err) { VK_CHECK_RESULT(err); }
 
 namespace blu::core::rendering::stage {
 ImGuiStage::ImGuiStage(Instance* instance, Device* device, Window* window,
@@ -19,6 +15,7 @@ ImGuiStage::ImGuiStage(Instance* instance, Device* device, Window* window,
       ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
   io.ConfigFlags |=
       ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+  io.ConfigWindowsCopyContentsWithCtrlC = true;
 
   ImGui_ImplVulkan_InitInfo init_info = {};
   init_info.Instance = instance->Get();
@@ -27,7 +24,11 @@ ImGuiStage::ImGuiStage(Instance* instance, Device* device, Window* window,
   init_info.QueueFamily = device_->queue_family_indicies_.graphics;
   init_info.Queue = device_->queues.graphics;
   init_info.PipelineCache = VK_NULL_HANDLE;
+#ifdef IMGUI_TEXTURE_DEBUG
+  init_info.DescriptorPoolSize = 200;
+#else
   init_info.DescriptorPoolSize = frame_count;
+#endif
   init_info.Subpass = 0;
   init_info.MinImageCount = 2;
   init_info.ImageCount = frame_count;
@@ -100,4 +101,4 @@ void ImGuiStage::End(VkCommandBuffer buf) {
   ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buf);
   vkCmdEndRendering(buf);
 }
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage

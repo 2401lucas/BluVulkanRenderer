@@ -496,10 +496,9 @@ void ForwardRenderer::BuildImGui() {
   // Render Settings (Required)
   {
     ImGui::Begin("Render Settings");
-    ImGui::SetWindowPos(ImVec2(20, swapchain_->GetHeight() / 4),
-                        ImGuiCond_Once);
+    ImGui::SetWindowPos(ImVec2(0, swapchain_->GetHeight() / 4), ImGuiCond_Once);
     ImGui::SetWindowSize(ImVec2(250, 300), ImGuiCond_Once);
-    if (ImGui::BeginCombo("UI Mode", settings_.uiModes[settings_.ui_mode])) {
+    if (ImGui::BeginCombo("UI Mode", settings_.uiModes[settings_.ui_mode], ImGuiComboFlags_WidthFitPreview)) {
       uint32_t curr = settings_.ui_mode;
       for (int n = 0; n < settings_.uiModes.size(); n++) {
         bool is_selected = (curr == n);
@@ -511,7 +510,8 @@ void ForwardRenderer::BuildImGui() {
       ImGui::EndCombo();
     }
     if (ImGui::BeginCombo("Culling Mode",
-                          settings_.cullingModes[settings_.culling_mode])) {
+                          settings_.cullingModes[settings_.culling_mode],
+                          ImGuiComboFlags_WidthFitPreview)) {
       uint32_t curr = settings_.culling_mode;
       for (int n = 0; n < settings_.cullingModes.size(); n++) {
         bool is_selected = (curr == n);
@@ -522,8 +522,8 @@ void ForwardRenderer::BuildImGui() {
       }
       ImGui::EndCombo();
     }
-    if (ImGui::BeginCombo("Output",
-                          settings_.renderOutputs[settings_.output])) {
+    if (ImGui::BeginCombo("Output", settings_.renderOutputs[settings_.output],
+                          ImGuiComboFlags_WidthFitPreview)) {
       uint32_t curr = settings_.output;
       for (int n = 0; n < settings_.renderOutputs.size(); n++) {
         bool is_selected = (curr == n);
@@ -539,9 +539,24 @@ void ForwardRenderer::BuildImGui() {
 
   if (settings_.ui_mode == ForwardRenderSettings::UI_MODE_MINIMAL) return;
 
-  // Performance & Debug Data (Optional)
+  // Debug Data (Optional)
   {
+    ImGui::Begin("Debug", 0,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+    ImGui::SetWindowPos(ImVec2(0, 0), ImGuiCond_Once);
+    ImGui::SetWindowSize(ImVec2(200, 50), ImGuiCond_Once);
+
+    ImGui::TextUnformatted(device_->GetDeviceProperties().deviceName);
+    ImGui::Text(
+        "Vulkan API %i.%i.%i",
+        VK_API_VERSION_MAJOR(device_->GetDeviceProperties().apiVersion),
+        VK_API_VERSION_MINOR(device_->GetDeviceProperties().apiVersion),
+        VK_API_VERSION_PATCH(device_->GetDeviceProperties().apiVersion));
+
+    ImGui::End();
   }
+
+  BuildCoreDebugUI();
 }
 
 void ForwardRenderer::UiPass() {

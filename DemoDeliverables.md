@@ -19,7 +19,7 @@
 - [ ] GPU particle simulation
 ### Backlog
 - [ ] Scripting
-- [ ] Editor
+- [ ] Editor (Use masking)
 - [ ] Model Buffer Based on Pipeline
 - [ ] Compute workload dispatchable from Engine
 - [ ] Physics (Library)
@@ -33,6 +33,7 @@
 * Procedural Generation
 * Audio
 * More Modern Rendering Features
+* UI Layouts with docks
 
 # MISC Thoughts
 * Compute Async, more early tasks while DCG buffer is generated

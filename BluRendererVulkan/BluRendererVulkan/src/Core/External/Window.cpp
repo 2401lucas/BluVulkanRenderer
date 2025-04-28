@@ -10,7 +10,7 @@ Window::Window(int width, int height, const char* title) {
   }
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint(GLFW_MAXIMIZED, GLFW_FALSE);
+  glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
   glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 
   window_ = glfwCreateWindow(width, height, title, nullptr, nullptr);
