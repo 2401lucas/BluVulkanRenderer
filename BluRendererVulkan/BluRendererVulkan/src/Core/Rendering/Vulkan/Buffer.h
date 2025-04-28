@@ -12,6 +12,9 @@ struct BufferInfo {
 
 namespace blu::core {
 class Buffer {
+ private:
+  VmaAllocator allocator;
+
  public:
   VkBuffer buffer;
   VmaAllocation alloc;
@@ -19,10 +22,9 @@ class Buffer {
   VkDeviceSize offset = 0;
   char* mapped_data = nullptr;
   VkDeviceAddress device_address;
-
-  void Destroy(const VmaAllocator& allocator);
-
   BufferInfo GetBufferInfo();
+
+  ~Buffer() { vmaDestroyBuffer(allocator, buffer, alloc); }
 
   static blu::core::Buffer* CreateBuffer(const VkDevice& device,
                                          const VmaAllocator& allocator,

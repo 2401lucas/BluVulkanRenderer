@@ -19,7 +19,7 @@ int main(int argc, char** argv) {
 
 void BluRendererVulkan::run(int argc, char** argv) {
   blu::core::Window* window =
-      new blu::core::Window(800, 600, "Blu: Rendering Prototype");
+      new blu::core::Window(1920, 1080, "Blu: Rendering Prototype");
   ForwardRenderer* renderer = new ForwardRenderer(window);
 
   blu::core::Engine* engine = new blu::core::Engine(window, renderer);

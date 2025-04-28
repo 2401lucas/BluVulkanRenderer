@@ -56,15 +56,13 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
     render_descriptor_pool_ = CreateDescriptorPool(descriptor_pool_create);
   }
 
-  matrix_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(glm::mat4) * (3 + MAX_MODELS),
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-      VMA_ALLOCATION_CREATE_MAPPED_BIT);
+  matrix_buffer_ = CreateBuffer(sizeof(glm::mat4) * (3 + MAX_MODELS),
+                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                                VMA_ALLOCATION_CREATE_MAPPED_BIT);
 #if DEBUG_LABELS
   VkDebugUtilsObjectNameInfoEXT debug_info{
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -77,15 +75,14 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
                                            &debug_info);
 #endif
 
-  model_data_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(GPUModelIndices) * MAX_MODELS,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-      VMA_ALLOCATION_CREATE_MAPPED_BIT);
+  model_data_buffer_ =
+      CreateBuffer(sizeof(GPUModelIndices) * MAX_MODELS,
+                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                       VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                   VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
 #if DEBUG_LABELS
   debug_info = {
@@ -99,15 +96,14 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
                                            &debug_info);
 #endif
 
-  model_instance_info_buffer_ = blu::core::Buffer::CreateBuffer(
-      device_->GetLogicalDevice(), allocator_,
-      sizeof(glm::vec4) * 6 + sizeof(GPUModelData) * MAX_MODELS,
-      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-          VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-          VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-      VMA_ALLOCATION_CREATE_MAPPED_BIT);
+  model_instance_info_buffer_ =
+      CreateBuffer(sizeof(glm::vec4) * 6 + sizeof(GPUModelData) * MAX_MODELS,
+                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                       VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+                   VMA_ALLOCATION_CREATE_MAPPED_BIT);
 #if DEBUG_LABELS
   debug_info = {
       .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
@@ -158,6 +154,7 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
   {
     ui_pass_.imgui_stage_ =
         new stage::ImGuiStage(instance_, device_, window, frame_count);
+    RegisterStage((blu::core::rendering::Stage*)ui_pass_.imgui_stage_);
     ui_pass_.output_.resize(frame_count);
     ui_pass_.cmd_bufs_.resize(frame_count);
     ui_pass_.semaphores_.resize(frame_count);
@@ -182,10 +179,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
       blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
                                            ui_pass_.output_[i], 0);
 
-      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               &ui_pass_.cmd_bufs_[i]);
+      ui_pass_.cmd_bufs_[i] = AllocateCommandBuffers(graphics_command_pools_[i],
+                                                     command_buffer_alloc_info);
       ui_pass_.semaphores_[i] = CreateSemaphore(binary_semaphore_info);
       ui_pass_.fences_[i] = CreateFence(fence_info);
     }
@@ -197,9 +192,13 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
         new stage::BuildCommandBufferStage(
             device_, LoadShader("shaders/build_command_buffer.comp.spv",
                                 VK_SHADER_STAGE_COMPUTE_BIT));
+    RegisterStage((blu::core::rendering::Stage*)
+                      culling_pass_.build_command_buffer_stage_);
     culling_pass_.frustum_cull_stage_ = new stage::FrustumCullStage(
         device_, LoadShader("shaders/frustum_cull.comp.spv",
                             VK_SHADER_STAGE_COMPUTE_BIT));
+    RegisterStage(
+        (blu::core::rendering::Stage*)culling_pass_.frustum_cull_stage_);
 
     culling_pass_.output_draw_bufs_.resize(frame_count);
     culling_pass_.cmd_bufs_.resize(frame_count);
@@ -225,10 +224,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
                                                &debug_info);
 #endif
 
-      command_buffer_alloc_info.commandPool = compute_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               &culling_pass_.cmd_bufs_[i]);
+      culling_pass_.cmd_bufs_[i] = AllocateCommandBuffers(
+          compute_command_pools_[i], command_buffer_alloc_info);
       culling_pass_.semaphores_[i] = CreateSemaphore(binary_semaphore_info);
       culling_pass_.fences_[i] = CreateFence(fence_info);
     }
@@ -245,6 +242,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
         {LoadShader("shaders/opaque_pass.vert.spv", VK_SHADER_STAGE_VERTEX_BIT),
          LoadShader("shaders/opaque_pass.frag.spv",
                     VK_SHADER_STAGE_FRAGMENT_BIT)});
+    RegisterStage(
+        (blu::core::rendering::Stage*)opaque_pass_.opaque_render_stage_);
 
     VkImageSubresourceRange range{
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -306,10 +305,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
                                                &debug_info);
 #endif
 
-      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               &opaque_pass_.cmd_bufs_[i]);
+      opaque_pass_.cmd_bufs_[i] = AllocateCommandBuffers(
+          graphics_command_pools_[i], command_buffer_alloc_info);
       opaque_pass_.semaphores_[i] = CreateSemaphore(binary_semaphore_info);
       opaque_pass_.fences_[i] = CreateFence(fence_info);
     }
@@ -330,9 +327,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
         .bindingCount = 1,
         .pBindings = &binding,
     };
-    vkCreateDescriptorSetLayout(
-        device_->GetLogicalDevice(), &layout_info, nullptr,
-        &post_processing_pass_.ui_composition_descriptor_set_layout_);
+    post_processing_pass_.ui_composition_descriptor_set_layout_ =
+        CreateDescriptorSetLayout(layout_info);
 
     post_processing_pass_.ui_composition_descriptor_sets_.resize(frame_count);
     for (size_t i = 0; i < frame_count; i++) {
@@ -381,6 +377,8 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
                     VK_SHADER_STAGE_VERTEX_BIT),
          LoadShader("shaders/final_composition.frag.spv",
                     VK_SHADER_STAGE_FRAGMENT_BIT)});
+    RegisterStage((blu::core::rendering::Stage*)
+                      post_processing_pass_.ui_composition_stage_);
 
     VkImageSubresourceRange range{
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -394,26 +392,13 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
     post_processing_pass_.semaphores_.resize(frame_count);
     post_processing_pass_.fences_.resize(frame_count);
     for (size_t i = 0; i < frame_count; i++) {
-      command_buffer_alloc_info.commandPool = graphics_command_pools_[i];
-      vkAllocateCommandBuffers(device_->GetLogicalDevice(),
-                               &command_buffer_alloc_info,
-                               &post_processing_pass_.cmd_bufs_[i]);
+      post_processing_pass_.cmd_bufs_[i] = AllocateCommandBuffers(
+          graphics_command_pools_[i], command_buffer_alloc_info);
       post_processing_pass_.semaphores_[i] =
           CreateSemaphore(binary_semaphore_info);
       post_processing_pass_.fences_[i] = CreateFence(fence_info);
     }
   }
-}
-
-ForwardRenderer::~ForwardRenderer() {
-  // delete build_command_buffer_stage_;
-  // delete frustum_cull_stage_;
-  // delete depth_only_stage_;
-  // delete opaque_render_stage_;
-  // delete image_copy_stage_;
-  // delete imgui_stage_;
-  // delete final_composition;
-  // delete anti_aliasing_stage_;
 }
 
 void ForwardRenderer::BuildFrameTimeline() {
@@ -508,8 +493,55 @@ void ForwardRenderer::Resize() {
 }
 
 void ForwardRenderer::BuildImGui() {
-  ImGui::ShowDebugLogWindow();
-  ImGui::ShowDemoWindow();
+  // Render Settings (Required)
+  {
+    ImGui::Begin("Render Settings");
+    ImGui::SetWindowPos(ImVec2(20, swapchain_->GetHeight() / 4),
+                        ImGuiCond_Once);
+    ImGui::SetWindowSize(ImVec2(250, 300), ImGuiCond_Once);
+    if (ImGui::BeginCombo("UI Mode", settings_.uiModes[settings_.ui_mode])) {
+      uint32_t curr = settings_.ui_mode;
+      for (int n = 0; n < settings_.uiModes.size(); n++) {
+        bool is_selected = (curr == n);
+        if (ImGui::Selectable(settings_.uiModes[n], is_selected)) {
+          settings_.ui_mode = (ForwardRenderSettings::UiMode)n;
+        }
+        if (is_selected) ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::BeginCombo("Culling Mode",
+                          settings_.cullingModes[settings_.culling_mode])) {
+      uint32_t curr = settings_.culling_mode;
+      for (int n = 0; n < settings_.cullingModes.size(); n++) {
+        bool is_selected = (curr == n);
+        if (ImGui::Selectable(settings_.cullingModes[n], is_selected)) {
+          settings_.culling_mode = (ForwardRenderSettings::CullingMode)n;
+        }
+        if (is_selected) ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::BeginCombo("Output",
+                          settings_.renderOutputs[settings_.output])) {
+      uint32_t curr = settings_.output;
+      for (int n = 0; n < settings_.renderOutputs.size(); n++) {
+        bool is_selected = (curr == n);
+        if (ImGui::Selectable(settings_.renderOutputs[n], is_selected)) {
+          settings_.output = (ForwardRenderSettings::RenderOutput)n;
+        }
+        if (is_selected) ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::End();
+  }
+
+  if (settings_.ui_mode == ForwardRenderSettings::UI_MODE_MINIMAL) return;
+
+  // Performance & Debug Data (Optional)
+  {
+  }
 }
 
 void ForwardRenderer::UiPass() {

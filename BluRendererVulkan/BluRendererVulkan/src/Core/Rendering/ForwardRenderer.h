@@ -1,6 +1,8 @@
 #ifndef FORWARDRENDERER_H
 #define FORWARDRENDERER_H
 
+#include <EASTL/array.h>
+
 #include "BluCoreRenderer.h"
 #include "RenderData.h"
 #include "Stages/AntiAliasingStage.h"
@@ -17,12 +19,11 @@ namespace stage = blu::core::rendering::stage;
 class ForwardRenderer : public BluCoreRenderer {
  public:
   ForwardRenderer(blu::core::Window* window);
-  ~ForwardRenderer();
 
   void Render(RenderData render_data);
 
  protected:
-  void Resize();
+  void Resize() override;
 
  private:
   void BuildFrameTimeline();
@@ -57,36 +58,42 @@ class ForwardRenderer : public BluCoreRenderer {
   } semaphore_values_;
 
   struct ForwardRenderSettings {
+    eastl::array<const char*, 2> uiModes{"Minimal", "Full"};
     enum UiMode {
-      UI_MODE_ENABLED,
-      UI_MODE_DISABLED,
-    } ui_mode = UI_MODE_ENABLED;
+      UI_MODE_MINIMAL = 0,
+      UI_MODE_FULL = 1,
+    } ui_mode = UI_MODE_FULL;
+    eastl::array<const char*, 3> cullingModes{"None", "Frustum Cull",
+                                                "Occlusion Cull"};
     enum CullingMode {
-      CULLING_MODE_NONE,
-      CULLING_MODE_FRUSTUM_CULL,
-      CULLING_MODE_OCCLUSION_CULL,
+      CULLING_MODE_NONE = 0,
+      CULLING_MODE_FRUSTUM_CULL = 1,
+      CULLING_MODE_OCCLUSION_CULL = 2,
     } culling_mode = CULLING_MODE_FRUSTUM_CULL;
+    eastl::array<const char*, 3> drawModes{"Shaded", "Unlit", "Wireframe"};
     enum DrawMode {
-      DRAW_MODE_SHADED,
-      DRAW_MODE_UNLIT,
-      DRAW_MODE_WIREFRAME,
+      DRAW_MODE_SHADED = 0,
+      DRAW_MODE_UNLIT = 1,
+      DRAW_MODE_WIREFRAME = 2,
     } draw_mode = DRAW_MODE_SHADED;
+    eastl::array<const char*, 2> antiAliasingModes{"None", "FXAA"};
     enum AntiAliasingMode {
-      ANTI_ALIAS_MODE_NONE,
-      ANTI_ALIAS_MODE_FXAA,
+      ANTI_ALIAS_MODE_NONE = 0,
+      ANTI_ALIAS_MODE_FXAA = 1,
     } aliasing = ANTI_ALIAS_MODE_NONE;
+    eastl::array<const char*, 3> renderOutputs{"Draw", "AA", "FINAL"};
     enum RenderOutput {
-      RENDER_OUTPUT_DRAW_STAGE,
-      RENDER_OUTPUT_AA,
-      RENDER_OUTPUT_FINAL,
+      RENDER_OUTPUT_DRAW_STAGE = 0,
+      RENDER_OUTPUT_AA = 1,
+      RENDER_OUTPUT_FINAL = 2,
     } output = RenderOutput::RENDER_OUTPUT_DRAW_STAGE;
   } settings_;
 
   // Vulkan Render Data
   // Descriptor Resources
-  eastl::vector<VkCommandPool> graphics_command_pools_;
-  eastl::vector<VkCommandPool> compute_command_pools_;
-  eastl::vector<VkCommandPool> transfer_command_pools_;
+  eastl::vector<CommandPool> graphics_command_pools_;
+  eastl::vector<CommandPool> compute_command_pools_;
+  eastl::vector<CommandPool> transfer_command_pools_;
 
   VkDescriptorPool render_descriptor_pool_;
 

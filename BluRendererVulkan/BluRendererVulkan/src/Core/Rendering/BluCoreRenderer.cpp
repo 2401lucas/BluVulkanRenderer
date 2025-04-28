@@ -1,7 +1,5 @@
 #include "BluCoreRenderer.h"
 
-#include <EASTL/array.h>
-
 #include "../External/FileManager.h"
 #include "../External/stb_image.h"
 
@@ -117,12 +115,26 @@ BluCoreRenderer::BluCoreRenderer(blu::core::Window* window) {
 BluCoreRenderer::~BluCoreRenderer() {
   vkDeviceWaitIdle(device_->GetLogicalDevice());
 
+  delete bda_buffer_;
+
   delete vertex_buffer_;
   delete index_buffer_;
   delete normal_buffer_;
   delete uv_buffer_;
 
-  for (auto stage : loaded_stages) {
+  for (auto& img : model_textures_) {
+    delete img;
+  }
+  for (auto& buf : generic_buffers_) {
+    delete buf;
+  }
+  for (auto& buf : render_buffers_) {
+    delete buf;
+  }
+  for (auto& img : render_images_) {
+    delete img;
+  }
+  for (auto& stage : loaded_stages) {
     delete stage;
   }
   for (auto it = shader_modules_.begin(), it_end = shader_modules_.end();
@@ -140,7 +152,10 @@ BluCoreRenderer::~BluCoreRenderer() {
     vkDestroyFence(device_->GetLogicalDevice(), fence, nullptr);
   }
   for (auto& pool : command_pools_) {
-    vkDestroyCommandPool(device_->GetLogicalDevice(), pool, nullptr);
+    vkFreeCommandBuffers(device_->GetLogicalDevice(), pool.pool,
+                         pool.allocated_command_buffers.size(),
+                         pool.allocated_command_buffers.data());
+    vkDestroyCommandPool(device_->GetLogicalDevice(), pool.pool, nullptr);
   }
   for (auto& pool : descriptor_pools_) {
     vkDestroyDescriptorPool(device_->GetLogicalDevice(), pool, nullptr);
@@ -148,6 +163,14 @@ BluCoreRenderer::~BluCoreRenderer() {
   for (auto& layout : descriptor_set_layouts) {
     vkDestroyDescriptorSetLayout(device_->GetLogicalDevice(), layout, nullptr);
   }
+
+#ifdef DEBUG_VMA
+  // Prints out VMA memory info
+  char* statsString = nullptr;
+  vmaBuildStatsString(allocator_, &statsString, VK_TRUE);
+  printf("%s\n", statsString);
+  vmaFreeStatsString(allocator_, statsString);
+#endif
 
   vmaDestroyAllocator(allocator_);
   delete swapchain_;
@@ -184,7 +207,7 @@ eastl::vector<BluCoreRenderer::LoadedModelInfo> BluCoreRenderer::LoadModel(
   {
     VkCommandBufferAllocateInfo alloc_info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = command_pools_[0],
+        .commandPool = command_pools_[0].pool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
@@ -311,22 +334,18 @@ eastl::vector<BluCoreRenderer::LoadedModelInfo> BluCoreRenderer::LoadModel(
     // TODO: REMOVE
     vkDeviceWaitIdle(device_->GetLogicalDevice());
 
-    vkFreeCommandBuffers(device_->GetLogicalDevice(), command_pools_[0], 1,
+    vkFreeCommandBuffers(device_->GetLogicalDevice(), command_pools_[0].pool, 1,
                          &copy_cmd_buf);
 
-    vertex_staging_buffer->Destroy(allocator_);
     delete vertex_staging_buffer;
     delete[] vertex_data;
 
-    normal_staging_buffer->Destroy(allocator_);
     delete normal_staging_buffer;
     delete[] normal_data;
 
-    index_staging_buffer->Destroy(allocator_);
     delete index_staging_buffer;
     delete[] index_data;
 
-    uv_staging_buffer->Destroy(allocator_);
     delete uv_staging_buffer;
     delete[] uv_data;
   }
@@ -349,7 +368,7 @@ int BluCoreRenderer::LoadImage(eastl::string filepath) {
 
   VkCommandBufferAllocateInfo alloc_info{
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .commandPool = command_pools_[1],
+      .commandPool = command_pools_[1].pool,
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
       .commandBufferCount = 1,
   };
@@ -404,9 +423,8 @@ int BluCoreRenderer::LoadImage(eastl::string filepath) {
       device_->GetLogicalDevice(), new_image,
       device_->GetDeviceProperties().limits.maxSamplerAnisotropy);
 
-  vkFreeCommandBuffers(device_->GetLogicalDevice(), command_pools_[1], 1,
+  vkFreeCommandBuffers(device_->GetLogicalDevice(), command_pools_[1].pool, 1,
                        &copy_cmd_buf);
-  img_staging_buffer->Destroy(allocator_);
   delete img_staging_buffer;
 
   free(image_data);
@@ -512,8 +530,7 @@ void BluCoreRenderer::Build() {
         .pBindings = &buffer_metadata_binding,
     };
 
-    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
-                                nullptr, &bda_buffer_descriptor_set_layout_);
+    bda_buffer_descriptor_set_layout_ = CreateDescriptorSetLayout(layout_info);
 
     VkDescriptorSetAllocateInfo descriptor_alloc_info{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -790,13 +807,24 @@ VkFence& BluCoreRenderer::CreateFence(VkFenceCreateInfo& create_info) {
   return fences_[id];
 }
 
-VkCommandPool& BluCoreRenderer::CreateCommandPool(
+BluCoreRenderer::CommandPool& BluCoreRenderer::CreateCommandPool(
     VkCommandPoolCreateInfo& create_info) {
   uint32_t id = command_pools_.size();
   command_pools_.push_back();
   vkCreateCommandPool(device_->GetLogicalDevice(), &create_info, nullptr,
-                      &command_pools_[id]);
+                      &command_pools_[id].pool);
   return command_pools_[id];
+}
+
+VkCommandBuffer& BluCoreRenderer::AllocateCommandBuffers(
+    CommandPool pool, VkCommandBufferAllocateInfo& command_buffer_alloc_info) {
+  command_buffer_alloc_info.commandPool = pool.pool;
+  uint32_t id = pool.last_used;
+  pool.last_used++;
+  vkAllocateCommandBuffers(device_->GetLogicalDevice(),
+                           &command_buffer_alloc_info,
+                           &pool.allocated_command_buffers[id]);
+  return pool.allocated_command_buffers[id];
 }
 
 VkDescriptorPool& BluCoreRenderer::CreateDescriptorPool(
@@ -851,6 +879,20 @@ VkPipelineShaderStageCreateInfo BluCoreRenderer::LoadShader(
 #endif
 
   return shader_stage;
+}
+
+blu::core::Buffer* BluCoreRenderer::CreateBuffer(
+    VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags required_flags, VmaAllocationCreateFlags flags) {
+  uint32_t id = generic_buffers_.size();
+  generic_buffers_.push_back(
+      blu::core::Buffer::CreateBuffer(device_->GetLogicalDevice(), allocator_,
+                                      size, usage, required_flags, flags));
+  return generic_buffers_[id];
+}
+
+void BluCoreRenderer::RegisterStage(blu::core::rendering::Stage* stage) {
+  loaded_stages.push_back(stage);
 }
 
 void* __cdecl operator new[](size_t size, const char* name, int flags,

@@ -6,21 +6,6 @@
 
 #include "Tools.h"
 
-void blu::core::Image::Destroy(const VkDevice& device,
-                               const VmaAllocator& allocator) {
-  if (sampler) {
-    vkDestroySampler(device, sampler, nullptr);
-  }
-
-  if (view) {
-    vkDestroyImageView(device, view, nullptr);
-  }
-
-  if (image) {
-    vmaDestroyImage(allocator, image, alloc);
-  }
-}
-
 blu::core::Image* blu::core::Image::CreateImage(
     const VkDevice& device, const VmaAllocator& allocator, VkFormat format,
     uint32_t width, uint32_t height, uint32_t mip_levels,
@@ -28,6 +13,9 @@ blu::core::Image* blu::core::Image::CreateImage(
     VkImageUsageFlags usage, VkMemoryPropertyFlags required_flags,
     VmaAllocationCreateFlags flags) {
   Image* new_image = new Image();
+  new_image->device = device;
+  new_image->allocator = allocator;
+
   VkImageCreateInfo image_create_info{
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = VK_IMAGE_TYPE_2D,

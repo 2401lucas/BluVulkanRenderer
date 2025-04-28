@@ -10,6 +10,9 @@ namespace blu::core {
 class Image {
  public:
   // Required
+  VkDevice device;
+  VmaAllocator allocator;
+
   VkImage image = VK_NULL_HANDLE;
   VkImageView view = VK_NULL_HANDLE;
   VkSampler sampler = VK_NULL_HANDLE;
@@ -21,7 +24,22 @@ class Image {
   VkMemoryRequirements memReqs;
   void* mappedData = nullptr;
 
-  void Destroy(const VkDevice& device, const VmaAllocator& allocator);
+  ~Image() {
+    // It is possible the image is simply a placeholder for framebuffer data, in
+    // this case we don't need to destroy its resources
+    if (!device || !allocator) return;
+    if (sampler) {
+      vkDestroySampler(device, sampler, nullptr);
+    }
+
+    if (view) {
+      vkDestroyImageView(device, view, nullptr);
+    }
+
+    if (image) {
+      vmaDestroyImage(allocator, image, alloc);
+    }
+  }
 
   static blu::core::Image* CreateImage(
       const VkDevice& device, const VmaAllocator& allocator, VkFormat format,

@@ -1,6 +1,7 @@
 #ifndef BLUCORERENDERER_H
 #define BLUCORERENDERER_H
 
+#include <EASTL/array.h>
 #include <EASTL/hash_map.h>
 #include <EASTL/string.h>
 #include <EASTL/vector.h>
@@ -40,6 +41,14 @@ class BluCoreRenderer {
   void Build();
 
  protected:
+  struct CommandPool {
+    VkCommandPool pool;
+    uint32_t last_used = 0;
+    eastl::array<VkCommandBuffer, 64> allocated_command_buffers;
+  };
+
+  virtual void Resize() = 0;
+
   uint64_t GetNextSemaphoreValue();
 
   void StartCommandBuffer(VkCommandBuffer, const char* name, glm::vec4 rgb);
@@ -56,6 +65,11 @@ class BluCoreRenderer {
 
   VkPipelineShaderStageCreateInfo LoadShader(eastl::string file_name,
                                              VkShaderStageFlagBits);
+  blu::core::Buffer* CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+                                  VkMemoryPropertyFlags required_flags,
+                                  VmaAllocationCreateFlags flags = 0);
+  void RegisterStage(blu::core::rendering::Stage*);
+
   blu::core::Image* CreateRenderTargetImage(
       VkFormat format, uint32_t width, uint32_t height, uint32_t mip_levels,
       VkSampleCountFlagBits samples, VkImageTiling tiling,
@@ -66,7 +80,9 @@ class BluCoreRenderer {
       VkMemoryPropertyFlags required_flags, VmaAllocationCreateFlags flags = 0);
   VkSemaphore& CreateSemaphore(VkSemaphoreCreateInfo&);
   VkFence& CreateFence(VkFenceCreateInfo&);
-  VkCommandPool& CreateCommandPool(VkCommandPoolCreateInfo&);
+  CommandPool& CreateCommandPool(VkCommandPoolCreateInfo&);
+  VkCommandBuffer& AllocateCommandBuffers(CommandPool,
+                                          VkCommandBufferAllocateInfo&);
   VkDescriptorPool& CreateDescriptorPool(VkDescriptorPoolCreateInfo&);
   VkDescriptorSetLayout& CreateDescriptorSetLayout(
       VkDescriptorSetLayoutCreateInfo&);
@@ -160,11 +176,13 @@ class BluCoreRenderer {
 
   eastl::vector<VkSemaphore> semaphores_;
   eastl::vector<VkFence> fences_;
-  eastl::vector<VkCommandPool> command_pools_;
+  eastl::vector<CommandPool> command_pools_;
   eastl::vector<VkDescriptorPool> descriptor_pools_;
   eastl::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 
   eastl::vector<blu::core::Image*> model_textures_;
+
+  eastl::vector<blu::core::Buffer*> generic_buffers_;
 
   eastl::vector<blu::core::Buffer*> render_buffers_;
   eastl::vector<blu::core::Image*> render_images_;

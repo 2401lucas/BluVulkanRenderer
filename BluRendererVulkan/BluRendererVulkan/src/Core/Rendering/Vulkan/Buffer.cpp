@@ -2,10 +2,6 @@
 
 #include <cstring>
 
-void blu::core::Buffer::Destroy(const VmaAllocator& allocator) {
-  vmaDestroyBuffer(allocator, buffer, alloc);
-}
-
 BufferInfo blu::core::Buffer::GetBufferInfo() {
   return BufferInfo(device_address, offset, size);
 }
@@ -15,6 +11,7 @@ blu::core::Buffer* blu::core::Buffer::CreateBuffer(
     VkBufferUsageFlags usage, VkMemoryPropertyFlags required_flags,
     VmaAllocationCreateFlags flags) {
   blu::core::Buffer* new_buffer = new blu::core::Buffer();
+  new_buffer->allocator = allocator;
   VkBufferCreateInfo buf_ci{
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = size,
