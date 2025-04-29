@@ -27,8 +27,12 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 void main() {
   ivec2 target_pixel = ivec2(gl_GlobalInvocationID.xy);
-
   vec3 rgbC = texture(target_image, target_pixel).rgb;
+
+  
+  imageStore(output_image, target_pixel, vec4(rgbC, 1));
+  return;
+
   vec3 rgbN = textureOffset(target_image, target_pixel, ivec2(0,-1)).rgb;
   vec3 rgbS = textureOffset(target_image, target_pixel, ivec2(0,1)).rgb;
   vec3 rgbE = textureOffset(target_image, target_pixel, ivec2(1,0)).rgb;

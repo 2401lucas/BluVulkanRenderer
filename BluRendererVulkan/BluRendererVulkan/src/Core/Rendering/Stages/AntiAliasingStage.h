@@ -14,16 +14,15 @@ class AntiAliasingStage : protected Stage {
   ~AntiAliasingStage();
 
   void Run(VkCommandBuffer buf, eastl::vector<VkDescriptorSet> descriptor_sets,
-           uint32_t width, uint32_t height);
+           uint32_t width, uint32_t height, Image* input, Image* output);
 
- 
  private:
-     struct AntiAliasingPushConst {
-         uint32_t width;
-         uint32_t height;
+  struct AntiAliasingPushConst {
+    uint32_t width;
+    uint32_t height;
   };
 
   blu::core::rendering::Pipeline* pipeline_;
 };
-}  // namespace blu::core::rendering
+}  // namespace blu::core::rendering::stage
 #endif

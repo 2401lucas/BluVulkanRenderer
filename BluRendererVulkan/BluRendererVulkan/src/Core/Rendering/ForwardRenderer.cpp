@@ -40,15 +40,15 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
   // Descriptor Pool Create
   {
     eastl::vector<VkDescriptorPoolSize> pool_sizes{
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 + frame_count},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-         FINAL_COMPOSITION_MAX_IMAGES * frame_count},
+         FINAL_COMPOSITION_MAX_IMAGES * frame_count + frame_count},
     };
 
     VkDescriptorPoolCreateInfo descriptor_pool_create{
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT,
-        .maxSets = frame_count,
+        .maxSets = frame_count * 2,
         .poolSizeCount = static_cast<uint32_t>(pool_sizes.size()),
         .pPoolSizes = pool_sizes.data(),
     };
@@ -312,6 +312,125 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
     }
   }
 
+  // Anti Aliasing Pass
+  {
+    VkDescriptorSetLayoutBinding input_binding = {
+        .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = frame_count,
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+    VkDescriptorSetLayoutBinding output_binding = {
+        .binding = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+        .descriptorCount = frame_count,
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+        .pImmutableSamplers = nullptr,
+    };
+
+    eastl::array<VkDescriptorSetLayoutBinding, 2> bindings{input_binding,
+                                                           output_binding};
+
+    VkDescriptorSetLayoutCreateInfo layout_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = bindings.size(),
+        .pBindings = bindings.data(),
+    };
+    aa_pass_.aa_descriptor_set_layout_ = CreateDescriptorSetLayout(layout_info);
+
+    aa_pass_.anti_aliasing_stage_ = new stage::AntiAliasingStage(
+        device_,
+        {
+            aa_pass_.aa_descriptor_set_layout_,
+        },
+        LoadShader("shaders/fxaa.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT));
+    RegisterStage((blu::core::rendering::Stage*)aa_pass_.anti_aliasing_stage_);
+
+    VkImageSubresourceRange range{
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = VK_REMAINING_ARRAY_LAYERS,
+    };
+
+    aa_pass_.output_.resize(frame_count);
+    aa_pass_.cmd_bufs_.resize(frame_count);
+    aa_pass_.semaphores_.resize(frame_count);
+    aa_pass_.fences_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      aa_pass_.output_[i] = CreateRenderTargetImage(
+          COLOR_FORMAT, swapchain_->GetWidth(), swapchain_->GetHeight(), 1,
+          VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL,
+          VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      blu::core::Image::CreateImageView(device_->GetLogicalDevice(),
+                                        aa_pass_.output_[i], COLOR_FORMAT,
+                                        range);
+
+      blu::core::Image::CreateImageSampler(device_->GetLogicalDevice(),
+                                           aa_pass_.output_[i], 0);
+
+#if DEBUG_LABELS
+      VkDebugUtilsObjectNameInfoEXT debug_info{
+          .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+          .objectType = VK_OBJECT_TYPE_IMAGE,
+          .objectHandle = (uint64_t)aa_pass_.output_[i]->image,
+          .pObjectName = "Anti Aliasing Output",
+      };
+      debug_util_.vkSetDebugUtilsObjectNameEXT(device_->GetLogicalDevice(),
+                                               &debug_info);
+#endif
+
+      aa_pass_.cmd_bufs_[i] = AllocateCommandBuffers(compute_command_pools_[i],
+                                                     command_buffer_alloc_info);
+      aa_pass_.semaphores_[i] = CreateSemaphore(binary_semaphore_info);
+      aa_pass_.fences_[i] = CreateFence(fence_info);
+    }
+
+    aa_pass_.aa_descriptor_sets_.resize(frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+      VkDescriptorSetAllocateInfo alloc_info = {
+          .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+          .pNext = nullptr,
+          .descriptorPool = render_descriptor_pool_,
+          .descriptorSetCount = 1,
+          .pSetLayouts = &aa_pass_.aa_descriptor_set_layout_,
+      };
+
+      VK_CHECK_RESULT(
+          vkAllocateDescriptorSets(device_->GetLogicalDevice(), &alloc_info,
+                                   &aa_pass_.aa_descriptor_sets_[i]));
+
+      eastl::vector<VkDescriptorImageInfo> imageInfos;
+      imageInfos.resize(2);
+      imageInfos[0] = {
+          .sampler = opaque_pass_.color_output_[i]->sampler,
+          .imageView = opaque_pass_.color_output_[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+      imageInfos[1] = {
+          .sampler = aa_pass_.output_[i]->sampler,
+          .imageView = aa_pass_.output_[i]->view,
+          .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+      };
+
+      VkWriteDescriptorSet write = {
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = aa_pass_.aa_descriptor_sets_[i],
+          .dstBinding = 0,
+          .descriptorCount = static_cast<uint32_t>(imageInfos.size()),
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = imageInfos.data(),
+      };
+
+      vkUpdateDescriptorSets(device_->GetLogicalDevice(), 1, &write, 0,
+                             nullptr);
+    }
+  }
+
   // Post Processing Pass
   {
     VkDescriptorSetLayoutBinding binding = {
@@ -420,7 +539,7 @@ void ForwardRenderer::BuildFrameTimeline() {
           GetNextSemaphoreValue();  // 1 buf
       break;
   }
-  semaphore_values_.cull_mode_complete = current_semaphore_value_;
+  semaphore_values_.draw_mode_ready = current_semaphore_value_;
 
   switch (settings_.draw_mode) {
     case ForwardRenderSettings::DRAW_MODE_SHADED:
@@ -436,11 +555,12 @@ void ForwardRenderer::BuildFrameTimeline() {
           GetNextSemaphoreValue();  // 1 depth img 1 color img
       break;
   }
-  semaphore_values_.draw_mode_complete = current_semaphore_value_;
-  if (settings_.output == ForwardRenderSettings::RENDER_OUTPUT_DRAW_STAGE)
+  semaphore_values_.anti_aliasing_ready = current_semaphore_value_;
+  if (settings_.output == ForwardRenderSettings::RENDER_OUTPUT_DRAW_STAGE) {
+    semaphore_values_.present_ready = current_semaphore_value_;
     return;
-
-  switch (settings_.aliasing) {
+  }
+  switch (settings_.aa_mode) {
     case ForwardRenderSettings::ANTI_ALIAS_MODE_NONE:
       break;
     case ForwardRenderSettings::ANTI_ALIAS_MODE_FXAA:
@@ -448,8 +568,11 @@ void ForwardRenderer::BuildFrameTimeline() {
           GetNextSemaphoreValue();  // 1 (storage) color img
       break;
   }
-  semaphore_values_.anti_aliasing_mode_complete = current_semaphore_value_;
-  if (settings_.output == ForwardRenderSettings::RENDER_OUTPUT_AA) return;
+
+  if (settings_.output == ForwardRenderSettings::RENDER_OUTPUT_AA) {
+    semaphore_values_.present_ready = current_semaphore_value_;
+    return;
+  }
 }
 
 void ForwardRenderer::UpdateFrameData(RenderData& render_data) {
@@ -473,6 +596,7 @@ void ForwardRenderer::Render(RenderData render_data) {
   UiPass();
   CullingPass(render_data.model_data.size());
   OpaquePass();
+  DoAA();
   PostProcessingPass();
 
   if (!DoPresent()) {
@@ -498,7 +622,8 @@ void ForwardRenderer::BuildImGui() {
     ImGui::Begin("Render Settings");
     ImGui::SetWindowPos(ImVec2(0, swapchain_->GetHeight() / 4), ImGuiCond_Once);
     ImGui::SetWindowSize(ImVec2(250, 300), ImGuiCond_Once);
-    if (ImGui::BeginCombo("UI Mode", settings_.uiModes[settings_.ui_mode], ImGuiComboFlags_WidthFitPreview)) {
+    if (ImGui::BeginCombo("UI Mode", settings_.uiModes[settings_.ui_mode],
+                          ImGuiComboFlags_WidthFitPreview)) {
       uint32_t curr = settings_.ui_mode;
       for (int n = 0; n < settings_.uiModes.size(); n++) {
         bool is_selected = (curr == n);
@@ -517,6 +642,19 @@ void ForwardRenderer::BuildImGui() {
         bool is_selected = (curr == n);
         if (ImGui::Selectable(settings_.cullingModes[n], is_selected)) {
           settings_.culling_mode = (ForwardRenderSettings::CullingMode)n;
+        }
+        if (is_selected) ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::BeginCombo("AA Mode",
+                          settings_.antiAliasingModes[settings_.aa_mode],
+                          ImGuiComboFlags_WidthFitPreview)) {
+      uint32_t curr = settings_.aa_mode;
+      for (int n = 0; n < settings_.antiAliasingModes.size(); n++) {
+        bool is_selected = (curr == n);
+        if (ImGui::Selectable(settings_.antiAliasingModes[n], is_selected)) {
+          settings_.aa_mode = (ForwardRenderSettings::AntiAliasingMode)n;
         }
         if (is_selected) ImGui::SetItemDefaultFocus();
       }
@@ -607,10 +745,9 @@ void ForwardRenderer::CullingPass(uint32_t model_count) {
   }
 
   EndCommandBuffer(buf);
-  SubmitCommandBuffer({buf}, device_->queues.compute, {}, {}, {},
-                      {main_frame_semaphore_},
-                      {semaphore_values_.cull_mode_complete},
-                      culling_pass_.fences_[frame_index_]);
+  SubmitCommandBuffer(
+      {buf}, device_->queues.compute, {}, {}, {}, {main_frame_semaphore_},
+      {semaphore_values_.draw_mode_ready}, culling_pass_.fences_[frame_index_]);
 }
 
 void ForwardRenderer::OpaquePass() {
@@ -636,11 +773,42 @@ void ForwardRenderer::OpaquePass() {
 
   EndCommandBuffer(buf);
   SubmitCommandBuffer({buf}, device_->queues.graphics, {main_frame_semaphore_},
-                      {semaphore_values_.cull_mode_complete},
+                      {semaphore_values_.draw_mode_ready},
                       {VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT},
                       {main_frame_semaphore_},
-                      {semaphore_values_.draw_mode_complete},
+                      {semaphore_values_.anti_aliasing_ready},
                       opaque_pass_.fences_[frame_index_]);
+}
+
+void ForwardRenderer::DoAA() {
+  if (settings_.aa_mode == ForwardRenderSettings::ANTI_ALIAS_MODE_NONE ||
+      settings_.output == ForwardRenderSettings::RENDER_OUTPUT_DRAW_STAGE)
+    return;
+
+  vkWaitForFences(device_->GetLogicalDevice(), 1,
+                  &aa_pass_.fences_[frame_index_], VK_TRUE, UINT64_MAX);
+  vkResetFences(device_->GetLogicalDevice(), 1,
+                &aa_pass_.fences_[frame_index_]);
+
+  VkCommandBuffer buf = aa_pass_.cmd_bufs_[frame_index_];
+  StartCommandBuffer(buf, "Anti Aliasing Pass", {0, 1, 0, 1});
+
+  switch (settings_.aa_mode) {
+    case ForwardRenderSettings::ANTI_ALIAS_MODE_FXAA:
+      aa_pass_.anti_aliasing_stage_->Run(
+          buf, {aa_pass_.aa_descriptor_sets_[frame_index_]},
+          swapchain_->GetWidth(), swapchain_->GetHeight(),
+          opaque_pass_.color_output_[frame_index_],
+          aa_pass_.output_[frame_index_]);
+      break;
+  }
+
+  EndCommandBuffer(buf);
+  SubmitCommandBuffer(
+      {buf}, device_->queues.compute, {main_frame_semaphore_},
+      {semaphore_values_.anti_aliasing_ready},
+      {VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT}, {main_frame_semaphore_},
+      {semaphore_values_.present_ready}, aa_pass_.fences_[frame_index_]);
 }
 
 void ForwardRenderer::PostProcessingPass() {
@@ -676,10 +844,6 @@ void ForwardRenderer::PostProcessingPass() {
       buf, ui_pass_.output_[frame_index_]->image,
       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
-  blu::core::Image::ImageLayoutTransition(
-      buf, opaque_pass_.color_output_[frame_index_]->image,
-      VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
 
   blu::core::Image img{.image = swapchain_buf.image,
                        .view = swapchain_buf.view};
@@ -687,20 +851,31 @@ void ForwardRenderer::PostProcessingPass() {
   VkDescriptorImageInfo image_info = {
       .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
   };
-
   switch (settings_.output) {
     case ForwardRenderSettings::RENDER_OUTPUT_DRAW_STAGE:
+      blu::core::Image::ImageLayoutTransition(
+          buf, opaque_pass_.color_output_[frame_index_]->image,
+          VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
       image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
       image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
       break;
     case ForwardRenderSettings::RENDER_OUTPUT_AA:
-      image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
-      image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
+      blu::core::Image::ImageLayoutTransition(
+          buf, aa_pass_.output_[frame_index_]->image, VK_IMAGE_LAYOUT_GENERAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+      image_info.sampler = aa_pass_.output_[frame_index_]->sampler;
+      image_info.imageView = aa_pass_.output_[frame_index_]->view;
       break;
     case ForwardRenderSettings::RENDER_OUTPUT_FINAL:
-      image_info.sampler = opaque_pass_.color_output_[frame_index_]->sampler;
-      image_info.imageView = opaque_pass_.color_output_[frame_index_]->view;
+      blu::core::Image::ImageLayoutTransition(
+          buf, aa_pass_.output_[frame_index_]->image, VK_IMAGE_LAYOUT_GENERAL,
+          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, range);
+      image_info.sampler = aa_pass_.output_[frame_index_]->sampler;
+      image_info.imageView = aa_pass_.output_[frame_index_]->view;
       break;
+    default:
+      assert(true && "Requested Render Output not implemented");
   }
 
   VkWriteDescriptorSet write_descriptor_set = {
@@ -730,7 +905,7 @@ void ForwardRenderer::PostProcessingPass() {
   SubmitCommandBuffer(
       {buf}, device_->queues.graphics,
       {main_frame_semaphore_, ui_pass_.semaphores_[frame_index_]},
-      {semaphore_values_.draw_mode_complete, 0},
+      {semaphore_values_.present_ready, 0},
       {VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT},
       {present_semaphores_[frame_index_]}, {0},

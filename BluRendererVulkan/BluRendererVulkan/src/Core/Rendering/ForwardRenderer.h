@@ -33,17 +33,16 @@ class ForwardRenderer : public BluCoreRenderer {
   void UiPass();
   void CullingPass(uint32_t model_count);
   void OpaquePass();
+  void DoAA();
   void PostProcessingPass();
 
-  void DoAA();
   bool DoPresent();
 
   struct TimelineSemaphoreValues {
     // Complete Operations
-    uint64_t cull_mode_complete = 0;
-    uint64_t draw_mode_complete = 0;
-    uint64_t anti_aliasing_mode_complete = 0;
-    uint64_t present_complete = 0;
+    uint64_t draw_mode_ready = 0;
+    uint64_t anti_aliasing_ready = 0;
+    uint64_t present_ready = 0;
 
     // Individual Stages
     uint64_t build_command_buffer_stage_ = 0;
@@ -64,7 +63,7 @@ class ForwardRenderer : public BluCoreRenderer {
       UI_MODE_FULL = 1,
     } ui_mode = UI_MODE_FULL;
     eastl::array<const char*, 3> cullingModes{"None", "Frustum Cull",
-                                                "Occlusion Cull"};
+                                              "Occlusion Cull"};
     enum CullingMode {
       CULLING_MODE_NONE = 0,
       CULLING_MODE_FRUSTUM_CULL = 1,
@@ -80,7 +79,7 @@ class ForwardRenderer : public BluCoreRenderer {
     enum AntiAliasingMode {
       ANTI_ALIAS_MODE_NONE = 0,
       ANTI_ALIAS_MODE_FXAA = 1,
-    } aliasing = ANTI_ALIAS_MODE_NONE;
+    } aa_mode = ANTI_ALIAS_MODE_NONE;
     eastl::array<const char*, 3> renderOutputs{"Draw", "AA", "FINAL"};
     enum RenderOutput {
       RENDER_OUTPUT_DRAW_STAGE = 0,
@@ -128,6 +127,14 @@ class ForwardRenderer : public BluCoreRenderer {
     eastl::vector<blu::core::Image*> color_output_;
     eastl::vector<blu::core::Image*> depth_output_;
   } opaque_pass_;
+
+  struct AntiAliasingPass : Pass {
+    stage::AntiAliasingStage* anti_aliasing_stage_ = nullptr;
+
+    VkDescriptorSetLayout aa_descriptor_set_layout_;
+    eastl::vector<VkDescriptorSet> aa_descriptor_sets_;
+    eastl::vector<blu::core::Image*> output_;
+  } aa_pass_;
 
   struct PostProcessingPass : Pass {
     stage::ColorOnlyStage* ui_composition_stage_ = nullptr;

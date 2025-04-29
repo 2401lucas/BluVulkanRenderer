@@ -2,7 +2,7 @@
 ### In Progress
 - [ ] Descriptor Update Template
 - [ ] DELETE RESOURCES
-- [ ] UI CHANGING RENDERING / FIX RENDER OUTPUT LOGIC
+- [x] UI CHANGING RENDERING / FIX RENDER OUTPUT LOGIC
 - [ ] UI FROM ENGINE?
 - [ ] Compute FXAA
 - [ ] Tonemapping Pass (Compute?)
@@ -34,6 +34,7 @@
 * Audio
 * More Modern Rendering Features
 * UI Layouts with docks
+* Custom ImGui backend implementation
 
 # MISC Thoughts
 * Compute Async, more early tasks while DCG buffer is generated
