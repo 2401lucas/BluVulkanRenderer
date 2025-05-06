@@ -1,11 +1,11 @@
 ﻿#include "BluRendererVulkan.h"
 
 #include <chrono>
+#include <iostream>
 
 #include "Core/Engine/Engine.h"
 #include "Core/External/Window.h"
 #include "Core/Rendering/ForwardRenderer.h"
-#include <iostream>
 
 const float MINFRAMETIME = 0.01666f;
 
@@ -27,6 +27,8 @@ void BluRendererVulkan::run(int argc, char** argv) {
 
   auto start_time = std::chrono::high_resolution_clock::now();
   auto current_time = std::chrono::high_resolution_clock::now();
+  constexpr double FIXED_TICK_INTERVAL = 1.0 / 60.0;
+  double fixed_update_timer = 0.0;
 
   while (!window->ShouldClose()) {
     current_time = std::chrono::high_resolution_clock::now();
@@ -35,10 +37,14 @@ void BluRendererVulkan::run(int argc, char** argv) {
 
     window->ProcessEvents();
     engine->Update(frame_duration.count());
+
+    fixed_update_timer += frame_duration.count();
+    while (fixed_update_timer >= FIXED_TICK_INTERVAL) {
+      engine->FixedUpdate(FIXED_TICK_INTERVAL);
+      fixed_update_timer -= FIXED_TICK_INTERVAL;
+    }
+
     renderer->Render(engine->GetRenderData());
-    /*if (res == RendererState::ASPECT_RATIO_UPDATED) {
-      engine->SetCameraAspectRatio(renderer->GetAspectRatio());
-    }*/
   }
 
   delete renderer;

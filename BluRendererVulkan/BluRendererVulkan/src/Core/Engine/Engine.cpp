@@ -61,9 +61,10 @@ blu::game::components::Model* Engine::CreateModel(
 void Engine::Update(float frametime) {
   camera_->Update();
   game_manager_.Update(frametime);
+  std::cout << "Dynamic" << std::endl;
 }
 
-void Engine::FixedUpdate(float frametime) {}
+void Engine::FixedUpdate(float frametime) { std::cout << "Fixed" << std::endl; }
 
 void Engine::SetCameraAspectRatio(float aspect_ratio) {
   camera_->SetAspectRatio(aspect_ratio);
