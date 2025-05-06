@@ -520,6 +520,18 @@ ForwardRenderer::ForwardRenderer(blu::core::Window* window)
   }
 }
 
+ForwardRenderer::~ForwardRenderer() {
+  vkDeviceWaitIdle(device_->GetLogicalDevice());
+
+  delete ui_pass_.imgui_stage_;
+  delete culling_pass_.build_command_buffer_stage_;
+  delete culling_pass_.frustum_cull_stage_;
+  delete culling_pass_.depth_only_stage_;
+  delete opaque_pass_.opaque_render_stage_;
+  delete aa_pass_.anti_aliasing_stage_;
+  delete post_processing_pass_.ui_composition_stage_;
+}
+
 void ForwardRenderer::BuildFrameTimeline() {
   semaphore_values_ = {};
 

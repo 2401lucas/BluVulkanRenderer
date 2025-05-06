@@ -63,10 +63,13 @@ void Engine::Update(float frametime) {
   game_manager_.Update(frametime);
 }
 
+void Engine::FixedUpdate(float frametime) {}
+
 void Engine::SetCameraAspectRatio(float aspect_ratio) {
   camera_->SetAspectRatio(aspect_ratio);
 }
 
+// Setup transform matrices in array
 RenderData Engine::GetRenderData() {
   RenderData render_data{};
   render_data.matrices.resize(3);
@@ -83,6 +86,7 @@ RenderData Engine::GetRenderData() {
   return render_data;
 }
 
+// TODO: Set default keybinds in game manager
 void Engine::SetDefaultKeybinds() {
   input_->RegisterKeyBind("Mouse 1", GLFW_MOUSE_BUTTON_LEFT);
 

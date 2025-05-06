@@ -42,6 +42,7 @@ class Engine {
       blu::game::components::Transform);
 
   void Update(float frametime);
+  void FixedUpdate(float frametime);
 
   void SetCameraAspectRatio(float aspect_ratio);
   RenderData GetRenderData();

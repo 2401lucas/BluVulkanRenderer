@@ -25,6 +25,9 @@
 - [ ] Physics (Library)
 - [ ] Visualize Frustum
 - [ ] Dynamic LOD's
+- [ ] Networking*
+- [ ] Predicting Physics to lower input lag from a fixed physics update...
+
 
 # ROUGH IDEAS
 * Compute Generating Vertex/Normal/UV/Indices culled buffers?

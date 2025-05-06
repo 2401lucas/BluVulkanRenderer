@@ -19,6 +19,7 @@ namespace stage = blu::core::rendering::stage;
 class ForwardRenderer : public BluCoreRenderer {
  public:
   ForwardRenderer(blu::core::Window* window);
+  ~ForwardRenderer();
 
   void Render(RenderData render_data);
 

@@ -137,9 +137,6 @@ BluCoreRenderer::~BluCoreRenderer() {
   for (auto& img : render_images_) {
     delete img;
   }
-  for (auto& stage : loaded_stages) {
-    delete stage;
-  }
   for (auto it = shader_modules_.begin(), it_end = shader_modules_.end();
        it != it_end; ++it) {
     vkDestroyShaderModule(device_->GetLogicalDevice(), it->second, nullptr);
@@ -604,8 +601,7 @@ void BluCoreRenderer::Build() {
         .bindingCount = 1,
         .pBindings = &binding,
     };
-    vkCreateDescriptorSetLayout(device_->GetLogicalDevice(), &layout_info,
-                                nullptr, &textures_descriptor_set_layout_);
+    textures_descriptor_set_layout_ = CreateDescriptorSetLayout(layout_info);
 
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -710,7 +706,8 @@ void BluCoreRenderer::BuildCoreDebugUI() {
   // Models
   {
     ImGui::Begin("Render Resource Info");
-    ImGui::SetWindowPos(ImVec2(swapchain_->GetWidth() - 400, 0), ImGuiCond_Once);
+    ImGui::SetWindowPos(ImVec2(swapchain_->GetWidth() - 400, 0),
+                        ImGuiCond_Once);
     ImGui::SetWindowSize(ImVec2(400, 400), ImGuiCond_Once);
 
     ImGui::Text("Loaded Stages: %i", loaded_stages.size());
