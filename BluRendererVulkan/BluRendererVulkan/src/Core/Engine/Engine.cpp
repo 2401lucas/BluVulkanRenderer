@@ -28,10 +28,13 @@ void Engine::LoadScene(const eastl::string& scene_name) {
       window_->GetAspectRatio(), 45, 1, 500);
 
   game_manager_ = blu::game::TestGameManager::TestGameManager(
-      [this](const eastl::string& filepath,
-             blu::game::components::Transform transform) {
-        return this->CreateModel(filepath, transform);
-      },
+      {[this](const eastl::string& filepath,
+              blu::game::components::Transform transform) {
+         return this->CreateModel(filepath, transform);
+       },
+       [this](blu::game::components::Transform transform) {
+         return this->CreateLight(transform);
+       }},
       input_, camera_);
 
   game_manager_.Start();
@@ -58,13 +61,25 @@ blu::game::components::Model* Engine::CreateModel(
   return models_[models_.size() - models.size()];
 }
 
+blu::game::components::Light* Engine::CreateLight(
+    blu::game::components::Transform transform) {
+  if (lights_.size() >= MAX_LIGHTS) {
+    return nullptr;
+  }
+
+  lights_.push_back(new blu::game::components::Light(transform));
+
+  return lights_[lights_.size() - lights_.size()];
+}
+
 void Engine::Update(float frametime) {
   camera_->Update();
   game_manager_.Update(frametime);
-  std::cout << "Dynamic" << std::endl;
 }
 
-void Engine::FixedUpdate(float frametime) { std::cout << "Fixed" << std::endl; }
+void Engine::FixedUpdate(float frametime) {
+  game_manager_.FixedUpdate(frametime);
+}
 
 void Engine::SetCameraAspectRatio(float aspect_ratio) {
   camera_->SetAspectRatio(aspect_ratio);

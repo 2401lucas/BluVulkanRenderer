@@ -17,6 +17,7 @@
 - [ ] Scene Hierarchy
 - [ ] Cache Image Samplers
 - [ ] GPU particle simulation
+- [ ] Object Pool / Component Grouping
 ### Backlog
 - [ ] Scripting
 - [ ] Editor (Use masking)

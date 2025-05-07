@@ -7,6 +7,7 @@
 
 // Constants
 constexpr uint32_t MAX_MODELS = 1000;
+constexpr uint32_t MAX_LIGHTS = 10;
 constexpr uint32_t MAX_VERTICES = 1000000;
 constexpr uint32_t MAX_INDICES = 1000000;
 constexpr uint32_t MAX_TEXTURES = 100;

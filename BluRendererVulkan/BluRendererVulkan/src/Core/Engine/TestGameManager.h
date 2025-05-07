@@ -7,16 +7,13 @@ namespace blu::game {
 class TestGameManager : public blu::game::GameManager {
  public:
   TestGameManager() {};
-  TestGameManager(
-      eastl::function<blu::game::components::Model*(
-          const eastl::string& filepath, components::Transform transform)>
-          model_creation_callback,
+  TestGameManager(GameManagerCallbackHelper callback_helper,
       blu::core::KeybindManager* input, blu::game::components::Camera* camera);
   ~TestGameManager();
 
   virtual void Start();
   virtual void Update(float delta_time);
-  virtual void FixedUpdate();
+  virtual void FixedUpdate(float delta_time);
 
  private:
   components::Model* main_model_;

@@ -37,9 +37,9 @@ class Engine {
 
   void LoadScene(const eastl::string& scene_name);
 
-  blu::game::components::Model* CreateModel(
-      const eastl::string& filepath,
-      blu::game::components::Transform);
+  blu::game::components::Model* CreateModel(const eastl::string& filepath,
+                                            blu::game::components::Transform);
+  blu::game::components::Light* CreateLight(blu::game::components::Transform);
 
   void Update(float frametime);
   void FixedUpdate(float frametime);
@@ -58,6 +58,7 @@ class Engine {
   blu::game::TestGameManager game_manager_{};
 
   eastl::vector<blu::game::components::Model*> models_;
+  eastl::vector<blu::game::components::Light*> lights_;
 };
 }  // namespace blu::core
 #endif

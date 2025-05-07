@@ -1,16 +1,19 @@
 #include "TestGameManager.h"
 
 blu::game::TestGameManager::TestGameManager(
-    eastl::function<blu::game::components::Model*(
-        const eastl::string& filepath, components::Transform transform)>
-        model_creation_callback,
+    GameManagerCallbackHelper callback_helper,
     blu::core::KeybindManager* input, blu::game::components::Camera* camera)
-    : GameManager(model_creation_callback, input, camera) {}
+    : GameManager(callback_helper, input,
+                  camera) {}
 
 blu::game::TestGameManager::~TestGameManager() {}
 
 void blu::game::TestGameManager::Start() {
   main_model_ = CreateModel("Cube/cube.glTF");
+  auto light = CreateLight();
+  light->light_type = 0;
+  light->light_data = {0,0,0,1};
+
   CreateModel("Cube/cube.glTF",
               blu::game::components::Transform(false, glm::vec3(2, 2, 0),
                                                glm::vec3(45, 45, 0),
@@ -22,17 +25,15 @@ void blu::game::TestGameManager::Start() {
               blu::game::components::Transform(false, glm::vec3(5, 0, 0),
                                                glm::vec3(0, 180, 0),
                                                glm::vec3(100, 100, 100)));
-  //CreateModel("Sponza/Sponza.glTF",
-  //            blu::game::components::Transform(false, glm::vec3(-20, 0, 0),
-  //                                             glm::vec3(0, 0, 0),
-  //                                             glm::vec3(0.01, 0.01, 0.01)));
+  // CreateModel("Sponza/Sponza.glTF",
+  //             blu::game::components::Transform(false, glm::vec3(-20, 0, 0),
+  //                                              glm::vec3(0, 0, 0),
+  //                                              glm::vec3(0.01, 0.01, 0.01)));
 }
 
 void blu::game::TestGameManager::Update(float delta_time) {
   auto cam_front = camera_->GetTransform()->Front();
   float move_speed = 10 * delta_time;
-
-  main_model_->transform.AddToRotation(glm::vec3(36, 0, 0) * delta_time);
 
   if (input_->IsActionPressed("W")) {
     camera_->GetTransform()->AddToPosition(cam_front * move_speed);
@@ -72,4 +73,6 @@ void blu::game::TestGameManager::Update(float delta_time) {
   }
 }
 
-void blu::game::TestGameManager::FixedUpdate() {}
+void blu::game::TestGameManager::FixedUpdate(float delta_time) {
+  main_model_->transform.AddToRotation(glm::vec3(36, 0, 0) * delta_time);
+}
