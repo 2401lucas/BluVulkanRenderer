@@ -51,10 +51,12 @@ BluVulkanRenderer is a custom rendering engine using Vulkan 1.3 to achieve maxim
 - Comprehensive debug visualization including render stage outputs and resource utilization
 - Hot-swappable render settings allowing runtime configuration of culling, AA, and draw modes
 
+
 ## Architecture Highlights
 - Modern C++ with EASTL for optimized standard library performance
 - Separation of concerns between core rendering, scene management, and application logic
 - Extensible stage system allowing easy addition of new rendering passes
+- Input System with rebindable keys
 
 ## Demonstrated Skills
 - Low-level graphics programming with direct GPU control
